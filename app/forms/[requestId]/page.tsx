@@ -746,6 +746,21 @@ export default function FormFillPage() {
                       className={validationErrors[field.key] ? "border-red-500" : ""}
                     />
                   )}
+                  {field.type === "percentage" && (
+                    <div className="relative">
+                      <Input
+                        id={field.key}
+                        type="number"
+                        step="0.01"
+                        inputMode="decimal"
+                        value={(formValues[field.key] as number) ?? ""}
+                        onChange={(e) => updateField(field.key, e.target.value ? Number(e.target.value) : "")}
+                        placeholder="0"
+                        className={`pr-8 ${validationErrors[field.key] ? "border-red-500" : ""}`}
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm pointer-events-none">%</span>
+                    </div>
+                  )}
                   {field.type === "date" && (
                     <Input
                       id={field.key}

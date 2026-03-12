@@ -28,6 +28,7 @@ const FIELD_TYPE_TO_DB_TYPE: Record<FormFieldType, DatabaseSchemaColumn["dataTyp
   longText: "text",
   number: "number",
   currency: "currency",
+  percentage: "number",
   date: "date",
   dropdown: "dropdown",
   checkbox: "boolean",
@@ -304,7 +305,7 @@ export class FormDefinitionService {
     }
 
     const keys = new Set<string>()
-    const validTypes = ["text", "longText", "number", "currency", "date", "dropdown", "checkbox", "file"]
+    const validTypes = ["text", "longText", "number", "currency", "percentage", "date", "dropdown", "checkbox", "file"]
 
     for (const field of fields) {
       // Check required properties

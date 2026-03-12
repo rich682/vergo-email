@@ -121,6 +121,9 @@ export interface UpdateReportDefinitionInput {
   filterBindings?: Record<string, string[]> | null
   // Pivot column sorting: { type: "alphabetical"|"by_row", direction: "asc"|"desc", rowKey?: string }
   pivotSortConfig?: { type: string; direction: string; rowKey?: string } | null
+  // Configuration fields (editable after creation)
+  dateColumnKey?: string
+  databaseId?: string
 }
 
 export interface ReportPreviewResult {
@@ -330,6 +333,16 @@ export class ReportDefinitionService {
       throw new Error("Report definition not found")
     }
 
+    // Validate new database if changing data source
+    if (input.databaseId !== undefined && input.databaseId !== existing.databaseId) {
+      const database = await prisma.database.findFirst({
+        where: { id: input.databaseId, organizationId },
+      })
+      if (!database) {
+        throw new Error("Database not found")
+      }
+    }
+
     const report = await prisma.reportDefinition.update({
       where: { id },
       data: {
@@ -353,6 +366,9 @@ export class ReportDefinitionService {
         ...(input.filterBindings !== undefined && { filterBindings: input.filterBindings as any }),
         // Pivot column sorting
         ...(input.pivotSortConfig !== undefined && { pivotSortConfig: input.pivotSortConfig as any }),
+        // Configuration fields
+        ...(input.dateColumnKey !== undefined && { dateColumnKey: input.dateColumnKey }),
+        ...(input.databaseId !== undefined && { databaseId: input.databaseId }),
       },
       include: {
         database: {

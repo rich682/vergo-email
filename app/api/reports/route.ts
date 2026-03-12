@@ -124,40 +124,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate dateColumnKey
-    if (!dateColumnKey || typeof dateColumnKey !== "string") {
+    // Validate pivot column (required for matrix reports)
+    if (!pivotColumnKey || typeof pivotColumnKey !== "string") {
       return NextResponse.json(
-        { error: "Date column is required" },
+        { error: "Pivot column is required" },
         { status: 400 }
       )
     }
 
-    // Validate layout if provided
-    const validLayouts = ["standard", "pivot", "accounting"]
-    if (layout && !validLayouts.includes(layout)) {
-      return NextResponse.json(
-        { error: `Layout must be one of: ${validLayouts.join(", ")}` },
-        { status: 400 }
-      )
-    }
-
-    // Validate pivot layout requirements
-    if (layout === "pivot" && !pivotColumnKey) {
-      return NextResponse.json(
-        { error: "Pivot layout requires a pivot column" },
-        { status: 400 }
-      )
-    }
-
-    // Validate accounting layout requirements
-    if (layout === "accounting") {
-      if (!pivotColumnKey || !rowColumnKey || !valueColumnKey) {
-        return NextResponse.json(
-          { error: "Accounting layout requires row column, period column, and value column" },
-          { status: 400 }
-        )
-      }
-    }
+    // Default dateColumnKey to pivotColumnKey if not provided
+    const effectiveDateColumnKey = (dateColumnKey && typeof dateColumnKey === "string") ? dateColumnKey : pivotColumnKey
 
     // Validate compareMode if provided
     const validCompareModes = ["none", "mom", "yoy"]
@@ -174,8 +150,8 @@ export async function POST(request: NextRequest) {
       description: description?.trim(),
       databaseId,
       cadence: cadence as ReportCadence,
-      dateColumnKey,
-      layout: (layout as ReportLayout) || "standard",
+      dateColumnKey: effectiveDateColumnKey,
+      layout: (layout as ReportLayout) || "pivot",
       compareMode: (compareMode as CompareMode) || "none",
       columns: columns as ReportColumn[] | undefined,
       formulaRows: formulaRows as ReportFormulaRow[] | undefined,

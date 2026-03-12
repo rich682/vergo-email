@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { usePermissions } from "@/components/permissions-context"
 import Link from "next/link"
-import { ArrowLeft, Database, Loader2, Calendar, LayoutGrid, Table2, Rows3 } from "lucide-react"
+import { ArrowLeft, Database, Loader2, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -16,28 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-
-interface DatabaseOption {
-  id: string
-  name: string
-  rowCount: number
-  columnCount: number
-}
-
-interface DatabaseColumn {
-  key: string
-  label: string
-  dataType: string
-}
-
-interface DatabaseDetail {
-  id: string
-  name: string
-  schema: {
-    columns: DatabaseColumn[]
-  }
-  rowCount: number
-}
+import { type DatabaseOption, type DatabaseColumn, type DatabaseDetail } from "@/components/reports/report-config-shared"
 
 const CADENCE_OPTIONS = [
   { value: "daily", label: "Daily" },
@@ -45,123 +24,6 @@ const CADENCE_OPTIONS = [
   { value: "quarterly", label: "Quarterly" },
   { value: "annual", label: "Annual" },
 ]
-
-const LAYOUT_OPTIONS = [
-  {
-    value: "accounting",
-    label: "Accounting",
-    description: "Single-entity view: accounts as rows, periods as columns",
-    icon: LayoutGrid,
-    example: "e.g. P&L Report, Balance Sheet",
-  },
-  {
-    value: "pivot",
-    label: "Matrix",
-    description: "Multi-entity comparison: metrics across projects or entities",
-    icon: Rows3,
-    example: "e.g. Project Review, Entity Comparison",
-  },
-  {
-    value: "standard",
-    label: "Standard",
-    description: "Flat table: database rows with selected columns and totals",
-    icon: Table2,
-    example: "e.g. Transaction Listing, Detailed Ledger",
-  },
-]
-
-function LayoutPreview({ type, isSelected }: { type: string; isSelected: boolean }) {
-  const headerBg = isSelected ? "bg-orange-200 text-orange-900" : "bg-gray-200 text-gray-600"
-  const cellBg = isSelected ? "bg-orange-50" : "bg-white"
-  const borderColor = isSelected ? "border-orange-200" : "border-gray-200"
-  const labelText = isSelected ? "text-orange-700" : "text-gray-500"
-  const valueText = isSelected ? "text-orange-900" : "text-gray-700"
-  const accentBg = isSelected ? "bg-orange-100" : "bg-gray-100"
-
-  if (type === "accounting") {
-    return (
-      <div className={`mt-3 rounded border ${borderColor} overflow-hidden text-[9px] leading-tight`}>
-        <div className={`grid grid-cols-4 ${headerBg} font-medium`}>
-          <div className="px-1.5 py-1 border-r border-white/30"></div>
-          <div className="px-1.5 py-1 border-r border-white/30 text-right">Jan</div>
-          <div className="px-1.5 py-1 border-r border-white/30 text-right">Feb</div>
-          <div className="px-1.5 py-1 text-right">Var</div>
-        </div>
-        {[
-          ["Revenue", "50k", "55k", "+5k"],
-          ["COGS", "20k", "22k", "+2k"],
-          ["Gross Profit", "30k", "33k", "+3k"],
-        ].map(([label, ...vals], i) => (
-          <div key={i} className={`grid grid-cols-4 ${i === 2 ? accentBg + " font-medium" : cellBg} ${i < 2 ? "border-b " + borderColor : ""}`}>
-            <div className={`px-1.5 py-0.5 border-r ${borderColor} ${labelText} truncate`}>{label}</div>
-            {vals.map((v, j) => (
-              <div key={j} className={`px-1.5 py-0.5 text-right ${j < 2 ? "border-r " + borderColor : ""} ${j === 2 ? (v.startsWith("+") ? "text-green-600" : "text-red-600") : valueText}`}>
-                {v}
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  if (type === "pivot") {
-    return (
-      <div className={`mt-3 rounded border ${borderColor} overflow-hidden text-[9px] leading-tight`}>
-        <div className={`grid grid-cols-4 ${headerBg} font-medium`}>
-          <div className="px-1.5 py-1 border-r border-white/30"></div>
-          <div className="px-1.5 py-1 border-r border-white/30 text-right">Proj A</div>
-          <div className="px-1.5 py-1 border-r border-white/30 text-right">Proj B</div>
-          <div className="px-1.5 py-1 text-right">Total</div>
-        </div>
-        {[
-          ["Revenue", "100k", "150k", "250k"],
-          ["Op. Income", "25k", "40k", "65k"],
-          ["GP%", "25%", "27%", "26%"],
-        ].map(([label, ...vals], i) => (
-          <div key={i} className={`grid grid-cols-4 ${cellBg} ${i < 2 ? "border-b " + borderColor : ""}`}>
-            <div className={`px-1.5 py-0.5 border-r ${borderColor} ${labelText} truncate`}>{label}</div>
-            {vals.map((v, j) => (
-              <div key={j} className={`px-1.5 py-0.5 text-right ${j < 2 ? "border-r " + borderColor : ""} ${valueText}`}>
-                {v}
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  // Standard
-  return (
-    <div className={`mt-3 rounded border ${borderColor} overflow-hidden text-[9px] leading-tight`}>
-      <div className={`grid grid-cols-4 ${headerBg} font-medium`}>
-        <div className="px-1.5 py-1 border-r border-white/30">Date</div>
-        <div className="px-1.5 py-1 border-r border-white/30">Ref</div>
-        <div className="px-1.5 py-1 border-r border-white/30 text-right">Amount</div>
-        <div className="px-1.5 py-1 text-right">Tax</div>
-      </div>
-      {[
-        ["Jan 15", "INV-01", "1,000", "150"],
-        ["Jan 20", "INV-02", "2,500", "375"],
-      ].map(([...vals], i) => (
-        <div key={i} className={`grid grid-cols-4 ${cellBg} border-b ${borderColor}`}>
-          {vals.map((v, j) => (
-            <div key={j} className={`px-1.5 py-0.5 ${j < 3 ? "border-r " + borderColor : ""} ${j >= 2 ? "text-right " + valueText : labelText}`}>
-              {v}
-            </div>
-          ))}
-        </div>
-      ))}
-      <div className={`grid grid-cols-4 ${accentBg} font-medium`}>
-        <div className={`px-1.5 py-0.5 border-r ${borderColor} ${labelText}`}>Total</div>
-        <div className={`px-1.5 py-0.5 border-r ${borderColor}`}></div>
-        <div className={`px-1.5 py-0.5 text-right border-r ${borderColor} ${valueText}`}>3,500</div>
-        <div className={`px-1.5 py-0.5 text-right ${valueText}`}>525</div>
-      </div>
-    </div>
-  )
-}
 
 export default function NewReportPage() {
   const router = useRouter()
@@ -184,13 +46,8 @@ export default function NewReportPage() {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [cadence, setCadence] = useState("monthly")
-  const [layout, setLayout] = useState("accounting")
   const [databaseId, setDatabaseId] = useState("")
-  const [dateColumnKey, setDateColumnKey] = useState("")
   const [pivotColumnKey, setPivotColumnKey] = useState("")
-  // Accounting layout fields
-  const [rowColumnKey, setRowColumnKey] = useState("")
-  const [valueColumnKey, setValueColumnKey] = useState("")
 
   // Database detail state (for getting columns)
   const [databaseDetail, setDatabaseDetail] = useState<DatabaseDetail | null>(null)
@@ -259,11 +116,7 @@ export default function NewReportPage() {
   useEffect(() => {
     if (databaseId) {
       fetchDatabaseDetail(databaseId)
-      // Reset columns when database changes
-      setDateColumnKey("")
       setPivotColumnKey("")
-      setRowColumnKey("")
-      setValueColumnKey("")
     } else {
       setDatabaseDetail(null)
     }
@@ -282,78 +135,32 @@ export default function NewReportPage() {
       setError("Please select a database")
       return
     }
-
-    // Layout-specific validation
-    if (layout === "accounting") {
-      if (!rowColumnKey) {
-        setError("Please select a row column")
-        return
-      }
-      if (!pivotColumnKey) {
-        setError("Please select a period column")
-        return
-      }
-      if (!valueColumnKey) {
-        setError("Please select a value column")
-        return
-      }
-    } else if (layout === "pivot") {
-      if (!dateColumnKey) {
-        setError("Please select a date column")
-        return
-      }
-      if (!pivotColumnKey) {
-        setError("Please select a pivot column")
-        return
-      }
-    } else {
-      // Standard layout
-      if (!dateColumnKey) {
-        setError("Please select a date column")
-        return
-      }
+    if (!pivotColumnKey) {
+      setError("Please select a column")
+      return
     }
 
     setCreating(true)
     setError(null)
 
     try {
-      // For accounting layout, dateColumnKey = pivotColumnKey
-      const effectiveDateColumnKey = layout === "accounting" ? pivotColumnKey : dateColumnKey
-
-      // Auto-populate columns/metricRows from database schema
+      // Auto-populate metric rows from database columns
       const dbColumns = databaseDetail?.schema?.columns || []
-      let autoColumns: any[] | undefined
-      let autoMetricRows: any[] | undefined
-
-      if (layout === "standard") {
-        // Add all database columns as source columns
-        autoColumns = dbColumns.map((col: DatabaseColumn, index: number) => ({
-          key: `src_${col.key}`,
-          label: col.label,
-          type: "source" as const,
-          sourceColumnKey: col.key,
-          dataType: col.dataType,
-          order: index,
-        }))
-      } else if (layout === "pivot") {
-        // Add all database columns as source metric rows (user can delete/reorder)
-        const formatMap: Record<string, "text" | "number" | "currency" | "percent"> = {
-          text: "text",
-          number: "number",
-          currency: "currency",
-          date: "text",
-          boolean: "text",
-        }
-        autoMetricRows = dbColumns.map((col: DatabaseColumn, index: number) => ({
-          key: `metric_${col.key}`,
-          label: col.label,
-          type: "source" as const,
-          sourceColumnKey: col.key,
-          format: formatMap[col.dataType] || "number",
-          order: index,
-        }))
+      const formatMap: Record<string, "text" | "number" | "currency" | "percent"> = {
+        text: "text",
+        number: "number",
+        currency: "currency",
+        date: "text",
+        boolean: "text",
       }
+      const autoMetricRows = dbColumns.map((col: DatabaseColumn, index: number) => ({
+        key: `metric_${col.key}`,
+        label: col.label,
+        type: "source" as const,
+        sourceColumnKey: col.key,
+        format: formatMap[col.dataType] || "number",
+        order: index,
+      }))
 
       const response = await fetch("/api/reports", {
         method: "POST",
@@ -363,14 +170,11 @@ export default function NewReportPage() {
           name: name.trim(),
           description: description.trim() || undefined,
           cadence,
-          layout,
+          layout: "pivot",
           databaseId,
-          dateColumnKey: effectiveDateColumnKey,
-          pivotColumnKey: (layout === "accounting" || layout === "pivot") ? pivotColumnKey : undefined,
-          rowColumnKey: layout === "accounting" ? rowColumnKey : undefined,
-          valueColumnKey: layout === "accounting" ? valueColumnKey : undefined,
-          ...(autoColumns && { columns: autoColumns }),
-          ...(autoMetricRows && { metricRows: autoMetricRows }),
+          dateColumnKey: pivotColumnKey, // Default date column to pivot column; user can change in settings
+          pivotColumnKey,
+          metricRows: autoMetricRows,
         }),
       })
 
@@ -380,7 +184,6 @@ export default function NewReportPage() {
       }
 
       const data = await response.json()
-      // Redirect to the builder
       router.push(`/dashboard/reports/${data.report.id}`)
     } catch (err: any) {
       setError(err.message || "Failed to create report")
@@ -391,14 +194,7 @@ export default function NewReportPage() {
   const selectedDatabase = databases.find(db => db.id === databaseId)
   const databaseColumns = databaseDetail?.schema?.columns || []
 
-  // Check if form is valid
-  const isFormValid = name.trim() && cadence && databaseId && (
-    layout === "accounting"
-      ? (rowColumnKey && pivotColumnKey && valueColumnKey)
-      : layout === "pivot"
-        ? (dateColumnKey && pivotColumnKey)
-        : dateColumnKey
-  )
+  const isFormValid = name.trim() && cadence && databaseId && pivotColumnKey
 
   return (
     <div className="min-h-screen bg-white">
@@ -474,50 +270,6 @@ export default function NewReportPage() {
               </div>
             )}
 
-            {/* Layout Selection */}
-            <div className="space-y-2">
-              <Label>Report Layout *</Label>
-              <div className="grid grid-cols-3 gap-3">
-                {LAYOUT_OPTIONS.map((option) => {
-                  const Icon = option.icon
-                  const isSelected = layout === option.value
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => {
-                        setLayout(option.value)
-                        // Reset column selections when changing layout
-                        setDateColumnKey("")
-                        setPivotColumnKey("")
-                        setRowColumnKey("")
-                        setValueColumnKey("")
-                      }}
-                      className={`p-4 rounded-lg border-2 text-left transition-all ${
-                        isSelected
-                          ? "border-orange-500 bg-orange-50"
-                          : "border-gray-200 hover:border-gray-300 bg-white"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <Icon className={`w-5 h-5 ${isSelected ? "text-orange-600" : "text-gray-500"}`} />
-                        <span className={`font-medium ${isSelected ? "text-orange-900" : "text-gray-900"}`}>
-                          {option.label}
-                        </span>
-                      </div>
-                      <p className={`text-xs ${isSelected ? "text-orange-700" : "text-gray-500"}`}>
-                        {option.description}
-                      </p>
-                      <LayoutPreview type={option.value} isSelected={isSelected} />
-                      <p className={`mt-2 text-[10px] italic ${isSelected ? "text-orange-400" : "text-gray-400"}`}>
-                        {option.example}
-                      </p>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
             {/* Database Selection */}
             <div className="space-y-2">
               <Label>Data Source *</Label>
@@ -565,88 +317,12 @@ export default function NewReportPage() {
               )}
             </div>
 
-            {/* === ACCOUNTING LAYOUT COLUMN SELECTIONS === */}
-            {databaseId && layout === "accounting" && !loadingDatabaseDetail && databaseColumns.length > 0 && (
-              <>
-                {/* Row Column */}
-                <div className="space-y-2">
-                  <Label>Row Column *</Label>
-                  <p className="text-xs text-gray-500 mb-2">
-                    Column that identifies each row (e.g., Account Name)
-                  </p>
-                  <Select value={rowColumnKey} onValueChange={setRowColumnKey}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select the row column..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {databaseColumns.map((col) => (
-                        <SelectItem key={col.key} value={col.key}>
-                          <div className="flex items-center gap-2">
-                            <Rows3 className="w-4 h-4 text-gray-400" />
-                            <span>{col.label}</span>
-                            <span className="text-xs text-gray-400">({col.dataType})</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Period/Pivot Column */}
-                <div className="space-y-2">
-                  <Label>Period Column *</Label>
-                  <p className="text-xs text-gray-500 mb-2">
-                    Column whose values become column headers (e.g., As Of date)
-                  </p>
-                  <Select value={pivotColumnKey} onValueChange={setPivotColumnKey}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select the period column..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {databaseColumns.map((col) => (
-                        <SelectItem key={col.key} value={col.key}>
-                          <div className="flex items-center gap-2">
-                            <Calendar className="w-4 h-4 text-gray-400" />
-                            <span>{col.label}</span>
-                            <span className="text-xs text-gray-400">({col.dataType})</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Value Column */}
-                <div className="space-y-2">
-                  <Label>Value Column *</Label>
-                  <p className="text-xs text-gray-500 mb-2">
-                    Column providing cell values (e.g., Current Balance)
-                  </p>
-                  <Select value={valueColumnKey} onValueChange={setValueColumnKey}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select the value column..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {databaseColumns.map((col) => (
-                        <SelectItem key={col.key} value={col.key}>
-                          <div className="flex items-center gap-2">
-                            <span>{col.label}</span>
-                            <span className="text-xs text-gray-400">({col.dataType})</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
-            )}
-
-            {/* === STANDARD + PIVOT LAYOUT: Date Column Selection === */}
-            {databaseId && (layout === "standard" || layout === "pivot") && (
+            {/* Column Selection */}
+            {databaseId && (
               <div className="space-y-2">
-                <Label>Date/Period Column *</Label>
+                <Label>Column *</Label>
                 <p className="text-xs text-gray-500 mb-2">
-                  Column containing date/period information (e.g., "January", "Q1 2025", "1/1/2025")
+                  Column whose unique values become column headers (e.g., Project Name, Period)
                 </p>
                 {loadingDatabaseDetail ? (
                   <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
@@ -658,9 +334,9 @@ export default function NewReportPage() {
                     No columns found in the selected database.
                   </div>
                 ) : (
-                  <Select value={dateColumnKey} onValueChange={setDateColumnKey}>
+                  <Select value={pivotColumnKey} onValueChange={setPivotColumnKey}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select the date column..." />
+                      <SelectValue placeholder="Select a column..." />
                     </SelectTrigger>
                     <SelectContent>
                       {databaseColumns.map((col) => (
@@ -677,68 +353,19 @@ export default function NewReportPage() {
               </div>
             )}
 
-            {/* Pivot Column Selection - Only show for pivot layout after database + date column selected */}
-            {databaseId && layout === "pivot" && !loadingDatabaseDetail && databaseColumns.length > 0 && dateColumnKey && (
-              <div className="space-y-2">
-                <Label>Pivot Column *</Label>
-                <p className="text-xs text-gray-500 mb-2">
-                  Column whose unique values become column headers (e.g., Project Name, Product)
-                </p>
-                <Select value={pivotColumnKey} onValueChange={setPivotColumnKey}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select the pivot column..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {databaseColumns
-                      .filter(col => col.key !== dateColumnKey)
-                      .map((col) => (
-                        <SelectItem key={col.key} value={col.key}>
-                          <div className="flex items-center gap-2">
-                            <LayoutGrid className="w-4 h-4 text-gray-400" />
-                            <span>{col.label}</span>
-                            <span className="text-xs text-gray-400">({col.dataType})</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* Selected Database Info */}
-            {selectedDatabase && (
-              (layout === "accounting" && rowColumnKey && pivotColumnKey && valueColumnKey) ||
-              (layout === "pivot" && dateColumnKey && pivotColumnKey) ||
-              (layout === "standard" && dateColumnKey)
-            ) && (
+            {/* Summary */}
+            {selectedDatabase && pivotColumnKey && (
               <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <div className="flex items-center gap-3">
-                  {layout === "accounting" || layout === "pivot" ? (
-                    <LayoutGrid className="w-5 h-5 text-blue-600" />
-                  ) : (
-                    <Database className="w-5 h-5 text-blue-600" />
-                  )}
+                  <Database className="w-5 h-5 text-blue-600" />
                   <div>
                     <p className="text-sm font-medium text-blue-900">
-                      {selectedDatabase.name} - {layout === "accounting" ? "Accounting" : layout === "pivot" ? "Matrix" : "Standard"} Layout
+                      {selectedDatabase.name}
                     </p>
                     <p className="text-xs text-blue-700 mt-0.5">
-                      {selectedDatabase.rowCount.toLocaleString()} rows •
-                      {cadence && ` ${CADENCE_OPTIONS.find(o => o.value === cadence)?.label}`}
-                      {layout === "accounting" ? (
-                        <>
-                          {" "}• Row: {databaseColumns.find(c => c.key === rowColumnKey)?.label || rowColumnKey}
-                          {" "}• Period: {databaseColumns.find(c => c.key === pivotColumnKey)?.label || pivotColumnKey}
-                          {" "}• Value: {databaseColumns.find(c => c.key === valueColumnKey)?.label || valueColumnKey}
-                        </>
-                      ) : (
-                        <>
-                          {" "}• Period: {databaseColumns.find(c => c.key === dateColumnKey)?.label || dateColumnKey}
-                          {layout === "pivot" && pivotColumnKey && (
-                            <> • Pivot: {databaseColumns.find(c => c.key === pivotColumnKey)?.label || pivotColumnKey}</>
-                          )}
-                        </>
-                      )}
+                      {selectedDatabase.rowCount.toLocaleString()} rows
+                      {cadence && ` • ${CADENCE_OPTIONS.find(o => o.value === cadence)?.label}`}
+                      {" "}• Column: {databaseColumns.find(c => c.key === pivotColumnKey)?.label || pivotColumnKey}
                     </p>
                   </div>
                 </div>

@@ -16,6 +16,7 @@ import {
   AlignLeft,
   Hash,
   DollarSign,
+  Percent,
   Calendar,
   ChevronDown,
   CheckSquare,
@@ -23,6 +24,7 @@ import {
   Loader2,
   Database,
   ExternalLink,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -69,6 +71,7 @@ const FIELD_TYPE_CONFIG: Record<
   longText: { label: "Long Text", icon: AlignLeft },
   number: { label: "Number", icon: Hash },
   currency: { label: "Currency", icon: DollarSign },
+  percentage: { label: "Percentage", icon: Percent },
   date: { label: "Date", icon: Calendar },
   dropdown: { label: "Dropdown", icon: ChevronDown },
   checkbox: { label: "Checkbox", icon: CheckSquare },
@@ -355,12 +358,17 @@ export default function FormBuilderPage() {
   const saveField = () => {
     if (!editingField || !form) return
 
+    // Clean up empty dropdown options before saving
+    const cleanedField = editingField.type === "dropdown"
+      ? { ...editingField, options: (editingField.options || []).filter(o => o.trim() !== "") }
+      : editingField
+
     let updatedFields: FormField[]
     if (isNewField) {
-      updatedFields = [...form.fields, editingField]
+      updatedFields = [...form.fields, cleanedField]
     } else {
       updatedFields = form.fields.map((f) =>
-        f.key === editingField.key ? editingField : f
+        f.key === cleanedField.key ? cleanedField : f
       )
     }
 
@@ -623,12 +631,17 @@ export default function FormBuilderPage() {
                             disabled
                           />
                         )}
-                        {(field.type === "number" || field.type === "currency") && (
-                          <Input
-                            type="number"
-                            placeholder={field.type === "currency" ? "$0.00" : "0"}
-                            disabled
-                          />
+                        {field.type === "number" && (
+                          <Input type="number" placeholder="0" disabled />
+                        )}
+                        {field.type === "currency" && (
+                          <Input type="text" placeholder="$0.00" disabled />
+                        )}
+                        {field.type === "percentage" && (
+                          <div className="relative">
+                            <Input type="text" placeholder="0" disabled className="pr-8" />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                          </div>
                         )}
                         {field.type === "date" && (
                           <Input type="date" disabled />
@@ -728,19 +741,44 @@ export default function FormBuilderPage() {
 
               {editingField.type === "dropdown" && (
                 <div>
-                  <Label>Options (one per line)</Label>
-                  <Textarea
-                    value={editingField.options?.join("\n") || ""}
-                    onChange={(e) =>
-                      setEditingField({
-                        ...editingField,
-                        options: e.target.value.split("\n").filter(Boolean),
-                      })
-                    }
-                    placeholder="Option 1&#10;Option 2&#10;Option 3"
-                    className="mt-1.5"
-                    rows={4}
-                  />
+                  <Label>Options</Label>
+                  <div className="mt-1.5 space-y-2">
+                    {(editingField.options || []).map((option, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <Input
+                          value={option}
+                          onChange={(e) => {
+                            const updated = [...(editingField.options || [])]
+                            updated[idx] = e.target.value
+                            setEditingField({ ...editingField, options: updated })
+                          }}
+                          placeholder={`Option ${idx + 1}`}
+                          className="flex-1"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = (editingField.options || []).filter((_, i) => i !== idx)
+                            setEditingField({ ...editingField, options: updated })
+                          }}
+                          className="p-1.5 text-gray-400 hover:text-red-500 rounded hover:bg-gray-100"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = [...(editingField.options || []), ""]
+                        setEditingField({ ...editingField, options: updated })
+                      }}
+                      className="flex items-center gap-1.5 text-sm text-orange-600 hover:text-orange-700 font-medium"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Option
+                    </button>
+                  </div>
                 </div>
               )}
 

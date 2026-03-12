@@ -195,8 +195,8 @@ function EmailSetupContent() {
 
         <div className="space-y-6 max-w-3xl">
           {/* Connected Inbox Section */}
-          <div className="border border-gray-200 rounded-lg overflow-hidden">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+          <div className="border border-gray-200 rounded-lg">
+            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 rounded-t-lg">
               <h2 className="text-sm font-medium text-gray-900">Connected Inbox</h2>
             </div>
             <div className="p-4 space-y-4">

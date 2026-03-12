@@ -15,8 +15,6 @@ import {
   ChevronDown,
   ChevronRight,
   Settings2,
-  LayoutGrid,
-  Table2,
   Calendar,
   RefreshCw,
   TrendingUp,
@@ -54,6 +52,7 @@ import {
   type FilterBindings,
 } from "@/components/reports/report-filter-selector"
 import { ViewerManagement, type Viewer } from "@/components/shared/viewer-management"
+import { type DatabaseOption, type DatabaseColumn } from "@/components/reports/report-config-shared"
 
 // Types
 interface ReportColumn {
@@ -240,6 +239,15 @@ export default function ReportBuilderPage() {
   const [settingsDescription, setSettingsDescription] = useState("")
   const [settingsCadence, setSettingsCadence] = useState("")
   const [settingsSaving, setSettingsSaving] = useState(false)
+  // Settings dialog - configuration fields
+  const [settingsDatabaseId, setSettingsDatabaseId] = useState("")
+  const [settingsDateColumnKey, setSettingsDateColumnKey] = useState("")
+  const [settingsPivotColumnKey, setSettingsPivotColumnKey] = useState("")
+  // Settings dialog - database lists
+  const [settingsDatabases, setSettingsDatabases] = useState<DatabaseOption[]>([])
+  const [settingsLoadingDatabases, setSettingsLoadingDatabases] = useState(false)
+  const [settingsDbColumns, setSettingsDbColumns] = useState<DatabaseColumn[]>([])
+  const [settingsLoadingColumns, setSettingsLoadingColumns] = useState(false)
 
   // Fetch report definition
   const fetchReport = useCallback(async () => {
@@ -285,6 +293,42 @@ export default function ReportBuilderPage() {
   useEffect(() => {
     fetchReport()
   }, [fetchReport])
+
+  // Fetch databases for settings dialog
+  const fetchSettingsDatabases = useCallback(async () => {
+    try {
+      setSettingsLoadingDatabases(true)
+      const response = await fetch("/api/databases", { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        setSettingsDatabases(data.databases || [])
+      }
+    } catch (err) {
+      console.error("Error fetching databases:", err)
+    } finally {
+      setSettingsLoadingDatabases(false)
+    }
+  }, [])
+
+  // Fetch database columns for settings dialog when database changes
+  const fetchSettingsDbColumns = useCallback(async (dbId: string) => {
+    if (!dbId) {
+      setSettingsDbColumns([])
+      return
+    }
+    try {
+      setSettingsLoadingColumns(true)
+      const response = await fetch(`/api/databases/${dbId}`, { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        setSettingsDbColumns(data.database?.schema?.columns || [])
+      }
+    } catch (err) {
+      console.error("Error fetching database detail:", err)
+    } finally {
+      setSettingsLoadingColumns(false)
+    }
+  }, [])
 
   // Fetch preview from server
   // For pivot layout, auto-detect compare mode from comparison rows
@@ -566,6 +610,14 @@ export default function ReportBuilderPage() {
                   setSettingsName(report.name)
                   setSettingsDescription(report.description || "")
                   setSettingsCadence(report.cadence)
+                  setSettingsDatabaseId(report.database.id)
+                  setSettingsDateColumnKey(report.dateColumnKey)
+                  setSettingsPivotColumnKey(report.pivotColumnKey || "")
+                  // Use current report's database schema for column options
+                  setSettingsDbColumns(report.database.schema.columns || [])
+                  setSettingsLoadingColumns(false)
+                  // Fetch database list
+                  fetchSettingsDatabases()
                   setSettingsOpen(true)
                 }}
               >
@@ -592,20 +644,13 @@ export default function ReportBuilderPage() {
             {/* Data Source Info */}
             <div className="p-3 bg-gray-50 rounded-lg">
               <div className="flex items-center gap-2 text-sm">
-                {report.layout === "accounting" || report.layout === "pivot" ? (
-                  <LayoutGrid className="w-4 h-4 text-blue-500" />
-                ) : (
-                  <Database className="w-4 h-4 text-gray-500" />
-                )}
+                <Database className="w-4 h-4 text-gray-500" />
                 <span className="font-medium text-gray-700">{report.database.name}</span>
-                <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
-                  {report.layout === "accounting" ? "Accounting" : report.layout === "pivot" ? "Matrix" : "Standard"}
-                </span>
               </div>
               <p className="text-xs text-gray-500 mt-1">
                 {report.database.rowCount.toLocaleString()} rows available
-                {report.layout === "pivot" && report.pivotColumnKey && (
-                  <> • Pivot: {databaseColumns.find(c => c.key === report.pivotColumnKey)?.label || report.pivotColumnKey}</>
+                {report.pivotColumnKey && (
+                  <> • Column: {databaseColumns.find(c => c.key === report.pivotColumnKey)?.label || report.pivotColumnKey}</>
                 )}
               </p>
             </div>
@@ -962,36 +1007,15 @@ export default function ReportBuilderPage() {
                 <div className="px-3 py-2.5 bg-gray-50 flex items-center justify-between">
                   <div>
                     <span className="font-medium text-sm text-gray-700">
-                      {report.layout === "accounting" ? "Formula Columns" : "Pivot Columns"}
+                      Formula Columns
                     </span>
                     <p className="text-xs text-gray-400 mt-0.5">
-                      {report.layout === "accounting" ? "Add computed columns (e.g. Total)" : "Auto-generated + formula columns"}
+                      Add computed columns (e.g. Total)
                     </p>
                   </div>
                 </div>
 
                 <div className="p-3 space-y-3">
-                  {/* Auto-generated columns from pivot (pivot layout only) */}
-                  {report.layout === "pivot" && previewData?.table?.columns && previewData.table.columns.filter(c => c.key !== "_label" && c.type === "source").length > 0 && (
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-                        From Data
-                      </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {previewData.table.columns
-                          .filter(c => c.key !== "_label" && c.type === "source")
-                          .map(col => (
-                            <span
-                              key={col.key}
-                              className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs"
-                            >
-                              {col.label}
-                            </span>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-
                   {/* Formula columns */}
                   <div>
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
@@ -1584,46 +1608,140 @@ export default function ReportBuilderPage() {
 
       {/* Settings Dialog */}
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Report Settings</DialogTitle>
             <DialogDescription>
-              Update the report name, description, and cadence.
+              Update the report name, cadence, and data source configuration.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="settings-name">Name</Label>
-              <Input
-                id="settings-name"
-                value={settingsName}
-                onChange={(e) => setSettingsName(e.target.value)}
-                placeholder="Report name"
-              />
+          <div className="space-y-6 py-2">
+            {/* General Section */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">General</h3>
+              <div className="space-y-2">
+                <Label htmlFor="settings-name">Name</Label>
+                <Input
+                  id="settings-name"
+                  value={settingsName}
+                  onChange={(e) => setSettingsName(e.target.value)}
+                  placeholder="Report name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="settings-description">Description</Label>
+                <Textarea
+                  id="settings-description"
+                  value={settingsDescription}
+                  onChange={(e) => setSettingsDescription(e.target.value)}
+                  placeholder="Optional description"
+                  rows={2}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="settings-cadence">Cadence</Label>
+                <Select value={settingsCadence} onValueChange={setSettingsCadence}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select cadence" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="quarterly">Quarterly</SelectItem>
+                    <SelectItem value="annual">Annual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="settings-description">Description</Label>
-              <Textarea
-                id="settings-description"
-                value={settingsDescription}
-                onChange={(e) => setSettingsDescription(e.target.value)}
-                placeholder="Optional description"
-                rows={3}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="settings-cadence">Cadence</Label>
-              <Select value={settingsCadence} onValueChange={setSettingsCadence}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select cadence" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="daily">Daily</SelectItem>
-                  <SelectItem value="monthly">Monthly</SelectItem>
-                  <SelectItem value="quarterly">Quarterly</SelectItem>
-                  <SelectItem value="annual">Annual</SelectItem>
-                </SelectContent>
-              </Select>
+
+            {/* Configuration Section */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Configuration</h3>
+
+              {/* Data Source */}
+              <div className="space-y-2">
+                <Label>Data Source</Label>
+                <Select
+                  value={settingsDatabaseId}
+                  onValueChange={(val) => {
+                    setSettingsDatabaseId(val)
+                    // Reset column selections when database changes
+                    setSettingsDateColumnKey("")
+                    setSettingsPivotColumnKey("")
+                    // Fetch new database schema
+                    if (report && val !== report.database.id) {
+                      fetchSettingsDbColumns(val)
+                    } else if (report) {
+                      // Switching back to original database — use cached schema
+                      setSettingsDbColumns(report.database.schema.columns || [])
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={settingsLoadingDatabases ? "Loading databases..." : "Select data source"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {settingsDatabases.map((db) => (
+                      <SelectItem key={db.id} value={db.id}>
+                        <span className="flex items-center gap-2">
+                          <Database className="w-3.5 h-3.5 text-gray-400" />
+                          {db.name}
+                          <span className="text-gray-400 text-xs">({db.rowCount} rows, {db.columnCount} cols)</span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Column configuration */}
+              {settingsLoadingColumns ? (
+                <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading columns...
+                </div>
+              ) : settingsDbColumns.length > 0 && (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label>Column <span className="text-red-500">*</span></Label>
+                    <p className="text-xs text-gray-500">Column whose unique values become column headers (e.g., Project Name, Period)</p>
+                    <Select value={settingsPivotColumnKey} onValueChange={setSettingsPivotColumnKey}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a column..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {settingsDbColumns.map((col) => (
+                          <SelectItem key={col.key} value={col.key}>{col.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Date Column</Label>
+                    <p className="text-xs text-gray-500">Column used to filter data by period</p>
+                    <Select value={settingsDateColumnKey} onValueChange={setSettingsDateColumnKey}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select the date column..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {settingsDbColumns.map((col) => (
+                          <SelectItem key={col.key} value={col.key}>{col.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+
+              {/* Warning when database changed */}
+              {report && settingsDatabaseId !== report.database.id && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <p>
+                    Changing the data source will reset all configured columns, formula rows, and metric rows. You&apos;ll need to reconfigure them after saving.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>
@@ -1631,31 +1749,56 @@ export default function ReportBuilderPage() {
               Cancel
             </Button>
             <Button
-              disabled={!settingsName.trim() || !settingsCadence || settingsSaving}
+              disabled={
+                !settingsName.trim() ||
+                !settingsCadence ||
+                !settingsDatabaseId ||
+                !settingsPivotColumnKey ||
+                settingsSaving
+              }
               onClick={async () => {
+                if (!report) return
                 setSettingsSaving(true)
                 try {
+                  const databaseChanged = settingsDatabaseId !== report.database.id
+
+                  const payload: Record<string, unknown> = {
+                    name: settingsName.trim(),
+                    description: settingsDescription.trim() || null,
+                    cadence: settingsCadence,
+                    pivotColumnKey: settingsPivotColumnKey,
+                    dateColumnKey: settingsDateColumnKey || settingsPivotColumnKey,
+                  }
+
+                  // Include databaseId if changed
+                  if (databaseChanged) {
+                    payload.databaseId = settingsDatabaseId
+                  }
+
+                  // Reset dependent data when database changes
+                  if (databaseChanged) {
+                    payload.columns = []
+                    payload.formulaRows = []
+                    payload.metricRows = []
+                    payload.pivotFormulaColumns = []
+                    payload.filterColumnKeys = []
+                    payload.filterBindings = null
+                    payload.pivotSortConfig = null
+                    payload.compareMode = "none"
+                  }
+
                   const response = await fetch(`/api/reports/${id}`, {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
                     credentials: "include",
-                    body: JSON.stringify({
-                      name: settingsName.trim(),
-                      description: settingsDescription.trim() || null,
-                      cadence: settingsCadence,
-                    }),
+                    body: JSON.stringify(payload),
                   })
                   if (!response.ok) {
                     const errData = await response.json().catch(() => ({}))
                     throw new Error(errData.error || "Failed to update settings")
                   }
-                  const data = await response.json()
-                  setReport(prev => prev ? {
-                    ...prev,
-                    name: data.report.name,
-                    description: data.report.description,
-                    cadence: data.report.cadence,
-                  } : prev)
+                  // Full re-fetch to reload all state
+                  await fetchReport()
                   setSettingsOpen(false)
                 } catch (err: any) {
                   setError(err.message)

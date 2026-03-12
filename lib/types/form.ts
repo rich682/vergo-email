@@ -5,15 +5,16 @@
  */
 
 // Field types supported by the form builder
-export type FormFieldType = 
-  | "text"      // Single-line text input
-  | "longText"  // Multi-line textarea
-  | "number"    // Numeric input
-  | "currency"  // Currency input with formatting
-  | "date"      // Date picker
-  | "dropdown"  // Select from options
-  | "checkbox"  // Boolean toggle
-  | "file"      // File upload
+export type FormFieldType =
+  | "text"       // Single-line text input
+  | "longText"   // Multi-line textarea
+  | "number"     // Numeric input
+  | "currency"   // Currency input with formatting
+  | "percentage" // Percentage input with % formatting
+  | "date"       // Date picker
+  | "dropdown"   // Select from options
+  | "checkbox"   // Boolean toggle
+  | "file"       // File upload
 
 // Validation rules for form fields
 export interface FormFieldValidation {
