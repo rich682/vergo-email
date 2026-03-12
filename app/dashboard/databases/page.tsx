@@ -121,10 +121,7 @@ export default function DatabasesPage() {
   const filteredDatabases = databases.filter(db => {
     if (!searchQuery) return true
     const query = searchQuery.toLowerCase()
-    return (
-      db.name.toLowerCase().includes(query) ||
-      (db.description?.toLowerCase().includes(query) ?? false)
-    )
+    return db.name.toLowerCase().includes(query)
   })
 
   return (
@@ -188,7 +185,6 @@ export default function DatabasesPage() {
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Rows</th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Columns</th>
                   <th className="w-10 px-4 py-2"></th>
@@ -210,11 +206,6 @@ export default function DatabasesPage() {
                           </span>
                         )}
                       </div>
-                    </td>
-                    <td className="px-4 py-2">
-                      <span className="text-sm text-gray-500 truncate block max-w-[250px]">
-                        {db.description || "—"}
-                      </span>
                     </td>
                     <td className="px-4 py-2 text-sm">
                       <span className={db.rowCount >= 9000 ? "text-amber-600 font-medium" : "text-gray-500"}>

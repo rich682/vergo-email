@@ -274,6 +274,10 @@ model User {
   deletedAgentDefinitions      AgentDefinition[]      @relation("AgentDefinitionDeleter")
   deletedEntities              Entity[]               @relation("EntityDeleter")
 
+  // Review Hub reverse relations
+  reviewedFormRequests          FormRequest[]          @relation("FormRequestReviewer")
+  reviewedWorkflowRuns          WorkflowRun[]          @relation("WorkflowRunReviewer")
+
   @@index([organizationId])
   @@index([email])
   @@index([verificationToken])
@@ -1259,6 +1263,11 @@ model FormRequest {
   reminderFrequencyHours Int       @default(72) // 3 days default
   nextReminderAt         DateTime?
 
+  // Review tracking (for Review Hub)
+  reviewedAt   DateTime?
+  reviewedById String?
+  reviewNotes  String?
+
   // Metadata
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1268,6 +1277,7 @@ model FormRequest {
   formDefinition  FormDefinition   @relation(fields: [formDefinitionId], references: [id], onDelete: Cascade)
   recipientUser   User?            @relation("FormRequestRecipient", fields: [recipientUserId], references: [id])
   recipientEntity Entity?          @relation("FormRequestEntity", fields: [recipientEntityId], references: [id])
+  reviewedBy      User?            @relation("FormRequestReviewer", fields: [reviewedById], references: [id])
   attachments     FormAttachment[]
 
   @@index([organizationId])
@@ -1277,6 +1287,7 @@ model FormRequest {
   @@index([status])
   @@index([nextReminderAt])
   @@index([accessToken])
+  @@index([organizationId, status, reviewedAt])
 }
 
 // FormAttachment stores files uploaded via form submissions
@@ -1826,16 +1837,24 @@ model WorkflowRun {
   startedAt        DateTime?
   completedAt      DateTime?
   failureReason    String?
+
+  // Review tracking (for Review Hub)
+  reviewedAt       DateTime?
+  reviewedById     String?
+  reviewNotes      String?
+
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
   automationRule AutomationRule     @relation(fields: [automationRuleId], references: [id], onDelete: Cascade)
   organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reviewedBy     User?              @relation("WorkflowRunReviewer", fields: [reviewedById], references: [id])
   auditLogs      WorkflowAuditLog[]
 
   @@index([automationRuleId])
   @@index([organizationId, status])
   @@index([organizationId, createdAt])
+  @@index([organizationId, status, reviewedAt])
 }
 
 // WorkflowAuditLog records every action taken during a workflow run

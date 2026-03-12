@@ -42,6 +42,7 @@ export type ModuleKey =
   | "reconciliations"
   | "agents"
   | "analysis"
+  | "review"
 
 /**
  * Map dashboard/API paths to module keys for access control.
@@ -72,6 +73,8 @@ const MODULE_ROUTE_MAP: { path: string; module: ModuleKey }[] = [
   { path: "/api/agents", module: "agents" },
   { path: "/dashboard/analysis", module: "analysis" },
   { path: "/api/analysis", module: "analysis" },
+  { path: "/dashboard/review-hub", module: "review" },
+  { path: "/api/review-hub", module: "review" },
 ]
 
 /**
@@ -170,6 +173,9 @@ export type ActionKey =
   | "analysis:view_all"
   | "analysis:manage"
   | "analysis:query"
+  // Review Hub
+  | "review:view"
+  | "review:manage"
 
 /**
  * Per-role action permission map. Each key is a role name (MANAGER, MEMBER),
@@ -216,6 +222,7 @@ export const ALL_ACTION_KEYS: ActionKey[] = [
   "reconciliations:view_all_configs", "reconciliations:view_runs", "reconciliations:manage", "reconciliations:resolve",
   "agents:view", "agents:manage", "agents:execute",
   "analysis:view", "analysis:view_all", "analysis:manage", "analysis:query",
+  "review:view", "review:manage",
 ]
 
 /**
@@ -270,6 +277,8 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
     "analysis:view_all": true,
     "analysis:manage": true,
     "analysis:query": true,
+    "review:view": true,
+    "review:manage": true,
   },
   MEMBER: {
     "tasks:view_all": false,
@@ -314,6 +323,8 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
     "analysis:view_all": false,
     "analysis:manage": false,
     "analysis:query": false,
+    "review:view": false,
+    "review:manage": false,
   },
 }
 
@@ -423,6 +434,14 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
       { key: "analysis:query", label: "Query data" },
     ],
   },
+  {
+    key: "review",
+    label: "Review Hub",
+    actions: [
+      { key: "review:view", label: "View review hub" },
+      { key: "review:manage", label: "Review & approve items" },
+    ],
+  },
 ]
 
 // ─── Module → Action Key Mapping ──────────────────────────────────────────────
@@ -443,6 +462,7 @@ export const MODULE_ACTION_KEYS: Record<ModuleKey, ActionKey[]> = {
   reconciliations: ["reconciliations:view_all_configs", "reconciliations:view_runs", "reconciliations:manage", "reconciliations:resolve"],
   agents:          ["agents:view", "agents:manage", "agents:execute"],
   analysis:        ["analysis:view", "analysis:view_all", "analysis:manage", "analysis:query"],
+  review:          ["review:view", "review:manage"],
 }
 
 // ─── MEMBER Implicit Access ───────────────────────────────────────────────────

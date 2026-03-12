@@ -164,6 +164,15 @@ function AnalysisIcon({ className }: { className?: string }) {
   )
 }
 
+function ReviewIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
 function InboxIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -241,6 +250,25 @@ export function Sidebar({
     fetchCurrentBoard()
     return () => { cancelled = true }
   }, [])
+
+  // Poll review hub count for sidebar badge (only when feature is enabled and user has access)
+  const [reviewCount, setReviewCount] = useState(0)
+  useEffect(() => {
+    if (!orgFeatures.reviewHub || !hasAccess("review")) return
+    let cancelled = false
+    const fetchCount = async () => {
+      try {
+        const res = await fetch("/api/review-hub/count", { credentials: "include" })
+        if (res.ok && !cancelled) {
+          const data = await res.json()
+          setReviewCount(data.total || 0)
+        }
+      } catch {}
+    }
+    fetchCount()
+    const interval = setInterval(fetchCount, 30000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [orgFeatures.reviewHub, hasAccess])
 
   // --- Helper classes for collapsed / expanded states ---
   const navCls = (active: boolean) =>
@@ -345,7 +373,39 @@ export function Sidebar({
             </li>
           )}
 
-          {/* Automations */}
+          {/* Review Hub (feature-flagged) — below Book Close, above Agents */}
+          {orgFeatures.reviewHub && hasAccess("review") && (() => {
+            const isActive = pathname === "/dashboard/review-hub" || pathname.startsWith("/dashboard/review-hub/")
+            return (
+              <li>
+                <Link
+                  href="/dashboard/review-hub"
+                  title={collapsed ? "Review" : undefined}
+                  className={navCls(isActive)}
+                >
+                  <ReviewIcon className="w-[18px] h-[18px] flex-shrink-0" />
+                  <span className={labelCls}>Review</span>
+                  {reviewCount > 0 && !collapsed && (
+                    <span className="ml-auto text-[10px] font-medium bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full">
+                      {reviewCount > 99 ? "99+" : reviewCount}
+                    </span>
+                  )}
+                </Link>
+              </li>
+            )
+          })()}
+
+        </ul>
+
+        {/* ── Workflows ── */}
+        {!collapsed && (
+          <div className="px-4 pt-4 pb-1">
+            <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">Workflows</span>
+          </div>
+        )}
+        {collapsed && <div className="pt-2 mx-2 border-t border-gray-100 mt-2" />}
+        <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
+          {/* Agents */}
           {hasAccess("agents") && (() => {
             const isActive = pathname === "/dashboard/automations" || pathname.startsWith("/dashboard/automations/")
             return (
@@ -361,16 +421,7 @@ export function Sidebar({
               </li>
             )
           })()}
-        </ul>
 
-        {/* ── Workflows ── */}
-        {!collapsed && (
-          <div className="px-4 pt-4 pb-1">
-            <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">Workflows</span>
-          </div>
-        )}
-        {collapsed && <div className="pt-2 mx-2 border-t border-gray-100 mt-2" />}
-        <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
           {/* Reports */}
           {hasAccess("reports") && (() => {
             const isActive = pathname === "/dashboard/reports" || pathname.startsWith("/dashboard/reports/")

@@ -8,7 +8,6 @@ import { ArrowLeft, Plus, ClipboardList } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 
 export default function NewFormPage() {
   const router = useRouter()
@@ -25,8 +24,6 @@ export default function NewFormPage() {
 
   // Form data
   const [name, setName] = useState("")
-  const [description, setDescription] = useState("")
-
   const handleCreate = async () => {
     if (!name.trim()) {
       alert("Please enter a form name")
@@ -41,7 +38,6 @@ export default function NewFormPage() {
         credentials: "include",
         body: JSON.stringify({
           name: name.trim(),
-          description: description.trim() || undefined,
           fields: [],
           settings: {
             allowEdit: false,
@@ -123,17 +119,6 @@ export default function NewFormPage() {
                 />
               </div>
 
-              <div>
-                <Label htmlFor="description">Description (optional)</Label>
-                <Textarea
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe the purpose of this form..."
-                  className="mt-1.5"
-                  rows={3}
-                />
-              </div>
             </div>
           </div>
 

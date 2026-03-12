@@ -212,10 +212,7 @@ export default function FormsPage() {
   const filteredForms = forms.filter(form => {
     if (!searchQuery) return true
     const query = searchQuery.toLowerCase()
-    return (
-      form.name.toLowerCase().includes(query) ||
-      (form.description?.toLowerCase().includes(query) ?? false)
-    )
+    return form.name.toLowerCase().includes(query)
   })
 
   return (
@@ -294,7 +291,6 @@ export default function FormsPage() {
                 <thead className="bg-gray-50 border-b">
                   <tr>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Fields</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Responses</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Database</th>
@@ -311,11 +307,6 @@ export default function FormsPage() {
                       <td className="px-4 py-2">
                         <span className="text-sm font-medium text-gray-900 truncate block max-w-[250px]">
                           {safeString(form.name)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2">
-                        <span className="text-sm text-gray-500 truncate block max-w-[250px]">
-                          {form.description ? safeString(form.description) : "—"}
                         </span>
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-500">

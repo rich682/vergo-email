@@ -154,7 +154,6 @@ export default function NewDatabasePage() {
 
   // Basic info state
   const [name, setName] = useState("")
-  const [description, setDescription] = useState("")
   
   // Method selection
   const [method, setMethod] = useState<CreateMethod | null>(null)
@@ -232,7 +231,6 @@ export default function NewDatabasePage() {
     const source = accountingSources.find((s) => s.sourceType === sourceType)
     if (source && !name) {
       setName(source.name)
-      setDescription(source.description)
     }
   }
 
@@ -567,7 +565,6 @@ export default function NewDatabasePage() {
           credentials: "include",
           body: JSON.stringify({
             name: name.trim(),
-            description: description.trim() || undefined,
             sourceType: selectedSource,
             syncFilter: validFilters.length > 0 ? validFilters : undefined,
           }),
@@ -645,7 +642,6 @@ export default function NewDatabasePage() {
         credentials: "include",
         body: JSON.stringify({
           name: name.trim(),
-          description: description.trim() || undefined,
           schema: {
             columns: schemaColumns,
             version: 1,
@@ -715,18 +711,6 @@ export default function NewDatabasePage() {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g., Vendors, Employees, Products"
                 className="mt-1.5"
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Optional description for this database"
-                className="mt-1.5"
-                rows={2}
               />
             </div>
           </div>
