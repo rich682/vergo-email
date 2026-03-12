@@ -7,6 +7,9 @@ import Link from "next/link"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ACTION_CATEGORIES, DEFAULT_ACTION_PERMISSIONS, type ActionKey } from "@/lib/permissions"
 
+/** Action keys that are universal (always allowed for all roles) and should not appear in the settings UI */
+const HIDDEN_ACTION_KEYS: Set<ActionKey> = new Set(["attachments:upload"])
+
 type ActionPermissions = Record<string, Partial<Record<ActionKey, boolean>>>
 
 function RolePermissionsContent() {
@@ -190,35 +193,41 @@ function RolePermissionsContent() {
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Permission
                   </th>
-                  <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
+                  <th className="text-center px-2 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[80px]">
                     Admin
                   </th>
-                  <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
+                  <th className="text-center px-2 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[80px]">
                     Manager
+                  </th>
+                  <th className="text-center px-2 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider w-[80px]">
+                    Employee
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {ACTION_CATEGORIES.map(category => (
+                {ACTION_CATEGORIES.map(category => {
+                  const visibleActions = category.actions.filter(a => !HIDDEN_ACTION_KEYS.has(a.key))
+                  if (visibleActions.length === 0) return null
+                  return (
                   <>
                     {/* Category header row */}
                     <tr key={`cat-${category.key}`} className="bg-gray-50/70">
-                      <td colSpan={3} className="px-4 py-2 text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <td colSpan={4} className="px-4 py-2 text-xs font-semibold text-gray-700 uppercase tracking-wider">
                         {category.label}
                       </td>
                     </tr>
                     {/* Action rows */}
-                    {category.actions.map(action => (
+                    {visibleActions.map(action => (
                       <tr key={action.key} className="hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-2.5 pl-6">
                           <span className="text-sm text-gray-700">{action.label}</span>
                         </td>
                         {/* Admin — always on, disabled */}
-                        <td className="text-center px-4 py-2.5">
+                        <td className="text-center px-2 py-2.5">
                           <Checkbox checked={true} disabled className="opacity-60 cursor-not-allowed" />
                         </td>
                         {/* Manager */}
-                        <td className="text-center px-4 py-2.5">
+                        <td className="text-center px-2 py-2.5">
                           <Checkbox
                             checked={actionPermissions.MANAGER?.[action.key] ?? DEFAULT_ACTION_PERMISSIONS.MANAGER[action.key] ?? true}
                             onCheckedChange={(checked: boolean) => {
@@ -230,10 +239,15 @@ function RolePermissionsContent() {
                             }}
                           />
                         </td>
+                        {/* Employee — always off, disabled */}
+                        <td className="text-center px-2 py-2.5">
+                          <Checkbox checked={false} disabled className="opacity-40 cursor-not-allowed" />
+                        </td>
                       </tr>
                     ))}
                   </>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
