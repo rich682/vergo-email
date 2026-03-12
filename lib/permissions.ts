@@ -139,19 +139,16 @@ export type ActionKey =
   | "requests:view"
   | "requests:manage"
   // Reports
-  | "reports:view_definitions"
   | "reports:view_all_definitions"
   | "reports:view_generated"
   | "reports:manage"
   | "reports:generate"
   // Forms
-  | "forms:view_templates"
   | "forms:view_all_templates"
   | "forms:view_submissions"
   | "forms:manage"
   | "forms:send"
   // Databases
-  | "databases:view_databases"
   | "databases:view_all_databases"
   | "databases:view_data"
   | "databases:manage"
@@ -160,7 +157,6 @@ export type ActionKey =
   | "collection:view_all"
   | "collection:manage"
   // Reconciliations
-  | "reconciliations:view_configs"
   | "reconciliations:view_all_configs"
   | "reconciliations:view_runs"
   | "reconciliations:manage"
@@ -213,11 +209,11 @@ export const ALL_ACTION_KEYS: ActionKey[] = [
   "attachments:upload",
   "inbox:view_all", "inbox:manage_requests", "inbox:send_emails", "inbox:manage_drafts", "inbox:manage_quests", "inbox:review",
   "requests:view", "requests:manage",
-  "reports:view_definitions", "reports:view_all_definitions", "reports:view_generated", "reports:manage", "reports:generate",
-  "forms:view_templates", "forms:view_all_templates", "forms:view_submissions", "forms:manage", "forms:send",
-  "databases:view_databases", "databases:view_all_databases", "databases:view_data", "databases:manage", "databases:import",
+  "reports:view_all_definitions", "reports:view_generated", "reports:manage", "reports:generate",
+  "forms:view_all_templates", "forms:view_submissions", "forms:manage", "forms:send",
+  "databases:view_all_databases", "databases:view_data", "databases:manage", "databases:import",
   "collection:view_all", "collection:manage",
-  "reconciliations:view_configs", "reconciliations:view_all_configs", "reconciliations:view_runs", "reconciliations:manage", "reconciliations:resolve",
+  "reconciliations:view_all_configs", "reconciliations:view_runs", "reconciliations:manage", "reconciliations:resolve",
   "agents:view", "agents:manage", "agents:execute",
   "analysis:view", "analysis:view_all", "analysis:manage", "analysis:query",
 ]
@@ -249,24 +245,20 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
     "inbox:review": true,
     "requests:view": true,
     "requests:manage": true,
-    "reports:view_definitions": true,
     "reports:view_all_definitions": true,
     "reports:view_generated": true,
     "reports:manage": true,
     "reports:generate": true,
-    "forms:view_templates": true,
     "forms:view_all_templates": true,
     "forms:view_submissions": true,
     "forms:manage": true,
     "forms:send": true,
-    "databases:view_databases": true,
     "databases:view_all_databases": true,
     "databases:view_data": true,
     "databases:manage": true,
     "databases:import": true,
     "collection:view_all": true,
     "collection:manage": true,
-    "reconciliations:view_configs": true,
     "reconciliations:view_all_configs": true,
     "reconciliations:view_runs": true,
     "reconciliations:manage": true,
@@ -297,24 +289,20 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
     "inbox:review": false,
     "requests:view": false,
     "requests:manage": false,
-    "reports:view_definitions": false,
     "reports:view_all_definitions": false,
     "reports:view_generated": false,
     "reports:manage": false,
     "reports:generate": false,
-    "forms:view_templates": false,
     "forms:view_all_templates": false,
     "forms:view_submissions": false,
     "forms:manage": false,
     "forms:send": false,
-    "databases:view_databases": false,
     "databases:view_all_databases": false,
     "databases:view_data": false,
     "databases:manage": false,
     "databases:import": false,
     "collection:view_all": false,
     "collection:manage": false,
-    "reconciliations:view_configs": false,
     "reconciliations:view_all_configs": false,
     "reconciliations:view_runs": false,
     "reconciliations:manage": false,
@@ -337,14 +325,14 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
     key: "tasks_boards",
     label: "Tasks & Boards",
     actions: [
-      { key: "tasks:view_all", label: "View all tasks (not just own/collaborated)" },
-      { key: "boards:view_all", label: "View all boards (not just own/collaborated)" },
+      { key: "tasks:view_all", label: "View all tasks" },
+      { key: "boards:view_all", label: "View all boards" },
       { key: "tasks:create", label: "Create tasks" },
-      { key: "tasks:edit_any", label: "Edit any task (not just owned)" },
-      { key: "tasks:delete", label: "Delete / archive tasks" },
-      { key: "tasks:import", label: "Bulk import tasks (AI / spreadsheet)" },
-      { key: "boards:manage", label: "Create, edit & delete boards" },
-      { key: "boards:edit_columns", label: "Edit board column configuration" },
+      { key: "tasks:edit_any", label: "Edit any task" },
+      { key: "tasks:delete", label: "Delete tasks" },
+      { key: "tasks:import", label: "Import tasks" },
+      { key: "boards:manage", label: "Manage boards & months" },
+      { key: "boards:edit_columns", label: "Edit board columns" },
     ],
   },
   {
@@ -358,10 +346,10 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
     key: "inbox",
     label: "Inbox",
     actions: [
-      { key: "inbox:view_all", label: "View all inbox messages (not just own tasks)" },
-      { key: "inbox:manage_requests", label: "Update request status, mark read, update risk" },
-      { key: "inbox:send_emails", label: "Send emails & execute requests" },
-      { key: "inbox:manage_drafts", label: "Create & edit email drafts" },
+      { key: "inbox:view_all", label: "View inbox" },
+      { key: "inbox:manage_requests", label: "Update request status & risk" },
+      { key: "inbox:send_emails", label: "Send emails" },
+      { key: "inbox:manage_drafts", label: "Create & edit drafts" },
       { key: "inbox:manage_quests", label: "Create & manage requests" },
       { key: "inbox:review", label: "Approve/reject in review queue" },
     ],
@@ -371,17 +359,18 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
     label: "Requests",
     actions: [
       { key: "requests:view", label: "View requests" },
-      { key: "requests:manage", label: "Create & manage requests" },
+      { key: "requests:manage", label: "Manage requests" },
+      { key: "collection:view_all", label: "View collection" },
+      { key: "collection:manage", label: "Manage collection files" },
     ],
   },
   {
     key: "reports",
     label: "Reports",
     actions: [
-      { key: "reports:view_definitions", label: "View report definitions (own/assigned)" },
-      { key: "reports:view_all_definitions", label: "View all report definitions" },
-      { key: "reports:view_generated", label: "View generated reports & export" },
-      { key: "reports:manage", label: "Create, edit & delete report definitions" },
+      { key: "reports:view_all_definitions", label: "View reports" },
+      { key: "reports:view_generated", label: "View generated reports" },
+      { key: "reports:manage", label: "Create & manage reports" },
       { key: "reports:generate", label: "Generate reports" },
     ],
   },
@@ -389,60 +378,49 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
     key: "forms",
     label: "Forms",
     actions: [
-      { key: "forms:view_templates", label: "View form templates (own/assigned)" },
-      { key: "forms:view_all_templates", label: "View all form templates" },
-      { key: "forms:view_submissions", label: "View form submissions" },
-      { key: "forms:manage", label: "Create, edit & delete form templates" },
-      { key: "forms:send", label: "Send form requests to recipients" },
+      { key: "forms:view_all_templates", label: "View forms" },
+      { key: "forms:view_submissions", label: "View submissions" },
+      { key: "forms:manage", label: "Create & manage forms" },
+      { key: "forms:send", label: "Send form requests" },
     ],
   },
   {
     key: "databases",
     label: "Databases",
     actions: [
-      { key: "databases:view_databases", label: "View databases (own/assigned)" },
-      { key: "databases:view_all_databases", label: "View all databases" },
-      { key: "databases:view_data", label: "View database data & export" },
-      { key: "databases:manage", label: "Create, edit & delete databases" },
+      { key: "databases:view_all_databases", label: "View databases" },
+      { key: "databases:view_data", label: "View data & export" },
+      { key: "databases:manage", label: "Create & manage databases" },
       { key: "databases:import", label: "Import data & edit schema" },
-    ],
-  },
-  {
-    key: "collection",
-    label: "Collection",
-    actions: [
-      { key: "collection:view_all", label: "View all collection items (not just own tasks)" },
-      { key: "collection:manage", label: "Upload & manage collection files" },
     ],
   },
   {
     key: "reconciliations",
     label: "Reconciliations",
     actions: [
-      { key: "reconciliations:view_configs", label: "View reconciliation configs (own/assigned)" },
-      { key: "reconciliations:view_all_configs", label: "View all reconciliation configs" },
-      { key: "reconciliations:view_runs", label: "View reconciliation runs & results" },
-      { key: "reconciliations:manage", label: "Create, edit & delete reconciliations" },
-      { key: "reconciliations:resolve", label: "Resolve exceptions in runs" },
+      { key: "reconciliations:view_all_configs", label: "View reconciliations" },
+      { key: "reconciliations:view_runs", label: "View runs & results" },
+      { key: "reconciliations:manage", label: "Create & manage reconciliations" },
+      { key: "reconciliations:resolve", label: "Resolve exceptions" },
     ],
   },
   {
     key: "agents",
-    label: "Automations",
+    label: "Agents",
     actions: [
-      { key: "agents:view", label: "View automations and run history" },
-      { key: "agents:manage", label: "Create, edit & delete automations" },
-      { key: "agents:execute", label: "Run automations manually" },
+      { key: "agents:view", label: "View agents" },
+      { key: "agents:manage", label: "Create & manage agents" },
+      { key: "agents:execute", label: "Run agents" },
     ],
   },
   {
     key: "analysis",
     label: "Analysis",
     actions: [
-      { key: "analysis:view", label: "View datasets and analysis conversations" },
-      { key: "analysis:view_all", label: "View all analysis conversations (not just own)" },
-      { key: "analysis:manage", label: "Upload, rename & delete datasets" },
-      { key: "analysis:query", label: "Ask questions about data (chat)" },
+      { key: "analysis:view", label: "View analysis" },
+      { key: "analysis:view_all", label: "View all analysis" },
+      { key: "analysis:manage", label: "Manage datasets" },
+      { key: "analysis:query", label: "Query data" },
     ],
   },
 ]
@@ -459,10 +437,10 @@ export const MODULE_ACTION_KEYS: Record<ModuleKey, ActionKey[]> = {
   inbox:           ["inbox:view_all", "inbox:manage_requests", "inbox:send_emails", "inbox:manage_drafts", "inbox:manage_quests", "inbox:review"],
   requests:        ["requests:view", "requests:manage"],
   collection:      ["collection:view_all", "collection:manage"],
-  reports:         ["reports:view_definitions", "reports:view_all_definitions", "reports:view_generated", "reports:manage", "reports:generate"],
-  forms:           ["forms:view_templates", "forms:view_all_templates", "forms:view_submissions", "forms:manage", "forms:send"],
-  databases:       ["databases:view_databases", "databases:view_all_databases", "databases:view_data", "databases:manage", "databases:import"],
-  reconciliations: ["reconciliations:view_configs", "reconciliations:view_all_configs", "reconciliations:view_runs", "reconciliations:manage", "reconciliations:resolve"],
+  reports:         ["reports:view_all_definitions", "reports:view_generated", "reports:manage", "reports:generate"],
+  forms:           ["forms:view_all_templates", "forms:view_submissions", "forms:manage", "forms:send"],
+  databases:       ["databases:view_all_databases", "databases:view_data", "databases:manage", "databases:import"],
+  reconciliations: ["reconciliations:view_all_configs", "reconciliations:view_runs", "reconciliations:manage", "reconciliations:resolve"],
   agents:          ["agents:view", "agents:manage", "agents:execute"],
   analysis:        ["analysis:view", "analysis:view_all", "analysis:manage", "analysis:query"],
 }

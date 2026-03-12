@@ -76,11 +76,11 @@ describe("canPerformAction", () => {
 
     it("ignores org overrides — always returns false", () => {
       const orgPerms: OrgActionPermissions = {
-        MEMBER: { "inbox:view_all": true, "tasks:create": true, "reports:view_definitions": true },
+        MEMBER: { "inbox:view_all": true, "tasks:create": true, "reports:view_all_definitions": true },
       }
       expect(canPerformAction("MEMBER", "inbox:view_all", orgPerms)).toBe(false)
       expect(canPerformAction("MEMBER", "tasks:create", orgPerms)).toBe(false)
-      expect(canPerformAction("MEMBER", "reports:view_definitions", orgPerms)).toBe(false)
+      expect(canPerformAction("MEMBER", "reports:view_all_definitions", orgPerms)).toBe(false)
     })
   })
 
@@ -144,7 +144,7 @@ describe("hasModuleAccess", () => {
 
   it("MANAGER can lose module access via org override", () => {
     const orgPerms: OrgActionPermissions = {
-      MANAGER: { "reports:view_definitions": false, "reports:view_generated": false, "reports:view_all_definitions": false, "reports:generate": false, "reports:manage": false },
+      MANAGER: { "reports:view_all_definitions": false, "reports:view_generated": false, "reports:generate": false, "reports:manage": false },
     }
     expect(hasModuleAccess("MANAGER", "reports", orgPerms)).toBe(false)
   })

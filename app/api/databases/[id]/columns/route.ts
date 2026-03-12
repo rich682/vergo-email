@@ -20,7 +20,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canPerformAction(session.user.role, "databases:view_databases", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "databases:view_all_databases", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "Permission denied" }, { status: 403 })
     }
 

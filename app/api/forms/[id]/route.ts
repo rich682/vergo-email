@@ -24,7 +24,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canPerformAction(session.user.role, "forms:view_templates", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "forms:view_all_templates", session.user.orgActionPermissions)) {
       return NextResponse.json({ form: null })
     }
 
@@ -33,19 +33,6 @@ export async function GET(
 
     if (!form) {
       return NextResponse.json({ error: "Form not found" }, { status: 404 })
-    }
-
-    // Users with view_all_templates can see any form; otherwise must be a viewer or creator
-    const canViewAll = canPerformAction(session.user.role, "forms:view_all_templates", session.user.orgActionPermissions)
-    if (!canViewAll) {
-      const isViewer = await FormDefinitionService.isViewer(id, session.user.id)
-      const isCreator = form.createdById === session.user.id
-      if (!isViewer && !isCreator) {
-        return NextResponse.json(
-          { error: "You do not have viewer access to this form" },
-          { status: 403 }
-        )
-      }
     }
 
     return NextResponse.json({ form })

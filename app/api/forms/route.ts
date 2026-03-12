@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canPerformAction(session.user.role, "forms:view_templates", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "forms:view_all_templates", session.user.orgActionPermissions)) {
       return NextResponse.json({ forms: [] })
     }
 
@@ -35,20 +35,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ forms: filteredForms })
     }
 
-    // view_all_templates: bypass viewer filter; otherwise only see created + viewer-assigned forms
-    const canViewAll = canPerformAction(session.user.role, "forms:view_all_templates", session.user.orgActionPermissions)
-    const filteredForms = canViewAll
-      ? forms
-      : await (async () => {
-          const viewerEntries = await prisma.formDefinitionViewer.findMany({
-            where: { userId: session.user.id },
-            select: { formDefinitionId: true },
-          })
-          const viewableIds = new Set(viewerEntries.map((v) => v.formDefinitionId))
-          return forms.filter((f) => viewableIds.has(f.id) || f.createdById === session.user.id)
-        })()
-
-    return NextResponse.json({ forms: filteredForms })
+    return NextResponse.json({ forms })
   } catch (error: any) {
     console.error("Error fetching forms:", error)
     return NextResponse.json(

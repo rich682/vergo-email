@@ -4,7 +4,6 @@ import { useMemo, useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { UI_LABELS } from "@/lib/ui-labels"
-import { Calendar } from "lucide-react"
 import { hasModuleAccess, type OrgActionPermissions, type ModuleKey } from "@/lib/permissions"
 
 interface SidebarProps {
@@ -470,24 +469,6 @@ export function Sidebar({
 
         {/* Spacer */}
         <div className="flex-1" />
-
-        {/* Onboarding Call CTA - Hidden when collapsed */}
-        {!collapsed && (
-          <div className="mx-2 mb-2">
-            <a
-              href="https://calendly.com/vergo-ai/vergo-onboarding-call"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100 transition-all duration-150"
-            >
-              <Calendar className="w-4 h-4 flex-shrink-0" />
-              <div className="flex flex-col">
-                <span className="text-xs font-medium">Book Training Call</span>
-                <span className="text-[11px] text-orange-500">Schedule a call</span>
-              </div>
-            </a>
-          </div>
-        )}
 
         {/* Settings/Management Section (Bottom) */}
         <ul className={`${collapsed ? "space-y-1" : "space-y-0.5"} pb-3 border-t border-gray-100 pt-3 mt-2`}>

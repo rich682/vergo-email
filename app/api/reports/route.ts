@@ -20,14 +20,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const canViewDefinitions = canPerformAction(session.user.role, "reports:view_definitions", session.user.orgActionPermissions)
-    const canViewAll = canPerformAction(session.user.role, "reports:view_all_definitions", session.user.orgActionPermissions)
+    const canView = canPerformAction(session.user.role, "reports:view_all_definitions", session.user.orgActionPermissions)
 
     const { searchParams } = new URL(request.url)
     const myItems = searchParams.get("myItems") === "true"
 
     // If user has no view permission, only return reports they're an explicit viewer of
-    if (!canViewDefinitions && !canViewAll) {
+    // (supports MEMBER implicit report access via task detail)
+    if (!canView) {
       const viewerEntries = await prisma.reportDefinitionViewer.findMany({
         where: { userId: session.user.id },
         select: { reportDefinitionId: true },
@@ -42,30 +42,13 @@ export async function GET(request: NextRequest) {
 
     const reports = await ReportDefinitionService.listReportDefinitions(session.user.organizationId)
 
-    // myItems: admin explicitly wants only their own reports
+    // myItems: user explicitly wants only their own reports
     if (myItems) {
       const filteredReports = reports.filter((r: any) => r.createdById === session.user.id)
       return NextResponse.json({ reports: filteredReports })
     }
 
-    // If user can view all definitions, return everything; otherwise filter to owned/viewable
-    if (canViewAll) {
-      return NextResponse.json({ reports })
-    }
-
-    // Get report definition IDs where the user is an explicit viewer
-    const viewerEntries = await prisma.reportDefinitionViewer.findMany({
-      where: { userId: session.user.id },
-      select: { reportDefinitionId: true },
-    })
-    const viewableIds = new Set(viewerEntries.map(v => v.reportDefinitionId))
-
-    // Filter to reports the user created or is a viewer of
-    const filteredReports = reports.filter(
-      (r: any) => r.createdById === session.user.id || viewableIds.has(r.id)
-    )
-
-    return NextResponse.json({ reports: filteredReports })
+    return NextResponse.json({ reports })
   } catch (error) {
     console.error("Error listing reports:", error)
     return NextResponse.json(

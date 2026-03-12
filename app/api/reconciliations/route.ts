@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canPerformAction(session.user.role, "reconciliations:view_configs", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "reconciliations:view_all_configs", session.user.orgActionPermissions)) {
       return NextResponse.json({ configs: [] })
     }
 
@@ -31,20 +31,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ configs: filteredConfigs })
     }
 
-    // Users with view_all_configs see everything; others see only configs they created or are viewers of
-    const canViewAll = canPerformAction(session.user.role, "reconciliations:view_all_configs", session.user.orgActionPermissions)
-    const filteredConfigs = canViewAll
-      ? configs
-      : await (async () => {
-          const viewerEntries = await prisma.reconciliationConfigViewer.findMany({
-            where: { userId: session.user.id },
-            select: { reconciliationConfigId: true },
-          })
-          const viewableIds = new Set(viewerEntries.map((v) => v.reconciliationConfigId))
-          return configs.filter((c) => viewableIds.has(c.id) || c.createdById === session.user.id)
-        })()
-
-    return NextResponse.json({ configs: filteredConfigs })
+    return NextResponse.json({ configs })
   } catch (error) {
     console.error("[Reconciliations] Error listing configs:", error)
     return NextResponse.json({ error: "Failed to list reconciliations" }, { status: 500 })

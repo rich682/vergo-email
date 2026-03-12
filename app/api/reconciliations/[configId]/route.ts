@@ -22,26 +22,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canPerformAction(session.user.role, "reconciliations:view_configs", session.user.orgActionPermissions)) {
+    if (!canPerformAction(session.user.role, "reconciliations:view_all_configs", session.user.orgActionPermissions)) {
       return NextResponse.json({ config: null })
     }
 
     const config = await ReconciliationService.getConfig(configId, session.user.organizationId)
     if (!config) {
       return NextResponse.json({ error: "Reconciliation not found" }, { status: 404 })
-    }
-
-    // Users with view_all_configs bypass; others must be a viewer or the creator
-    const canViewAll = canPerformAction(session.user.role, "reconciliations:view_all_configs", session.user.orgActionPermissions)
-    if (!canViewAll) {
-      const isViewer = await ReconciliationService.isViewer(configId, session.user.id)
-      const isCreator = config.createdById === session.user.id
-      if (!isViewer && !isCreator) {
-        return NextResponse.json(
-          { error: "You do not have viewer access to this reconciliation" },
-          { status: 403 }
-        )
-      }
     }
 
     return NextResponse.json({ config })
