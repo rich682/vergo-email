@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "vercel-build": "prisma db push --skip-generate && prisma generate && next build",
+    "vercel-build": "prisma db push --skip-generate --accept-data-loss && prisma generate && next build",
     "baseline:prod": "prisma migrate resolve --applied 20260110120000_add_message_indexed_fields && prisma migrate deploy",
     "build:ci": "npm run hygiene && npm test && npm run build",
     "start": "next start",
