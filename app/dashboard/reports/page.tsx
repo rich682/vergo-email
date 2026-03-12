@@ -624,10 +624,8 @@ export default function ReportsPage() {
                 <thead className="bg-gray-50 border-b">
                   <tr>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Cadence</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Layout</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Database</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Columns</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Creator</th>
                     <th className="w-10 px-4 py-2"></th>
                   </tr>
                 </thead>
@@ -645,30 +643,12 @@ export default function ReportsPage() {
                         )}
                       </td>
                       <td className="px-4 py-2">
-                        <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">
-                          {CADENCE_LABELS[report.cadence] || report.cadence}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2">
-                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium inline-flex items-center gap-1 ${
-                          report.layout === "pivot"
-                            ? "bg-purple-100 text-purple-700"
-                            : "bg-gray-100 text-gray-600"
-                        }`}>
-                          {report.layout === "pivot" ? (
-                            <><LayoutGrid className="w-3 h-3" /> Matrix</>
-                          ) : (
-                            <><Table2 className="w-3 h-3" /> Standard</>
-                          )}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2">
                         <span className="text-sm text-gray-700 flex items-center gap-1">
                           <Database className="w-3 h-3 text-gray-400" />
                           {report.database.name}
                         </span>
                       </td>
-                      <td className="px-4 py-2 text-sm text-gray-500">{report.columnCount}</td>
+                      <td className="px-4 py-2 text-sm text-gray-500">{report.createdBy?.name || report.createdBy?.email || "—"}</td>
                       <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
