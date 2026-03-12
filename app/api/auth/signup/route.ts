@@ -189,32 +189,14 @@ export async function POST(request: NextRequest) {
         }
       })
 
-      // Create "Onboarding" group for quick testing
-      const onboardingGroup = await tx.group.create({
-        data: {
-          name: "Onboarding",
-          description: "New team members for onboarding",
-          color: "#10b981", // Green color
-          organizationId: organization.id
-        }
-      })
-
       // Create the user as a contact/stakeholder (so they can send requests to themselves)
-      const userEntity = await tx.entity.create({
+      await tx.entity.create({
         data: {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           email: normalizedEmail,
           contactType: "EMPLOYEE",
           organizationId: organization.id
-        }
-      })
-
-      // Add the user entity to the Onboarding group
-      await tx.entityGroup.create({
-        data: {
-          entityId: userEntity.id,
-          groupId: onboardingGroup.id
         }
       })
 

@@ -71,7 +71,6 @@ export async function POST(
       where: { boardId: sourceBoardId, organizationId },
       include: {
         collaborators: true,
-        taskInstanceLabels: { include: { contactLabels: true } },
       }
     })
 

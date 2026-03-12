@@ -16,7 +16,6 @@ import { prisma } from "@/lib/prisma"
 import { EmailDraftService } from "./email-draft.service"
 import { AIEmailGenerationService } from "./ai-email-generation.service"
 import { EmailSendingService } from "./email-sending.service"
-import { resolveRecipientsWithReasons } from "./recipient-filter.service"
 import { logger } from "@/lib/logger"
 import type {
   Quest,
@@ -58,29 +57,11 @@ export class QuestService {
 
     // Merge interpretation with user modifications
     // User modifications take precedence over interpretation
-    const userStateFilter = userModifications?.stateFilter
-    const interpretedStateFilter = interpretation.recipientSelection.stateFilter
-    
     const confirmedSelection: QuestConfirmedSelection = {
-      contactTypes: userModifications?.contactTypes || interpretation.recipientSelection.contactTypes,
-      groupIds: await this.resolveGroupIds(
-        organizationId,
-        userModifications?.groupNames || interpretation.recipientSelection.groupNames
-      ),
       // Pass through direct entity/user IDs from recipient selection
       entityIds: interpretation.recipientSelection.entityIds,
       userIds: interpretation.recipientSelection.userIds,
-      // Use user's tag selection if provided, otherwise fall back to interpretation
-      stateFilter: userStateFilter ? {
-        stateKeys: userStateFilter.stateKeys,
-        mode: userStateFilter.mode
-      } : interpretedStateFilter ? {
-        stateKeys: interpretedStateFilter.stateKeys,
-        mode: interpretedStateFilter.mode
-      } : undefined
     }
-    
-    console.log(`QuestService.createFromInterpretation: User selected tags: ${userStateFilter?.stateKeys?.join(', ') || 'none'}, Final stateFilter:`, confirmedSelection.stateFilter)
 
     // Build schedule config
     const scheduleConfig: QuestScheduleConfig | undefined = confirmedSchedule ? {
@@ -106,12 +87,7 @@ export class QuestService {
       confidence: interpretation.confidence,
       assumptions: interpretation.interpretationSummary.assumptions,
       userConfirmed: !userModifications,
-      userModifications: userModifications ? {
-        originalType: interpretation.recipientSelection.contactTypes,
-        finalType: userModifications.contactTypes,
-        originalGroup: interpretation.recipientSelection.groupNames,
-        finalGroup: userModifications.groupNames
-      } : undefined,
+      userModifications: userModifications ? {} : undefined,
       timestamp: new Date().toISOString()
     }
 
@@ -122,9 +98,7 @@ export class QuestService {
       jobId: jobId || null,  // Persist jobId at creation time for Request-level association
       prompt: originalPrompt,
       suggestedRecipients: {
-        entityIds: [],
-        groupIds: confirmedSelection.groupIds || [],
-        contactTypes: confirmedSelection.contactTypes
+        entityIds: confirmedSelection.entityIds || [],
       },
       suggestedCampaignName: `Quest: ${originalPrompt.substring(0, 50)}`,
       aiGenerationStatus: "processing"
@@ -203,9 +177,7 @@ export class QuestService {
     // Update EmailDraft recipients
     await EmailDraftService.update(id, organizationId, {
       suggestedRecipients: {
-        entityIds: [],
-        groupIds: selection.groupIds || [],
-        contactTypes: selection.contactTypes
+        entityIds: selection.entityIds || [],
       }
     })
 
@@ -257,26 +229,22 @@ export class QuestService {
         ? new Date(quest.scheduleConfig.deadline) 
         : null
       
-      // Build available tags list - always include First Name and Email, plus any selected data tags
+      // Build available tags list - always include First Name and Email
       const baseTags = ["First Name", "Email"]
-      const selectedDataTags = quest.confirmedSelection.stateFilter?.stateKeys || []
-      const availableTags = [...baseTags, ...selectedDataTags]
-      
+      const availableTags = [...baseTags]
+
       console.log(`QuestService.generateEmail: Quest ${id}`)
-      console.log(`  - confirmedSelection.stateFilter:`, quest.confirmedSelection.stateFilter)
-      console.log(`  - selectedDataTags: [${selectedDataTags.join(', ')}]`)
       console.log(`  - availableTags for AI: [${availableTags.join(', ')}]`)
       console.log(`  - deadline: ${deadlineDate}`)
       console.log(`  - prompt: "${quest.originalPrompt?.substring(0, 50)}"`)
-      
+
       let generated
       try {
         generated = await AIEmailGenerationService.generateDraft({
           organizationId,
           prompt: quest.originalPrompt,
           selectedRecipients: {
-            entityIds: [],
-            groupIds: quest.confirmedSelection.groupIds || []
+            entityIds: quest.confirmedSelection.entityIds || [],
           },
           senderName: user?.name || undefined,
           senderEmail: user?.email || undefined,
@@ -336,24 +304,48 @@ export class QuestService {
       throw new Error("Quest not found")
     }
 
-    // Resolve recipients
-    const recipientResult = await resolveRecipientsWithReasons(organizationId, {
-      contactTypes: quest.confirmedSelection.contactTypes,
-      groupIds: quest.confirmedSelection.groupIds,
-      stateFilter: quest.confirmedSelection.stateFilter
-    })
+    // Resolve recipients via direct entity/user IDs
+    const recipients: Array<{ id?: string; email: string; name?: string; contactType?: string; tagValues?: Record<string, string> }> = []
 
-    // Note: Tag values functionality has been removed as part of the migration
-    // to item-scoped labels. This method now returns recipients without tag values.
-    const result = recipientResult.recipientsWithReasons.map(r => ({
-      id: r.entityId,
-      email: r.email,
-      name: (r.firstName || r.name) ?? undefined,
-      contactType: r.contactType ?? undefined,
-      tagValues: undefined
-    }))
+    if (quest.confirmedSelection.entityIds && quest.confirmedSelection.entityIds.length > 0) {
+      const entities = await prisma.entity.findMany({
+        where: {
+          id: { in: quest.confirmedSelection.entityIds },
+          organizationId,
+        },
+        select: { id: true, email: true, firstName: true, lastName: true },
+      })
+      for (const e of entities) {
+        if (e.email) {
+          recipients.push({
+            id: e.id,
+            email: e.email,
+            name: e.firstName ?? undefined,
+          })
+        }
+      }
+    }
 
-    return result
+    if (quest.confirmedSelection.userIds && quest.confirmedSelection.userIds.length > 0) {
+      const users = await prisma.user.findMany({
+        where: {
+          id: { in: quest.confirmedSelection.userIds },
+          organizationId,
+        },
+        select: { id: true, email: true, name: true },
+      })
+      for (const u of users) {
+        if (u.email) {
+          recipients.push({
+            id: u.id,
+            email: u.email,
+            name: u.name ?? undefined,
+          })
+        }
+      }
+    }
+
+    return recipients
   }
 
   /**
@@ -443,13 +435,8 @@ export class QuestService {
 
         resolvedRecipients = recipients
       } else {
-        // Legacy: resolve via contact types and groups
-        const recipientResult = await resolveRecipientsWithReasons(organizationId, {
-          contactTypes: quest.confirmedSelection.contactTypes,
-          groupIds: quest.confirmedSelection.groupIds,
-          stateFilter: quest.confirmedSelection.stateFilter,
-        })
-        resolvedRecipients = recipientResult.recipients as any
+        // No direct IDs provided - no recipients to resolve
+        resolvedRecipients = []
       }
 
       if (resolvedRecipients.length === 0) {
@@ -802,9 +789,7 @@ export class QuestService {
       userId: parentQuest.userId,
       prompt: parentQuest.originalPrompt,
       suggestedRecipients: {
-        entityIds: [],
-        groupIds: parentQuest.confirmedSelection.groupIds || [],
-        contactTypes: parentQuest.confirmedSelection.contactTypes
+        entityIds: parentQuest.confirmedSelection.entityIds || [],
       },
       suggestedCampaignName: `Quest Occurrence: ${parentQuest.originalPrompt.substring(0, 40)}`,
       aiGenerationStatus: "processing"
@@ -876,26 +861,6 @@ export class QuestService {
   // ============================================================================
   // Private Helper Methods
   // ============================================================================
-
-  /**
-   * Resolve group names to group IDs
-   */
-  private static async resolveGroupIds(
-    organizationId: string,
-    groupNames?: string[]
-  ): Promise<string[] | undefined> {
-    if (!groupNames?.length) return undefined
-
-    const groups = await prisma.group.findMany({
-      where: {
-        organizationId,
-        name: { in: groupNames }
-      },
-      select: { id: true }
-    })
-
-    return groups.map(g => g.id)
-  }
 
   /**
    * Calculate start delay hours based on frequency

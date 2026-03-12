@@ -139,13 +139,6 @@ export async function GET(request: NextRequest) {
                 email: true,
               },
             },
-            taskInstanceLabels: {
-              select: {
-                id: true,
-                name: true,
-                color: true,
-              },
-            },
           },
         },
         _count: {

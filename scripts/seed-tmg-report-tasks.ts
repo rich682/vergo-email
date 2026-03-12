@@ -52,7 +52,6 @@ async function main() {
     },
     include: {
       collaborators: true,
-      taskInstanceLabels: { include: { contactLabels: true } },
     },
   })
 

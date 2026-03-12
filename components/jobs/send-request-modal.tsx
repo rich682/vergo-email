@@ -40,7 +40,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Tag,
-  Filter,
   FileSpreadsheet,
   UserCheck,
   Bell,
@@ -63,25 +62,12 @@ import { DataPersonalizationFlow } from "./data-personalization-flow"
 
 
 // Types
-interface JobLabel {
-  id: string
-  name: string
-  color: string | null
-}
-
-interface ContactLabelInfo {
-  labelId: string
-  labelName: string
-  labelColor: string | null
-}
-
 interface StakeholderContact {
   id: string
   email: string | null
   firstName: string
   lastName: string | null
   contactType?: string
-  labels?: ContactLabelInfo[] // Labels applied to this contact for this job
 }
 
 interface Job {
@@ -234,11 +220,6 @@ export function SendRequestModal({
   // Recipients with exclusion toggles
   const [recipients, setRecipients] = useState<Array<StakeholderContact & { included: boolean }>>([])
   
-  // Label filter state
-  const [availableLabels, setAvailableLabels] = useState<JobLabel[]>([])
-  const [selectedLabelFilter, setSelectedLabelFilter] = useState<string | null>(null) // null = all, "none" = no labels, or label ID
-  const [showLabelFilter, setShowLabelFilter] = useState(false)
-  
   // Preview state
   const [showPreview, setShowPreview] = useState(false)
   const [previewIndex, setPreviewIndex] = useState(0)
@@ -259,16 +240,9 @@ export function SendRequestModal({
     type: "user" | "entity"
     subLabel?: string
     contactType?: string
-    groupIds?: string[]
   }>>([])
   const [loadingAllRecipients, setLoadingAllRecipients] = useState(false)
   const [recipientSelectionSearch, setRecipientSelectionSearch] = useState("")
-  // Group metadata for bulk selection chips
-  const [availableGroups, setAvailableGroups] = useState<Array<{
-    id: string
-    name: string
-    color: string | null
-  }>>([])
   
   // Selected recipients for draft generation (used in selecting_recipients step)
   const [selectedRecipientsForDraft, setSelectedRecipientsForDraft] = useState<Map<string, {
@@ -352,40 +326,7 @@ export function SendRequestModal({
         }
       }
 
-      // Fetch all entities/contacts
-      const entitiesResponse = await fetch("/api/entities", { credentials: "include" })
-      let entitiesData: any[] = []
-      if (entitiesResponse.ok) {
-        const entities = await entitiesResponse.json()
-        entitiesData = Array.isArray(entities) ? entities : entities.entities || []
-        for (const entity of entitiesData) {
-          if (entity.email) {
-            const fullName = entity.firstName + (entity.lastName ? ` ${entity.lastName}` : "")
-            allRecipients.push({
-              id: entity.id,
-              name: fullName || entity.email,
-              email: entity.email,
-              type: "entity",
-              subLabel: entity.contactType?.toLowerCase(),
-              contactType: entity.contactType || undefined,
-              groupIds: entity.groups?.map((g: any) => g.id) || [],
-            })
-          }
-        }
-      }
-
-      // Extract unique group metadata for bulk selection chips
-      const groupMap = new Map<string, { id: string; name: string; color: string | null }>()
-      for (const entity of entitiesData) {
-        if (entity.email && entity.groups) {
-          for (const g of entity.groups) {
-            if (g.id && !groupMap.has(g.id)) {
-              groupMap.set(g.id, { id: g.id, name: g.name, color: g.color || null })
-            }
-          }
-        }
-      }
-      setAvailableGroups(Array.from(groupMap.values()))
+      // Entities are no longer listed directly — users search or use databases for recipients
 
       setAllAvailableRecipients(allRecipients)
     } catch (err) {
@@ -430,21 +371,6 @@ export function SendRequestModal({
         const existing = map.get(r.contactType) || []
         existing.push(r.id)
         map.set(r.contactType, existing)
-      }
-    }
-    return map
-  }, [allAvailableRecipients])
-
-  // Map groupId → list of recipient IDs
-  const groupRecipientMap = useMemo(() => {
-    const map = new Map<string, string[]>()
-    for (const r of allAvailableRecipients) {
-      if (r.type === "entity" && r.groupIds) {
-        for (const gid of r.groupIds) {
-          const existing = map.get(gid) || []
-          existing.push(r.id)
-          map.set(gid, existing)
-        }
       }
     }
     return map
@@ -498,45 +424,6 @@ export function SendRequestModal({
   }, [allAvailableRecipients])
 
   // Fetch labels for this job
-  const fetchLabels = useCallback(async () => {
-    try {
-      const response = await fetch(`/api/task-instances/${job.id}/labels`, {
-        credentials: "include",
-      })
-      if (response.ok) {
-        const data = await response.json()
-        setAvailableLabels(data.labels || [])
-      }
-    } catch (err) {
-      console.error("Error fetching labels:", err)
-    }
-  }, [job.id])
-
-  // Fetch contact labels for this job
-  const fetchContactLabels = useCallback(async (): Promise<Map<string, ContactLabelInfo[]>> => {
-    const labelMap = new Map<string, ContactLabelInfo[]>()
-    try {
-      const response = await fetch(`/api/task-instances/${job.id}/contact-labels`, {
-        credentials: "include",
-      })
-      if (response.ok) {
-        const data = await response.json()
-        const contacts = data.contacts || []
-        for (const contact of contacts) {
-          const labels: ContactLabelInfo[] = (contact.jobLabels || []).map((jl: any) => ({
-            labelId: jl.jobLabel.id,
-            labelName: jl.jobLabel.name,
-            labelColor: jl.jobLabel.color,
-          }))
-          labelMap.set(contact.id, labels)
-        }
-      }
-    } catch (err) {
-      console.error("Error fetching contact labels:", err)
-    }
-    return labelMap
-  }, [job.id])
-
   // Fetch draft with selected recipients
   const fetchDraft = useCallback(async (selectedRecipientsList?: Array<{
     id: string
@@ -548,18 +435,14 @@ export function SendRequestModal({
     setError(null)
     
     try {
-      // Fetch labels and contact labels in parallel with draft
-      const [draftResponse, contactLabelsMap] = await Promise.all([
-        fetch(`/api/task-instances/${job.id}/request/draft`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            recipients: selectedRecipientsList || []
-          })
-        }),
-        fetchContactLabels(),
-      ])
+      const draftResponse = await fetch(`/api/task-instances/${job.id}/request/draft`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          recipients: selectedRecipientsList || []
+        })
+      })
 
       if (!draftResponse.ok) {
         const data = await draftResponse.json()
@@ -573,12 +456,11 @@ export function SendRequestModal({
       setUsedFallback(data.usedFallback)
       setNoRecipients(data.noRecipients || false)
       
-      // Initialize recipients from response with labels (all included by default)
+      // Initialize recipients from response (all included by default)
       setRecipients(
         data.recipients.map(r => ({
           ...r,
           included: true,
-          labels: contactLabelsMap.get(r.id) || [],
         }))
       )
       
@@ -601,7 +483,6 @@ export function SendRequestModal({
             firstName: nameParts[0] || r.name,
             lastName: nameParts.length > 1 ? nameParts.slice(1).join(' ') : null,
             included: true,
-            labels: []
           }
         }))
       } else {
@@ -609,7 +490,7 @@ export function SendRequestModal({
       }
       setState("ready")
     }
-  }, [job.id, job.name, fetchContactLabels])
+  }, [job.id, job.name])
 
   // Handle proceeding from recipient selection to AI draft generation
   const handleProceedToDraft = useCallback(() => {
@@ -621,13 +502,6 @@ export function SendRequestModal({
     // Generate draft with selected recipients
     fetchDraft(selectedList)
   }, [selectedRecipientsForDraft, fetchDraft])
-
-  // Fetch labels when standard mode is selected (but not draft - that comes after recipient selection)
-  useEffect(() => {
-    if (open && mode === "standard" && (state === "idle" || state === "selecting_recipients")) {
-      fetchLabels()
-    }
-  }, [open, mode, state, fetchLabels])
 
   // Handle mode selection
   const handleModeSelect = (selectedMode: RequestMode) => {
@@ -697,7 +571,6 @@ export function SendRequestModal({
         firstName: entity.firstName,
         lastName: null,
         included: true,
-        labels: []
       }
     ])
     
@@ -725,9 +598,6 @@ export function SendRequestModal({
       setRecipients([])
       setShowPreview(false)
       setPreviewIndex(0)
-      setAvailableLabels([])
-      setSelectedLabelFilter(null)
-      setShowLabelFilter(false)
       setShowReminderPreview(false)
       setReminderPreviews([])
       setReminderPreviewIndex(0)
@@ -1074,47 +944,10 @@ export function SendRequestModal({
     }
   }
 
-  // Filter recipients by label
-  const applyLabelFilter = useCallback((labelFilter: string | null) => {
-    setSelectedLabelFilter(labelFilter)
-    
-    // Update recipient inclusion based on filter
-    setRecipients(prev => prev.map(r => {
-      if (labelFilter === null) {
-        // Show all - keep current inclusion state
-        return r
-      } else if (labelFilter === "none") {
-        // Only include recipients with no labels
-        return { ...r, included: !r.labels || r.labels.length === 0 }
-      } else {
-        // Only include recipients with the selected label
-        return { ...r, included: r.labels?.some(l => l.labelId === labelFilter) || false }
-      }
-    }))
-  }, [])
-
   // Computed values
   const includedCount = recipients.filter(r => r.included).length
   const totalCount = recipients.length
   const includedRecipients = recipients.filter(r => r.included)
-  
-  // Count recipients by label for filter display
-  const labelCounts = useMemo(() => {
-    const counts = new Map<string, number>()
-    let noLabelCount = 0
-    
-    for (const r of recipients) {
-      if (!r.labels || r.labels.length === 0) {
-        noLabelCount++
-      } else {
-        for (const label of r.labels) {
-          counts.set(label.labelId, (counts.get(label.labelId) || 0) + 1)
-        }
-      }
-    }
-    
-    return { labelCounts: counts, noLabelCount }
-  }, [recipients])
   
   // Preview helpers
   const currentPreviewRecipient = includedRecipients[previewIndex]
@@ -1313,8 +1146,7 @@ export function SendRequestModal({
               (() => {
                 const hasTeam = teamMemberIds.length > 0
                 const hasTypes = BULK_CONTACT_TYPES.some(ct => (contactTypeRecipientMap.get(ct.id) || []).length > 0)
-                const hasGroups = availableGroups.some(g => (groupRecipientMap.get(g.id) || []).length > 0)
-                if (!hasTeam && !hasTypes && !hasGroups) return null
+                if (!hasTeam && !hasTypes) return null
                 return (
                   <div className="space-y-2">
                     <span className="text-xs font-medium text-gray-500 uppercase">Quick Select</span>
@@ -1354,34 +1186,6 @@ export function SendRequestModal({
                             }`}
                           >
                             {ct.label} ({ids.length})
-                            {isBulkActive(ids) && <Check className="w-3 h-3" />}
-                          </button>
-                        )
-                      })}
-
-                      {/* Group chips */}
-                      {availableGroups.map(group => {
-                        const ids = groupRecipientMap.get(group.id) || []
-                        if (ids.length === 0) return null
-                        return (
-                          <button
-                            key={group.id}
-                            onClick={() => toggleBulkSelection(ids)}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                              isBulkActive(ids)
-                                ? 'bg-orange-500 text-white border-orange-500'
-                                : isBulkPartial(ids)
-                                ? 'bg-orange-100 text-orange-700 border-orange-300'
-                                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                            }`}
-                          >
-                            {group.color && (
-                              <span
-                                className="w-2 h-2 rounded-full flex-shrink-0"
-                                style={{ backgroundColor: group.color }}
-                              />
-                            )}
-                            {group.name} ({ids.length})
                             {isBulkActive(ids) && <Check className="w-3 h-3" />}
                           </button>
                         )
@@ -1612,91 +1416,6 @@ export function SendRequestModal({
                     Recipients ({includedCount} of {totalCount})
                   </Label>
                   <div className="flex items-center gap-2">
-                    {/* Label Filter */}
-                    {availableLabels.length > 0 && (
-                      <div className="relative" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            setShowLabelFilter(!showLabelFilter)
-                          }}
-                          className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors ${
-                            selectedLabelFilter !== null
-                              ? "bg-orange-100 text-orange-700"
-                              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                          }`}
-                        >
-                          <Filter className="w-3.5 h-3.5" />
-                          {selectedLabelFilter === null 
-                            ? "Filter" 
-                            : selectedLabelFilter === "none"
-                            ? "No label"
-                            : availableLabels.find(l => l.id === selectedLabelFilter)?.name || "Filter"
-                          }
-                        </button>
-                        
-                        {showLabelFilter && (
-                          <>
-                            <div 
-                              className="fixed inset-0 z-10" 
-                              onClick={() => setShowLabelFilter(false)} 
-                            />
-                            <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[180px] py-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  applyLabelFilter(null)
-                                  setShowLabelFilter(false)
-                                }}
-                                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
-                                  selectedLabelFilter === null ? "bg-gray-50 font-medium" : ""
-                                }`}
-                              >
-                                All recipients
-                                <span className="text-xs text-gray-400 ml-2">({totalCount})</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  applyLabelFilter("none")
-                                  setShowLabelFilter(false)
-                                }}
-                                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
-                                  selectedLabelFilter === "none" ? "bg-gray-50 font-medium" : ""
-                                }`}
-                              >
-                                No label
-                                <span className="text-xs text-gray-400 ml-2">({labelCounts.noLabelCount})</span>
-                              </button>
-                              <div className="border-t border-gray-100 my-1" />
-                              {availableLabels.map(label => (
-                                <button
-                                  key={label.id}
-                                  type="button"
-                                  onClick={() => {
-                                    applyLabelFilter(label.id)
-                                    setShowLabelFilter(false)
-                                  }}
-                                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 ${
-                                    selectedLabelFilter === label.id ? "bg-gray-50 font-medium" : ""
-                                  }`}
-                                >
-                                  <div 
-                                    className="w-2.5 h-2.5 rounded-full" 
-                                    style={{ backgroundColor: label.color || "#6b7280" }}
-                                  />
-                                  <span className="capitalize">{label.name}</span>
-                                  <span className="text-xs text-gray-400 ml-auto">
-                                    ({labelCounts.labelCounts.get(label.id) || 0})
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )}
                     <svg 
                       className="w-4 h-4 text-gray-400 transition-transform group-open:rotate-180" 
                       fill="none" 
@@ -1784,28 +1503,6 @@ export function SendRequestModal({
                             </div>
                           </div>
                           <div className="flex items-center gap-1 flex-shrink-0">
-                            {/* Show labels */}
-                            {recipient.labels && recipient.labels.length > 0 && (
-                              <div className="flex gap-1">
-                                {recipient.labels.slice(0, 2).map(label => (
-                                  <span
-                                    key={label.labelId}
-                                    className="text-xs px-1.5 py-0.5 rounded capitalize"
-                                    style={{
-                                      backgroundColor: `${label.labelColor || "#6b7280"}20`,
-                                      color: label.labelColor || "#6b7280",
-                                    }}
-                                  >
-                                    {label.labelName}
-                                  </span>
-                                ))}
-                                {recipient.labels.length > 2 && (
-                                  <span className="text-xs text-gray-400">
-                                    +{recipient.labels.length - 2}
-                                  </span>
-                                )}
-                              </div>
-                            )}
                             {recipient.contactType && (
                               <span className="text-xs text-gray-400 px-2 py-0.5 bg-gray-100 rounded">
                                 {recipient.contactType}

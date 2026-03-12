@@ -238,47 +238,11 @@ export class TaskInstanceService {
 
     const contactIds = new Set<string>()
 
-    // Collect individual IDs synchronously
-    const groupIds: string[] = []
-    const contactTypeIds: string[] = []
+    // Collect individual IDs
     for (const stakeholder of stakeholders) {
       if (stakeholder.type === "individual") {
         contactIds.add(stakeholder.id)
-      } else if (stakeholder.type === "group") {
-        groupIds.push(stakeholder.id)
-      } else if (stakeholder.type === "contact_type") {
-        contactTypeIds.push(stakeholder.id)
       }
-    }
-
-    // Batch DB queries in parallel (max 2 queries instead of N)
-    const queries: Promise<{ id: string }[]>[] = []
-    if (groupIds.length > 0) {
-      queries.push(
-        prisma.entity.findMany({
-          where: {
-            organizationId,
-            groups: { some: { id: { in: groupIds } } }
-          },
-          select: { id: true }
-        })
-      )
-    }
-    if (contactTypeIds.length > 0) {
-      queries.push(
-        prisma.entity.findMany({
-          where: {
-            organizationId,
-            contactType: { in: contactTypeIds as any }
-          },
-          select: { id: true }
-        })
-      )
-    }
-
-    const results = await Promise.all(queries)
-    for (const entities of results) {
-      entities.forEach(e => contactIds.add(e.id))
     }
 
     return contactIds.size

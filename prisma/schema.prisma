@@ -140,7 +140,6 @@ model Organization {
 
   users                  User[]
   entities               Entity[]
-  groups                 Group[]
   taskInstances          TaskInstance[]
   taskLineages           TaskLineage[]
   importRecipes          ImportRecipe[]
@@ -274,7 +273,6 @@ model User {
   deletedReconciliationConfigs ReconciliationConfig[] @relation("ReconciliationConfigDeleter")
   deletedAgentDefinitions      AgentDefinition[]      @relation("AgentDefinitionDeleter")
   deletedEntities              Entity[]               @relation("EntityDeleter")
-  deletedGroups                Group[]                @relation("GroupDeleter")
 
   @@index([organizationId])
   @@index([email])
@@ -334,12 +332,10 @@ model Entity {
 
   organization        Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   deletedBy           User?                      @relation("EntityDeleter", fields: [deletedById], references: [id])
-  groups              EntityGroup[]
   requests            Request[]
   messages            Message[]
   reminderStates      ReminderState[]
   clientTaskInstances TaskInstance[]             @relation("TaskInstanceClient") // Task instances where this entity is the primary client
-  taskInstanceLabels  TaskInstanceContactLabel[] // Item-scoped labels applied to this contact
   formRequests        FormRequest[]              @relation("FormRequestEntity") // Form requests sent to this entity
 
   @@index([organizationId])
@@ -348,42 +344,6 @@ model Entity {
   @@index([organizationId, isInternal])
   @@index([organizationId, mergeRemoteId])
   @@index([organizationId, deletedAt])
-}
-
-model Group {
-  id             String   @id @default(cuid())
-  name           String
-  description    String?
-  color          String?
-  organizationId String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  // Soft delete
-  deletedAt   DateTime?
-  deletedById String?
-
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  deletedBy    User?           @relation("GroupDeleter", fields: [deletedById], references: [id])
-  entities     EntityGroup[]
-  schedules    AgentSchedule[]
-
-  @@index([organizationId])
-  @@index([organizationId, deletedAt])
-}
-
-model EntityGroup {
-  id        String   @id @default(cuid())
-  entityId  String
-  groupId   String
-  createdAt DateTime @default(now())
-
-  entity Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  group  Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
-
-  @@unique([entityId, groupId])
-  @@index([entityId])
-  @@index([groupId])
 }
 
 enum ContactType {
@@ -469,7 +429,6 @@ model TaskInstance {
   generatedReports     GeneratedReport[] // Reports generated for this task
   formRequests         FormRequest[] // Form requests sent for this task
 
-  taskInstanceLabels    TaskInstanceLabel[] // Item-scoped labels for contacts
   reconciliationRuns    ReconciliationRun[] // Reconciliation runs triggered from this task
   notifications         Notification[] // Notifications related to this task
   analysisConversations AnalysisConversation[] // Analysis conversations linked to this task
@@ -487,46 +446,6 @@ model TaskInstance {
   @@index([organizationId, ownerId, status]) // My tasks: owner-scoped queries
   @@index([organizationId, deletedAt])
   @@map("Job")
-}
-
-// TaskInstanceLabel defines labels that can be applied to contacts within a specific TaskInstance
-// e.g., "paid", "unpaid", "pending" with metadata schemas like invoice_number, amount
-model TaskInstanceLabel {
-  id             String   @id @default(cuid())
-  taskInstanceId String   @map("jobId")
-  organizationId String
-  name           String // "unpaid", "received", "pending"
-  color          String? // "#ef4444"
-  metadataSchema Json     @default("[]") // [{key: "invoice_number", label: "Invoice #", type: "text"}]
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  taskInstance  TaskInstance               @relation(fields: [taskInstanceId], references: [id], onDelete: Cascade)
-  contactLabels TaskInstanceContactLabel[]
-
-  @@unique([taskInstanceId, name])
-  @@index([taskInstanceId])
-  @@index([organizationId])
-  @@map("JobLabel")
-}
-
-// TaskInstanceContactLabel applies a label to a contact within a TaskInstance's context
-// Stores the metadata values for that contact-label pair
-model TaskInstanceContactLabel {
-  id                  String   @id @default(cuid())
-  taskInstanceLabelId String   @map("jobLabelId")
-  entityId            String
-  metadata            Json     @default("{}") // {invoice_number: "INV-001", amount: "500.00"}
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-
-  taskInstanceLabel TaskInstanceLabel @relation(fields: [taskInstanceLabelId], references: [id], onDelete: Cascade)
-  entity            Entity            @relation(fields: [entityId], references: [id], onDelete: Cascade)
-
-  @@unique([taskInstanceLabelId, entityId])
-  @@index([taskInstanceLabelId])
-  @@index([entityId])
-  @@map("JobContactLabel")
 }
 
 // TaskInstanceCollaborator join table for team collaboration on TaskInstances
@@ -696,7 +615,6 @@ model AgentSchedule {
   cronExpression String
   timezone       String        @default("UTC")
   organizationId String
-  groupId        String?
   campaignName   String?
   campaignType   CampaignType?
   emailSubject   String
@@ -709,10 +627,8 @@ model AgentSchedule {
   updatedAt      DateTime      @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  group        Group?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
-  @@index([groupId])
   @@index([isActive, nextRunAt])
 }
 

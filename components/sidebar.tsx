@@ -75,16 +75,6 @@ function InvoicesIcon({ className }: { className?: string }) {
   )
 }
 
-function ContactsIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 00-3-3.87" />
-      <path d="M16 3.13a4 4 0 010 7.75" />
-    </svg>
-  )
-}
 
 function TeamIcon({ className }: { className?: string }) {
   return (
@@ -192,11 +182,6 @@ interface NavItem {
 
 // Settings/management nav items (shown at bottom)
 const settingsNavItems: NavItem[] = [
-  {
-    href: "/dashboard/contacts",
-    label: "Contacts",
-    icon: ContactsIcon
-  },
   {
     href: "/dashboard/settings/team",
     label: "Team",
@@ -508,8 +493,6 @@ export function Sidebar({
         <ul className={`${collapsed ? "space-y-1" : "space-y-0.5"} pb-3 border-t border-gray-100 pt-3 mt-2`}>
           {settingsNavItems
             .filter((item) => {
-              // Contacts uses module access check (sidebar-only module)
-              if (item.href === "/dashboard/contacts" && !hasAccess("contacts")) return false
               // Team and Settings are always admin-only
               if ((item.href === "/dashboard/settings/team" || item.href === "/dashboard/settings") && !isAdmin) return false
               // Profile is available to everyone, but admins already have Settings

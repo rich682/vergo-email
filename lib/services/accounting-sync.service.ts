@@ -2,11 +2,10 @@
  * Accounting Sync Service
  *
  * Orchestrates data synchronization from accounting software (via Merge.dev)
- * into Vergo's Entity model (contacts) and Database feature (financial data).
+ * into Vergo's Database feature.
  *
  * Sync strategy:
- * - Contacts: upsert into Entity by mergeRemoteId, dedup by email, skip contacts without email
- * - Data models: append-only snapshots into auto-created read-only Databases
+ * - All models (contacts, invoices, etc.): append-only snapshots into auto-created read-only Databases
  * - Each sync appends a new snapshot with an as_of_date; trimmed to MAX_SYNCED_ROWS (newest kept)
  */
 
@@ -197,6 +196,29 @@ export const SYNCED_DATABASE_SCHEMAS: Record<string, SyncedDatabaseDefinition> =
       version: 1,
     },
   },
+
+  contacts: {
+    name: "Contacts",
+    description: "Contacts synced from accounting software",
+    sourceType: "merge_contacts",
+    schema: {
+      columns: [
+        { key: "as_of_date", label: "As Of", dataType: "date", required: true, order: 0 },
+        { key: "remote_id", label: "ID", dataType: "text", required: true, order: 1 },
+        { key: "name", label: "Name", dataType: "text", required: true, order: 2 },
+        { key: "email", label: "Email", dataType: "text", required: false, order: 3 },
+        { key: "phone", label: "Phone", dataType: "text", required: false, order: 4 },
+        { key: "company", label: "Company", dataType: "text", required: false, order: 5 },
+        { key: "type", label: "Type", dataType: "text", required: false, order: 6 },
+        { key: "address_street", label: "Street", dataType: "text", required: false, order: 7 },
+        { key: "address_city", label: "City", dataType: "text", required: false, order: 8 },
+        { key: "address_state", label: "State", dataType: "text", required: false, order: 9 },
+        { key: "address_postal_code", label: "Postal Code", dataType: "text", required: false, order: 10 },
+        { key: "address_country", label: "Country", dataType: "text", required: false, order: 11 },
+      ] as DatabaseSchemaColumn[],
+      version: 1,
+    },
+  },
 }
 
 type SyncModelKey = keyof typeof SYNCED_DATABASE_SCHEMAS
@@ -240,6 +262,7 @@ interface SyncConfig {
 
 // Map from syncConfig keys to SYNCED_DATABASE_SCHEMAS keys
 const CONFIG_TO_MODEL_MAP: Record<string, SyncModelKey> = {
+  contacts: "contacts",
   accounts: "accounts",
   invoices: "invoices",
   journalEntries: "journal_entries",
@@ -258,7 +281,7 @@ const MAX_SYNCED_ROWS = 10000
 export class AccountingSyncService {
   /**
    * Run a full sync for an organization.
-   * Syncs contacts first, then each enabled data model.
+   * Syncs each enabled data model (including contacts) into databases.
    *
    * @param organizationId - The organization to sync
    * @param asOfDateParam - Optional ISO date string (YYYY-MM-DD) for the snapshot; defaults to today
@@ -278,7 +301,6 @@ export class AccountingSyncService {
     const syncState = (integration.syncState as unknown as Record<string, ModelSyncState>) || {} as Record<string, ModelSyncState>
     const errors: string[] = []
     const modelsProcessed: string[] = []
-    let contactsSynced = 0
 
     // Mark as syncing
     await prisma.accountingIntegration.update({
@@ -303,35 +325,7 @@ export class AccountingSyncService {
         if (c.remote_id && c.name) contactLookup.set(c.remote_id, c.name)
       }
 
-      // 1. Sync contacts first (needed for reference resolution)
-      if (syncConfig.contacts !== false) {
-        try {
-          const lastSync = syncState.contacts?.lastSyncAt || undefined
-          contactsSynced = await this.syncContacts(
-            organizationId,
-            accountToken,
-            lastSync
-          )
-          syncState.contacts = {
-            lastSyncAt: new Date().toISOString(),
-            status: "success",
-            error: null,
-            rowCount: contactsSynced,
-          }
-          modelsProcessed.push("contacts")
-        } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : String(e)
-          errors.push(`contacts: ${msg}`)
-          syncState.contacts = {
-            ...syncState.contacts,
-            lastSyncAt: syncState.contacts?.lastSyncAt || null,
-            status: "error",
-            error: msg,
-          }
-        }
-      }
-
-      // 2. Sync each data model into databases
+      // Sync each data model into databases (including contacts)
       for (const [configKey, modelKey] of Object.entries(CONFIG_TO_MODEL_MAP)) {
         if ((syncConfig as Record<string, boolean | undefined>)[configKey] === false) continue
 
@@ -387,7 +381,7 @@ export class AccountingSyncService {
         },
       })
 
-      return { contactsSynced, modelsProcessed, errors }
+      return { contactsSynced: 0, modelsProcessed, errors }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       await prisma.accountingIntegration.update({
@@ -399,204 +393,39 @@ export class AccountingSyncService {
   }
 
   // ============================================
-  // Contact Sync
+  // (Contact sync removed — contacts now sync as a Database via syncDataModel)
   // ============================================
 
   /**
-   * Sync contacts from Merge into the Entity model.
-   * Upserts by mergeRemoteId, deduplicates by email.
-   * Skips contacts without an email address.
+   * Sync contacts from Merge into a Contacts database.
+   * Delegates to syncDataModel using the "contacts" schema.
    */
   static async syncContacts(
     organizationId: string,
     accountToken: string,
     lastSyncAt?: string
   ): Promise<number> {
-    const contacts = await MergeAccountingService.fetchContacts(
+    const asOfDate = new Date().toISOString().split("T")[0]
+    const accounts = await MergeAccountingService.fetchAccounts(accountToken)
+    const accountLookup = new Map<string, string>()
+    for (const a of accounts) {
+      const displayName = a.number ? `${a.number} - ${a.name || ""}` : (a.name || "")
+      if (a.id) accountLookup.set(a.id, displayName)
+    }
+    const contacts = await MergeAccountingService.fetchContacts(accountToken)
+    const contactLookup = new Map<string, string>()
+    for (const c of contacts) {
+      if (c.id && c.name) contactLookup.set(c.id, c.name)
+    }
+    return this.syncDataModel(
+      organizationId,
       accountToken,
+      "contacts",
+      asOfDate,
+      accountLookup,
+      contactLookup,
       lastSyncAt
     )
-
-    let synced = 0
-
-    for (const contact of contacts) {
-      if (contact.remote_was_deleted) continue
-
-      const primaryEmail =
-        contact.email_addresses?.find((e) => e.email_address)?.email_address ||
-        null
-
-      // Skip contacts without email
-      if (!primaryEmail) continue
-
-      const primaryPhone =
-        contact.phone_numbers?.find((p) => p.number)?.number || null
-
-      // Determine contact type
-      let contactType: "VENDOR" | "CLIENT" | "UNKNOWN" = "UNKNOWN"
-      if (contact.is_supplier) contactType = "VENDOR"
-      else if (contact.is_customer) contactType = "CLIENT"
-
-      // Smart name mapping
-      // Vendors/suppliers from accounting software are companies, not people.
-      // Put the full name into companyName and firstName (for display).
-      let firstName: string
-      let lastName: string | undefined
-      let companyName: string | undefined
-      const fullName = contact.name || "Unknown"
-
-      if (contact.is_supplier || (contact.company && fullName === contact.company)) {
-        // Vendor/supplier: the "name" is a company name
-        firstName = fullName
-        lastName = undefined
-        companyName = contact.company || fullName
-      } else {
-        // Customer or unknown: split into first/last name
-        const nameParts = fullName.split(" ")
-        firstName = nameParts[0] || "Unknown"
-        lastName = nameParts.slice(1).join(" ") || undefined
-        companyName = contact.company || undefined
-      }
-
-      // Extract primary address
-      const addr = contact.addresses?.[0]
-      const addressStreet1 = addr?.street_1 || ""
-      const addressStreet2 = addr?.street_2 || ""
-      const addressCity = addr?.city || ""
-      const addressState = addr?.state || ""
-      const addressPostalCode = addr?.postal_code || ""
-      const addressCountry = addr?.country || ""
-
-      // Try to find existing entity by mergeRemoteId
-      const existing = await prisma.entity.findFirst({
-        where: { organizationId, mergeRemoteId: contact.id },
-      })
-
-      if (existing) {
-        // Update existing synced contact
-        await prisma.entity.update({
-          where: { id: existing.id },
-          data: {
-            firstName,
-            lastName,
-            email: primaryEmail || existing.email,
-            phone: primaryPhone || existing.phone,
-            companyName: companyName || existing.companyName,
-            contactType,
-            addressStreet1,
-            addressStreet2,
-            addressCity,
-            addressState,
-            addressPostalCode,
-            addressCountry,
-          },
-        })
-        synced++
-        continue
-      }
-
-      // No mergeRemoteId match - check for email match to link existing entity
-      if (primaryEmail) {
-        const emailMatch = await prisma.entity.findFirst({
-          where: { organizationId, email: primaryEmail },
-        })
-        if (emailMatch) {
-          await prisma.entity.update({
-            where: { id: emailMatch.id },
-            data: {
-              mergeRemoteId: contact.id,
-              companyName: companyName || emailMatch.companyName,
-              contactType:
-                contactType !== "UNKNOWN"
-                  ? contactType
-                  : emailMatch.contactType,
-              addressStreet1,
-              addressStreet2,
-              addressCity,
-              addressState,
-              addressPostalCode,
-              addressCountry,
-            },
-          })
-          synced++
-          continue
-        }
-      }
-
-      // Create new entity
-      await prisma.entity.create({
-        data: {
-          firstName,
-          lastName,
-          email: primaryEmail,
-          phone: primaryPhone,
-          companyName,
-          contactType,
-          isInternal: false,
-          organizationId,
-          mergeRemoteId: contact.id,
-          addressStreet1,
-          addressStreet2,
-          addressCity,
-          addressState,
-          addressPostalCode,
-          addressCountry,
-        },
-      })
-      synced++
-    }
-
-    // ── Also populate system Vendors/Customers databases for agent use ──
-    try {
-      const { VendorDatabaseService } = await import("@/lib/agents/vendor-database.service")
-
-      // Find admin user for database creation
-      const adminUser = await prisma.user.findFirst({
-        where: { organizationId, role: "ADMIN" },
-        select: { id: true },
-      })
-
-      if (adminUser) {
-        const vendorContacts = contacts
-          .filter((c) => c.is_supplier && !c.remote_was_deleted)
-          .map((c) => ({
-            name: c.name || "Unknown",
-            email: c.email_addresses?.find((e) => e.email_address)?.email_address || undefined,
-            phone: c.phone_numbers?.find((p) => p.number)?.number || undefined,
-            company: c.company || undefined,
-            merge_remote_id: c.id || undefined,
-          }))
-
-        const customerContacts = contacts
-          .filter((c) => c.is_customer && !c.remote_was_deleted)
-          .map((c) => ({
-            name: c.name || "Unknown",
-            email: c.email_addresses?.find((e) => e.email_address)?.email_address || undefined,
-            phone: c.phone_numbers?.find((p) => p.number)?.number || undefined,
-            company: c.company || undefined,
-            merge_remote_id: c.id || undefined,
-          }))
-
-        if (vendorContacts.length > 0) {
-          const { id: vendorDbId } = await VendorDatabaseService.ensureSystemDatabase(
-            organizationId, adminUser.id, "vendors"
-          )
-          await VendorDatabaseService.upsertContacts(vendorDbId, vendorContacts)
-        }
-
-        if (customerContacts.length > 0) {
-          const { id: customerDbId } = await VendorDatabaseService.ensureSystemDatabase(
-            organizationId, adminUser.id, "customers"
-          )
-          await VendorDatabaseService.upsertContacts(customerDbId, customerContacts)
-        }
-      }
-    } catch (vendorDbError) {
-      // Non-fatal: agent vendor databases are supplementary
-      console.warn("[AccountingSyncService] Failed to sync vendor/customer databases:", vendorDbError)
-    }
-
-    return synced
   }
 
   // ============================================
@@ -717,6 +546,12 @@ export class AccountingSyncService {
     organizationId?: string
   ): Promise<DatabaseRow[]> {
     switch (modelKey) {
+      case "contacts":
+        return this.transformContacts(
+          await MergeAccountingService.fetchContacts(accountToken, lastSyncAt),
+          asOfDate
+        )
+
       case "accounts":
         return this.transformAccounts(
           await MergeAccountingService.fetchAccounts(accountToken, lastSyncAt),
@@ -774,6 +609,37 @@ export class AccountingSyncService {
       default:
         return []
     }
+  }
+
+  // --- Contacts ---
+  private static transformContacts(
+    contacts: MergeContact[],
+    asOfDate: string
+  ): DatabaseRow[] {
+    return contacts
+      .filter((c) => !c.remote_was_deleted)
+      .map((c) => {
+        const email = c.email_addresses?.find((e) => e.email_address)?.email_address || ""
+        const phone = c.phone_numbers?.find((p) => p.number)?.number || ""
+        let type = "Unknown"
+        if (c.is_supplier) type = "Vendor"
+        else if (c.is_customer) type = "Customer"
+        const addr = c.addresses?.[0]
+        return {
+          as_of_date: asOfDate,
+          remote_id: c.remote_id || c.id,
+          name: c.name || "",
+          email,
+          phone,
+          company: c.company || "",
+          type,
+          address_street: [addr?.street_1, addr?.street_2].filter(Boolean).join(", "),
+          address_city: addr?.city || "",
+          address_state: addr?.state || "",
+          address_postal_code: addr?.postal_code || "",
+          address_country: addr?.country || "",
+        }
+      })
   }
 
   // --- Accounts ---

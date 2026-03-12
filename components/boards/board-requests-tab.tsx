@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import {
   Filter, RefreshCw, Mail, Clock,
   CheckCircle, MessageSquare, BookOpen,
-  Search, X, Calendar, Tag, Paperclip, AlertTriangle, RotateCcw
+  Search, X, Calendar, Paperclip, AlertTriangle, RotateCcw
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { formatDistanceToNow, format, isAfter, isBefore, parseISO } from "date-fns"
@@ -55,11 +55,6 @@ interface RequestTask {
       name: string | null
       email: string
     }
-    jobLabels?: Array<{
-      id: string
-      name: string
-      color: string | null
-    }>
   } | null
   _isFormRequest?: boolean
   _formRequestId?: string
@@ -77,11 +72,6 @@ interface OwnerOption {
   email: string
 }
 
-interface LabelOption {
-  id: string
-  name: string
-  color: string | null
-}
 
 // Auto-derived status display for standard/data requests
 const ALL_STATUS_DISPLAY: Record<string, { label: string; icon: any; bgColor: string; textColor: string }> = {
@@ -206,7 +196,6 @@ export function BoardRequestsTab({ boardId, showMyTasksOnly }: BoardRequestsTabP
   const [replyMessageIds, setReplyMessageIds] = useState<Record<string, string>>({})
   const [jobs, setJobs] = useState<JobOption[]>([])
   const [owners, setOwners] = useState<OwnerOption[]>([])
-  const [labels, setLabels] = useState<LabelOption[]>([])
   const [statusSummary, setStatusSummary] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -215,7 +204,6 @@ export function BoardRequestsTab({ boardId, showMyTasksOnly }: BoardRequestsTabP
   const [jobFilter, setJobFilter] = useState<string>("all")
   const [ownerFilter, setOwnerFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [labelFilter, setLabelFilter] = useState<string>("all")
   const [contactSearch, setContactSearch] = useState<string>("")
   const [dateFrom, setDateFrom] = useState<string>("")
   const [dateTo, setDateTo] = useState<string>("")
@@ -223,7 +211,7 @@ export function BoardRequestsTab({ boardId, showMyTasksOnly }: BoardRequestsTabP
   const [typeFilter, setTypeFilter] = useState<string>("all")
 
   const hasActiveFilters = jobFilter !== "all" || ownerFilter !== "all" || statusFilter !== "all" ||
-    labelFilter !== "all" || contactSearch !== "" || dateFrom !== "" || dateTo !== "" || attachmentFilter !== "all" || typeFilter !== "all"
+    contactSearch !== "" || dateFrom !== "" || dateTo !== "" || attachmentFilter !== "all" || typeFilter !== "all"
 
   // AbortController ref for cancelling in-flight requests on filter change / unmount
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -255,7 +243,6 @@ export function BoardRequestsTab({ boardId, showMyTasksOnly }: BoardRequestsTabP
       }
       if (statusFilter !== "all" && statusFilter !== "READ") requestsParams.set("status", statusFilter)
       if (statusFilter === "READ") requestsParams.set("status", "REPLIED")
-      if (labelFilter !== "all") requestsParams.set("labelId", labelFilter)
       if (attachmentFilter !== "all") requestsParams.set("hasAttachments", attachmentFilter)
 
       const formParams = new URLSearchParams(baseParams)
@@ -283,7 +270,6 @@ export function BoardRequestsTab({ boardId, showMyTasksOnly }: BoardRequestsTabP
       let formRequestsNormalized: RequestTask[] = []
       let apiJobs: JobOption[] | undefined
       let apiOwners: OwnerOption[] | undefined
-      let apiLabels: LabelOption[] | undefined
       let apiStatusSummary: Record<string, number> | undefined
 
       let responseIdx = 0
@@ -299,7 +285,6 @@ export function BoardRequestsTab({ boardId, showMyTasksOnly }: BoardRequestsTabP
         // Dropdown/summary data is only returned on initial fetch (page 1)
         if (data.jobs !== undefined) apiJobs = data.jobs
         if (data.owners !== undefined) apiOwners = data.owners
-        if (data.labels !== undefined) apiLabels = data.labels
         if (data.statusSummary !== undefined) apiStatusSummary = data.statusSummary
       }
 
@@ -342,7 +327,6 @@ export function BoardRequestsTab({ boardId, showMyTasksOnly }: BoardRequestsTabP
               boardId: fr.taskInstance.boardId,
               board: fr.taskInstance.board,
               owner: fr.taskInstance.owner,
-              jobLabels: fr.taskInstance.taskInstanceLabels,
             } : null,
             _isFormRequest: true,
             _formRequestId: fr.id,
@@ -389,7 +373,6 @@ export function BoardRequestsTab({ boardId, showMyTasksOnly }: BoardRequestsTabP
       if (fetchStandardData) {
         if (apiJobs !== undefined) setJobs(apiJobs)
         if (apiOwners !== undefined) setOwners(apiOwners)
-        if (apiLabels !== undefined) setLabels(apiLabels)
         if (apiStatusSummary !== undefined) setStatusSummary(apiStatusSummary)
       }
     } catch (err: any) {
@@ -399,7 +382,7 @@ export function BoardRequestsTab({ boardId, showMyTasksOnly }: BoardRequestsTabP
     } finally {
       if (!signal?.aborted) setLoading(false)
     }
-  }, [boardId, showMyTasksOnly, jobFilter, ownerFilter, statusFilter, labelFilter, contactSearch, dateFrom, dateTo, attachmentFilter, typeFilter])
+  }, [boardId, showMyTasksOnly, jobFilter, ownerFilter, statusFilter, contactSearch, dateFrom, dateTo, attachmentFilter, typeFilter])
 
   // Fetch with AbortController — cancels previous in-flight request on re-fetch
   useEffect(() => {
@@ -599,30 +582,6 @@ export function BoardRequestsTab({ boardId, showMyTasksOnly }: BoardRequestsTabP
               <SelectItem value="form">Form</SelectItem>
             </SelectContent>
           </Select>
-
-          {/* Labels Filter */}
-          {labels.length > 0 && (
-            <Select value={labelFilter} onValueChange={setLabelFilter}>
-              <SelectTrigger className="w-[140px]">
-                <Tag className="w-4 h-4 mr-2" />
-                <SelectValue placeholder="All Labels" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Labels</SelectItem>
-                {labels.map(label => (
-                  <SelectItem key={label.id} value={label.id}>
-                    <span className="flex items-center gap-2">
-                      <span
-                        className="w-2 h-2 rounded-full"
-                        style={{ backgroundColor: label.color || "#6B7280" }}
-                      />
-                      {label.name}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
 
           {/* Attachment Filter */}
           <Select value={attachmentFilter} onValueChange={setAttachmentFilter}>

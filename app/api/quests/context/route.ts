@@ -30,8 +30,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      contactTypes: context.availableContactTypes,
-      groups: context.availableGroups,
+      contactTypes: [],
+      groups: [],
       stateKeys: context.availableStateKeys,
       standingQuestsEnabled: true
     })

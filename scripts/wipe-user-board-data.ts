@@ -108,29 +108,7 @@ async function wipeUserBoardData(email: string) {
       const drafts = await prisma.$executeRaw`DELETE FROM "EmailDraft" WHERE "organizationId" = ${orgId}`
       console.log(`  ✓ Deleted ${drafts} email drafts`)
 
-      // 9. Delete job contact labels
-      if (tableNames.has('JobContactLabel')) {
-        const jcl = await prisma.$executeRaw`
-          DELETE FROM "JobContactLabel" WHERE "jobLabelId" IN (
-            SELECT id FROM "JobLabel" WHERE "jobId" IN (
-              SELECT id FROM "Job" WHERE "organizationId" = ${orgId}
-            )
-          )
-        `
-        console.log(`  ✓ Deleted ${jcl} job contact labels`)
-      }
-
-      // 10. Delete job labels
-      if (tableNames.has('JobLabel')) {
-        const jl = await prisma.$executeRaw`
-          DELETE FROM "JobLabel" WHERE "jobId" IN (
-            SELECT id FROM "Job" WHERE "organizationId" = ${orgId}
-          )
-        `
-        console.log(`  ✓ Deleted ${jl} job labels`)
-      }
-
-      // 11. Delete job comments
+      // 9. Delete job comments
       if (tableNames.has('JobComment')) {
         const jc = await prisma.$executeRaw`
           DELETE FROM "JobComment" WHERE "jobId" IN (

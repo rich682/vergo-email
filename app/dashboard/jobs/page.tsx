@@ -314,64 +314,7 @@ export default function JobsPage() {
   }, [])
 
   const fetchStakeholderOptions = useCallback(async () => {
-    try {
-      // Fetch contact types and groups in parallel
-      const [typesResponse, groupsResponse] = await Promise.all([
-        fetch("/api/contacts/type-counts", { credentials: "include" }),
-        fetch("/api/groups", { credentials: "include" }),
-      ])
-
-      if (typesResponse.ok) {
-        const data = await typesResponse.json()
-        const types: { value: string; label: string; count: number }[] = []
-
-        // Add built-in types
-        const builtInCounts = data.builtInCounts || {}
-        const typeLabels: Record<string, string> = {
-          "VENDOR": "Vendors",
-          "CLIENT": "Clients",
-          "EMPLOYEE": "Employees",
-          "CONTRACTOR": "Contractors",
-          "PARTNER": "Partners",
-          "OTHER": "Other"
-        }
-
-        Object.entries(builtInCounts).forEach(([type, count]) => {
-          if (count && (count as number) > 0) {
-            types.push({
-              value: type,
-              label: typeLabels[type] || type,
-              count: count as number
-            })
-          }
-        })
-
-        // Add custom types
-        const customTypes = data.customTypes || []
-        customTypes.forEach((ct: { label: string; count: number }) => {
-          types.push({
-            value: `CUSTOM:${ct.label}`,
-            label: ct.label,
-            count: ct.count
-          })
-        })
-
-        setAvailableContactTypes(types)
-      }
-
-      if (groupsResponse.ok) {
-        const data = await groupsResponse.json()
-        // API returns array directly, not { groups: [...] }
-        const groupsArray = Array.isArray(data) ? data : (data.groups || [])
-        setAvailableGroups(groupsArray.map((g: any) => ({
-          id: g.id,
-          name: g.name,
-          memberCount: g.entityCount || g._count?.entities || 0
-        })))
-      }
-    } catch (error) {
-      console.error("Error fetching stakeholder options:", error)
-    }
+    // Contact types and groups removed — stakeholder options are now empty
   }, [])
 
   // Consolidated mount fetch — parallel load of all board data

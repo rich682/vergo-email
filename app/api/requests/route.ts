@@ -34,7 +34,6 @@ export async function GET(request: NextRequest) {
     const jobId = searchParams.get("jobId")
     const ownerId = searchParams.get("ownerId")
     const status = searchParams.get("status") as TaskStatus | null
-    const labelId = searchParams.get("labelId")
     const readStatus = searchParams.get("readStatus") // unread | read | replied
     const hasAttachments = searchParams.get("hasAttachments") // yes | no
     const requestType = searchParams.get("requestType") // "standard" | "data" | "form"
@@ -121,15 +120,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Filter by label (label is on the taskInstance)
-    if (labelId) {
-      where.taskInstance = {
-        taskInstanceLabels: {
-          some: { id: labelId }
-        }
-      }
-    }
-
     // Get total count for pagination
     const totalCount = await prisma.request.count({ where })
 
@@ -179,13 +169,6 @@ export async function GET(request: NextRequest) {
                 email: true
               }
             },
-            taskInstanceLabels: {
-              select: {
-                id: true,
-                name: true,
-                color: true
-              }
-            }
           }
         },
         // Include message count for reply indicator
@@ -207,7 +190,7 @@ export async function GET(request: NextRequest) {
     const isInitialFetch = page <= 1
 
     // Fire dropdown + status queries in parallel for better performance (only on initial fetch)
-    const [jobsWithRequests, owners, labelsFromJobs, statusCounts] = isInitialFetch
+    const [jobsWithRequests, owners, statusCounts] = isInitialFetch
       ? await Promise.all([
           // Get only task instances that have sent requests (exclude drafts), filtered by access
           prisma.taskInstance.findMany({
@@ -234,24 +217,6 @@ export async function GET(request: NextRequest) {
             },
             orderBy: { name: "asc" }
           }),
-          // Get all labels from task instances that have active requests (not drafts)
-          prisma.taskInstanceLabel.findMany({
-            where: {
-              taskInstance: {
-                organizationId,
-                requests: {
-                  some: { isDraft: false }
-                }
-              }
-            },
-            select: {
-              id: true,
-              name: true,
-              color: true
-            },
-            distinct: ["name"],
-            orderBy: { name: "asc" }
-          }),
           // Get status counts (exclude drafts from counts)
           prisma.request.groupBy({
             by: ["status"],
@@ -263,7 +228,7 @@ export async function GET(request: NextRequest) {
             _count: true
           }),
         ])
-      : [[], [], [], []]
+      : [[], [], []]
 
     const statusSummary = statusCounts.reduce((acc, item) => {
       acc[item.status] = item._count
@@ -289,7 +254,6 @@ export async function GET(request: NextRequest) {
     if (isInitialFetch) {
       response.jobs = jobsWithRequests
       response.owners = owners
-      response.labels = labelsFromJobs
       response.statusSummary = statusSummary
     }
 

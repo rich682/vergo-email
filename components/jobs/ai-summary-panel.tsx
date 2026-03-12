@@ -60,10 +60,19 @@ export function AISummaryPanel({ boardId }: AISummaryPanelProps) {
     }
   }
 
-  // Load summary on mount and when boardId changes
+  // Reset summary when boardId changes so it re-fetches on next expand
   useEffect(() => {
-    fetchSummary()
+    setSummary(null)
+    setHasLoaded(false)
+    setError(null)
   }, [boardId])
+
+  // Only fetch when the user expands the panel
+  useEffect(() => {
+    if (isExpanded && !summary && !isLoading) {
+      fetchSummary()
+    }
+  }, [isExpanded, summary])
 
   const handleItemClick = (itemId: string) => {
     router.push(`/dashboard/jobs/${itemId}`)

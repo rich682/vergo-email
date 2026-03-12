@@ -14,8 +14,6 @@
 import { callOpenAI } from "@/lib/utils/openai-retry"
 import { getOpenAIClient } from "@/lib/utils/openai-client"
 import { prisma } from "@/lib/prisma"
-import { ContactType } from "@prisma/client"
-import { resolveRecipientsWithReasons } from "./recipient-filter.service"
 import type {
   QuestInterpretRequest,
   QuestInterpretationResult,
@@ -28,17 +26,6 @@ import type {
   QuestResolvedCounts,
   OrganizationContext
 } from "@/lib/types/quest"
-
-// Valid contact types from Prisma schema
-const VALID_CONTACT_TYPES: string[] = [
-  "UNKNOWN",
-  "EMPLOYEE", 
-  "VENDOR",
-  "CLIENT",
-  "CONTRACTOR",
-  "MANAGEMENT",
-  "CUSTOM"
-]
 
 // Core entity fields that should never appear as data tags
 const EXCLUDED_STATE_KEYS = new Set([
@@ -66,17 +53,11 @@ export class QuestInterpreterService {
    * Fetch organization context for LLM prompt injection
    */
   static async getOrganizationContext(organizationId: string): Promise<OrganizationContext> {
-    // Get all groups for the organization
-    const groups = await prisma.group.findMany({
-      where: { organizationId },
-      select: { id: true, name: true }
-    })
-
-    // Note: State keys functionality has been removed as part of the migration
-    // to item-scoped labels. The availableStateKeys array is now always empty.
+    // Contact types and groups have been removed as part of the contacts feature removal.
+    // All arrays are now empty - recipients are resolved via direct entity/user IDs.
     return {
-      availableContactTypes: VALID_CONTACT_TYPES.filter(t => t !== "UNKNOWN" && t !== "CUSTOM"),
-      availableGroups: groups.map(g => ({ id: g.id, name: g.name })),
+      availableContactTypes: [],
+      availableGroups: [],
       availableStateKeys: []
     }
   }
@@ -128,98 +109,61 @@ export class QuestInterpreterService {
    * Build the system prompt with organization context
    */
   private static buildSystemPrompt(context: OrganizationContext): string {
-    const groupNames = context.availableGroups.map(g => g.name)
-    const stateKeyNames = context.availableStateKeys.map(s => s.stateKey)
-    
-    return `You are an AI assistant that interprets natural language requests for sending emails to contacts.
+    return `You are an AI assistant that interprets natural language requests for sending emails to recipients.
 
-Your task is to extract structured information from the user's request and map it to the organization's data model.
-
-ORGANIZATION DATA MODEL:
-- Available Contact Types: ${context.availableContactTypes.join(", ")}
-- Available Groups: ${groupNames.length > 0 ? groupNames.join(", ") : "(none)"}
-- Available Data Tags: ${stateKeyNames.length > 0 ? stateKeyNames.join(", ") : "(none)"}
+Your task is to extract structured information from the user's request.
 
 INTERPRETATION RULES:
-1. Map natural language to contact types:
-   - "employees", "staff", "team members" → EMPLOYEE
-   - "vendors", "suppliers" → VENDOR
-   - "clients", "customers" → CLIENT
-   - "contractors", "freelancers" → CONTRACTOR
-   - "management", "managers", "executives" → MANAGEMENT
-
-2. Identify groups ONLY if explicitly mentioned by name (case-insensitive match)
-   - Do NOT assume or infer a group if the user doesn't mention one
-   - "all employees" with no group mentioned → groupNames should be empty []
-   - "employees in NY Office" → groupNames: ["NY Office"]
-
-3. Identify data tags ONLY if explicitly mentioned with keywords like "include", "with", "missing", "who have", "who haven't":
-   - "include invoice number" → This is about PERSONALIZATION, not filtering. Do NOT add to stateFilter.
-   - "missing W-9" or "who haven't submitted W-9" → stateFilter with mode "missing" and stateKey "w9"
-   - "with unpaid invoices" or "who have unpaid invoices" → stateFilter with mode "has" and stateKey "invoice"
-   - Do NOT infer stateFilter unless the user explicitly mentions filtering by a data attribute
-   - If no filtering keywords are used, stateFilter should be omitted entirely
-
-4. Extract schedule information:
+1. Extract schedule information:
    - "by end of week" → deadline = next Friday
    - "by January 31st" → deadline = specific date
    - "immediately" or no timing mentioned → sendTiming = "immediate"
 
-5. Extract reminder information:
+2. Extract reminder information:
    - "send reminders every Wednesday" → weekly reminders on Wednesday
    - "follow up daily" → daily reminders
    - "until they reply" → stopCondition = "reply"
    - "until the deadline" → stopCondition = "deadline"
    - "until deadline or reply" → stopCondition = "reply_or_deadline"
 
-6. Determine request type (IMPORTANT):
+3. Determine request type (IMPORTANT):
    - "recurring" = open-ended, repeating requests with NO specific deadline
      - Phrases: "every week", "every Wednesday", "weekly", "monthly", "every month", "on an ongoing basis"
-     - Example: "send an email to all employees every Wednesday" → requestType = "recurring"
+     - Example: "send an email every Wednesday" → requestType = "recurring"
    - "one-off" = single request, may have a deadline and reminders
      - Most requests are one-off unless they explicitly use recurring language
-     - Example: "email employees about timesheets due Friday" → requestType = "one-off"
+     - Example: "email about timesheets due Friday" → requestType = "one-off"
      - Example: "send reminders every Wednesday until Friday" → requestType = "one-off" (has a deadline)
    - Key distinction: "every X" without a deadline = recurring; "every X until Y" = one-off with reminders
 
 CONFIDENCE LEVELS:
-- "high": Exact match to known type/group names
-- "medium": Fuzzy match or reasonable inference
-- "low": Ambiguous or no clear match
+- "high": Clear, unambiguous request
+- "medium": Reasonable inference
+- "low": Ambiguous or unclear
 
 OUTPUT FORMAT (JSON):
 {
-  "recipientSelection": {
-    "contactTypes": ["EMPLOYEE"],  // Array of contact type names from the list above
-    "groupNames": [],              // ONLY include if user explicitly mentions a group name - empty array if no group specified
-    "stateFilter": null            // ONLY include if user explicitly wants to FILTER by data (e.g. "missing W-9", "who haven't submitted"). Set to null if not filtering.
-  },
+  "recipientSelection": {},
   "scheduleIntent": {
     "sendTiming": "immediate" | "scheduled",
-    "scheduledDate": "2026-01-15",  // ISO date if scheduled
-    "deadline": "2026-01-31"        // ISO date if mentioned
+    "scheduledDate": "2026-01-15",
+    "deadline": "2026-01-31"
   },
   "reminderIntent": {
     "enabled": true,
     "frequency": "daily" | "weekly" | "biweekly",
-    "dayOfWeek": 3,  // 0=Sunday, 1=Monday, ..., 6=Saturday
+    "dayOfWeek": 3,
     "stopCondition": "reply" | "deadline" | "reply_or_deadline"
   },
-  "requestType": "one-off" | "recurring",  // IMPORTANT: "recurring" only if open-ended with no deadline
+  "requestType": "one-off" | "recurring",
   "confidence": "high" | "medium" | "low",
   "interpretationSummary": {
-    "audienceDescription": "All employees",
+    "audienceDescription": "Selected recipients",
     "scheduleDescription": "Send immediately, due by January 31st",
     "reminderDescription": "Reminders every Wednesday until deadline or reply",
-    "assumptions": ["Interpreted 'employees' as type EMPLOYEE"]
+    "assumptions": []
   },
-  "warnings": [
-    {
-      "type": "ambiguous_term",
-      "message": "Could not find group 'Marketing Team'",
-      "suggestion": "Did you mean 'Marketing'?"
-    }
-  ]
+  "warnings": []
 }
 
 TODAY'S DATE: ${new Date().toISOString().split('T')[0]} (${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })})
@@ -233,12 +177,8 @@ DATE CALCULATION RULES:
 - If today is Monday Jan 13, 2026, then "this Friday" = January 16, 2026
 
 IMPORTANT:
-- Only output contact types from the available list
-- Only output group names that exist in the organization AND are explicitly mentioned by the user
-- Do NOT infer or assume groups - if user says "all employees" without mentioning a group, groupNames must be empty []
 - If no clear audience is specified, set confidence to "low" and add a warning
-- Always provide assumptions explaining your interpretation
-- When in doubt, leave groupNames empty - the user can add a group in the confirmation step`
+- Always provide assumptions explaining your interpretation`
   }
 
   /**
@@ -250,65 +190,10 @@ IMPORTANT:
     context: OrganizationContext
   ): Promise<QuestInterpretationResult> {
     const warnings: QuestWarning[] = [...(parsed.warnings || [])]
-    
-    // Validate contact types
-    const validContactTypes = (parsed.recipientSelection?.contactTypes || [])
-      .filter(t => VALID_CONTACT_TYPES.includes(t.toUpperCase()))
-      .map(t => t.toUpperCase())
-    
-    if (parsed.recipientSelection?.contactTypes?.length && validContactTypes.length === 0) {
-      warnings.push({
-        type: "no_matching_type",
-        message: `Contact type(s) not recognized: ${parsed.recipientSelection.contactTypes.join(", ")}`,
-        suggestion: `Available types: ${VALID_CONTACT_TYPES.filter(t => t !== "UNKNOWN" && t !== "CUSTOM").join(", ")}`
-      })
-    }
 
-    // Validate group names
-    const groupNameMap = new Map(context.availableGroups.map(g => [g.name.toLowerCase(), g.name]))
-    const validGroupNames = (parsed.recipientSelection?.groupNames || [])
-      .map(name => groupNameMap.get(name.toLowerCase()))
-      .filter((name): name is string => name !== undefined)
-    
-    const invalidGroupNames = (parsed.recipientSelection?.groupNames || [])
-      .filter(name => !groupNameMap.has(name.toLowerCase()))
-    
-    if (invalidGroupNames.length > 0) {
-      warnings.push({
-        type: "ambiguous_term",
-        message: `Group(s) not found: ${invalidGroupNames.join(", ")}`,
-        suggestion: context.availableGroups.length > 0 
-          ? `Available groups: ${context.availableGroups.map(g => g.name).join(", ")}`
-          : "No groups available in this organization"
-      })
-    }
-
-    // Validate state keys
-    const stateKeySet = new Set(context.availableStateKeys.map(s => s.stateKey.toLowerCase()))
-    const requestedStateKeys = parsed.recipientSelection?.stateFilter?.stateKeys || []
-    const validStateKeys = requestedStateKeys.filter(key => 
-      stateKeySet.has(key.toLowerCase()) || 
-      // Allow partial matches
-      Array.from(stateKeySet).some(sk => sk.includes(key.toLowerCase()) || key.toLowerCase().includes(sk))
-    )
-
-    // Build validated recipient selection
-    const recipientSelection: QuestRecipientSelection = {
-      contactTypes: validContactTypes.length > 0 ? validContactTypes : undefined,
-      groupNames: validGroupNames.length > 0 ? validGroupNames : undefined,
-      stateFilter: validStateKeys.length > 0 ? {
-        stateKeys: validStateKeys,
-        mode: parsed.recipientSelection?.stateFilter?.mode || "has"
-      } : undefined
-    }
-
-    // Check for empty audience
-    if (!recipientSelection.contactTypes?.length && !recipientSelection.groupNames?.length) {
-      warnings.push({
-        type: "empty_audience",
-        message: "No valid recipients identified. Please specify contact types or groups."
-      })
-    }
+    // Recipient selection is now handled via direct entity/user IDs.
+    // Contact types, groups, and state filters have been removed.
+    const recipientSelection: QuestRecipientSelection = {}
 
     // Build schedule intent with date validation
     const scheduleIntent: QuestScheduleIntent = {
@@ -388,23 +273,11 @@ IMPORTANT:
    * Build human-readable audience description
    */
   private static buildAudienceDescription(selection: QuestRecipientSelection): string {
-    const parts: string[] = []
-    
-    if (selection.contactTypes?.length) {
-      const types = selection.contactTypes.map(t => t.toLowerCase() + "s")
-      parts.push(`All ${types.join(" and ")}`)
+    if (selection.entityIds?.length || selection.userIds?.length) {
+      const count = (selection.entityIds?.length || 0) + (selection.userIds?.length || 0)
+      return `${count} selected recipient(s)`
     }
-    
-    if (selection.groupNames?.length) {
-      parts.push(`in ${selection.groupNames.join(", ")}`)
-    }
-    
-    if (selection.stateFilter) {
-      const mode = selection.stateFilter.mode === "missing" ? "missing" : "with"
-      parts.push(`${mode} ${selection.stateFilter.stateKeys.join(", ")}`)
-    }
-    
-    return parts.length > 0 ? parts.join(" ") : "No audience specified"
+    return "No audience specified"
   }
 
   /**
@@ -478,26 +351,11 @@ IMPORTANT:
     selection: QuestRecipientSelection,
     context: OrganizationContext
   ): Promise<QuestResolvedCounts> {
-    // Convert semantic selection to database query format
-    const groupIds = selection.groupNames
-      ?.map(name => context.availableGroups.find(g => g.name === name)?.id)
-      .filter((id): id is string => id !== undefined)
-
-    const dbSelection = {
-      contactTypes: selection.contactTypes,
-      groupIds: groupIds?.length ? groupIds : undefined,
-      stateFilter: selection.stateFilter ? {
-        stateKeys: selection.stateFilter.stateKeys,
-        mode: selection.stateFilter.mode
-      } : undefined
-    }
-
-    // Use the recipient filter service to get actual counts
-    const result = await resolveRecipientsWithReasons(organizationId, dbSelection)
-
+    // Contact-based recipient resolution has been removed.
+    // Counts are now resolved via direct entity/user IDs at execution time.
     return {
-      matchingRecipients: result.counts.included,
-      excludedCount: result.counts.excluded
+      matchingRecipients: 0,
+      excludedCount: 0
     }
   }
 
@@ -508,52 +366,22 @@ IMPORTANT:
     organizationId: string,
     selection: QuestRecipientSelection,
     context: OrganizationContext
-  ): Promise<Array<{ 
+  ): Promise<Array<{
     id?: string
     email: string
     name?: string
     contactType?: string
     tagValues?: Record<string, string>
   }>> {
-    // Convert semantic selection to database query format
-    const groupIds = selection.groupNames
-      ?.map(name => context.availableGroups.find(g => g.name === name)?.id)
-      .filter((id): id is string => id !== undefined)
-
-    const dbSelection = {
-      contactTypes: selection.contactTypes,
-      groupIds: groupIds?.length ? groupIds : undefined,
-      stateFilter: selection.stateFilter ? {
-        stateKeys: selection.stateFilter.stateKeys,
-        mode: selection.stateFilter.mode
-      } : undefined
-    }
-
-    // Use the recipient filter service to get actual recipients
-    const result = await resolveRecipientsWithReasons(organizationId, dbSelection)
-
-    // Note: Tag values functionality has been removed as part of the migration
-    // to item-scoped labels. Recipients are returned without tag values.
-    return result.recipientsWithReasons.map(r => ({
-      id: r.entityId,
-      email: r.email,
-      name: (r.firstName || r.name) ?? undefined,
-      contactType: r.contactType ?? undefined,
-      tagValues: undefined
-    }))
+    // Contact-based recipient resolution has been removed.
+    // Recipients are now resolved via direct entity/user IDs at execution time.
+    return []
   }
 }
 
 // Type for raw LLM response (before validation)
 type LLMInterpretationResponse = {
-  recipientSelection?: {
-    contactTypes?: string[]
-    groupNames?: string[]
-    stateFilter?: {
-      stateKeys?: string[]
-      mode?: "has" | "missing"
-    }
-  }
+  recipientSelection?: {}
   scheduleIntent?: {
     sendTiming?: "immediate" | "scheduled"
     scheduledDate?: string

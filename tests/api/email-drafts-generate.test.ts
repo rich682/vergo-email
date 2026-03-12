@@ -80,7 +80,7 @@ const mockCreate = (data: any) => {
     subjectTemplate: data.subjectTemplate || null,
     bodyTemplate: data.bodyTemplate || null,
     htmlBodyTemplate: data.htmlBodyTemplate || null,
-    suggestedRecipients: data.suggestedRecipients || { entityIds: [], groupIds: [] },
+    suggestedRecipients: data.suggestedRecipients || { entityIds: [] },
     suggestedCampaignName: data.suggestedCampaignName || null,
     suggestedCampaignType: data.suggestedCampaignType || null,
     createdAt: new Date(),
@@ -128,7 +128,7 @@ vi.mock('@/lib/services/ai-email-generation.service', () => ({
       subjectTemplate: 'Test {{Tag}}',
       bodyTemplate: 'Test body {{Tag}}',
       htmlBodyTemplate: '<p>Test body {{Tag}}</p>',
-      suggestedRecipients: { entityIds: [], groupIds: [] },
+      suggestedRecipients: { entityIds: [] },
       suggestedCampaignName: 'Test Campaign',
       suggestedCampaignType: null
     }))
@@ -360,7 +360,7 @@ describe('POST /api/email-drafts/generate', () => {
       subjectTemplate: undefined,
       bodyTemplate: undefined,
       htmlBodyTemplate: undefined,
-      suggestedRecipients: { entityIds: [], groupIds: [] },
+      suggestedRecipients: { entityIds: [] },
       suggestedCampaignName: 'Test Campaign',
       suggestedCampaignType: undefined
     })

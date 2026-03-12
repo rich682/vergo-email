@@ -167,23 +167,7 @@ export function FormRequestFlow({
         }
       }
 
-      // Fetch all entities/contacts (API returns array directly)
-      const entitiesResponse = await fetch("/api/entities", { credentials: "include" })
-      if (entitiesResponse.ok) {
-        const entities: EntityOption[] = await entitiesResponse.json()
-        for (const entity of entities) {
-          if (entity.email) {
-            const fullName = entity.firstName + (entity.lastName ? ` ${entity.lastName}` : "")
-            allRecipients.push({
-              id: entity.id,
-              name: fullName || entity.email,
-              email: entity.email,
-              type: "entity",
-              subLabel: entity.contactType?.toLowerCase(),
-            })
-          }
-        }
-      }
+      // Entities are no longer listed directly — users search or use databases for recipients
 
       setRecipients(allRecipients)
     } catch (err) {

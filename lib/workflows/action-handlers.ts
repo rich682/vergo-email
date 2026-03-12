@@ -246,80 +246,36 @@ async function handleSendRequestV2(
           htmlBody: htmlResult?.rendered || bodyResult.rendered,
         }
       })
-    } else {
-      // Contact-based sources — use existing recipient resolution
-      const { resolveRecipientsWithReasons, buildRecipientPersonalizationData } = await import(
-        "@/lib/services/recipient-filter.service"
-      )
+    } else if (recipientSourceType === "specific_users" && params.userIds?.length) {
+      // For users, resolve their emails directly
+      const users = await prisma.user.findMany({
+        where: {
+          id: { in: params.userIds },
+          organizationId: context.organizationId,
+        },
+        select: { id: true, email: true, name: true },
+      })
 
-      let recipientSelection: { entityIds?: string[]; groupIds?: string[]; contactTypes?: string[] } = {}
-
-      if (recipientSourceType === "contact_types" && params.contactTypes?.length) {
-        recipientSelection = { contactTypes: params.contactTypes }
-      } else if (recipientSourceType === "groups" && params.groupIds?.length) {
-        recipientSelection = { groupIds: params.groupIds }
-      } else if (recipientSourceType === "specific_contacts" && params.entityIds?.length) {
-        recipientSelection = { entityIds: params.entityIds }
-      } else if (recipientSourceType === "specific_users" && params.userIds?.length) {
-        // For users, resolve their emails directly
-        const users = await prisma.user.findMany({
-          where: {
-            id: { in: params.userIds },
-            organizationId: context.organizationId,
-          },
-          select: { id: true, email: true, name: true },
-        })
-
-        recipients = users.map((u) => ({ email: u.email, name: u.name || undefined }))
-        perRecipientEmails = users.map((u) => {
-          const data: Record<string, string> = {
-            "First Name": u.name?.split(" ")[0] || "",
-            "Email": u.email,
-          }
-          const subjectResult = renderTemplate(template.subjectTemplate, data)
-          const bodyResult = renderTemplate(template.bodyTemplate, data)
-          const htmlResult = template.htmlBodyTemplate
-            ? renderTemplate(template.htmlBodyTemplate, data)
-            : null
-          return {
-            email: u.email,
-            subject: subjectResult.rendered,
-            body: bodyResult.rendered,
-            htmlBody: htmlResult?.rendered || bodyResult.rendered,
-          }
-        })
-
-        // Skip the resolveRecipientsWithReasons call below
-        return await sendAndReturn(
-          EmailSendingService,
-          context,
-          template,
-          recipients,
-          perRecipientEmails,
-          params,
-          requestTemplateId
-        )
-      } else {
-        return { success: false, error: "No recipients are configured for this agent. Please check the recipient settings." }
-      }
-
-      const resolved = await resolveRecipientsWithReasons(context.organizationId, recipientSelection)
-
-      recipients = resolved.recipients.map((r) => ({ email: r.email, name: r.firstName || r.name || undefined }))
-      perRecipientEmails = resolved.recipients.map((r) => {
-        const data = buildRecipientPersonalizationData(r)
+      recipients = users.map((u) => ({ email: u.email, name: u.name || undefined }))
+      perRecipientEmails = users.map((u) => {
+        const data: Record<string, string> = {
+          "First Name": u.name?.split(" ")[0] || "",
+          "Email": u.email,
+        }
         const subjectResult = renderTemplate(template.subjectTemplate, data)
         const bodyResult = renderTemplate(template.bodyTemplate, data)
         const htmlResult = template.htmlBodyTemplate
           ? renderTemplate(template.htmlBodyTemplate, data)
           : null
         return {
-          email: r.email,
+          email: u.email,
           subject: subjectResult.rendered,
           body: bodyResult.rendered,
           htmlBody: htmlResult?.rendered || bodyResult.rendered,
         }
       })
+    } else {
+      return { success: false, error: "No recipients are configured for this agent. Please check the recipient settings." }
     }
 
     return await sendAndReturn(

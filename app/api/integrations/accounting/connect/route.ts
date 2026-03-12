@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Sync contacts into Entity model (non-blocking — best effort)
+    // Sync contacts into Contacts database (non-blocking — best effort)
     try {
       const { AccountingSyncService } = await import(
         "@/lib/services/accounting-sync.service"

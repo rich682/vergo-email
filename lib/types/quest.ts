@@ -10,8 +10,6 @@
  * without rewriting business logic.
  */
 
-import type { RecipientFilter, RecipientSelection } from "@/lib/services/recipient-filter.service"
-
 // ============================================================================
 // Interpretation Types (Phase 2)
 // ============================================================================
@@ -29,14 +27,8 @@ export type QuestInterpretRequest = {
  * LLM outputs these labels, server resolves to actual entities
  */
 export type QuestRecipientSelection = {
-  contactTypes?: string[]      // e.g., ["EMPLOYEE"] - maps to ContactType enum
-  groupNames?: string[]        // e.g., ["NY Office"] - resolved by server to groupIds
   entityIds?: string[]         // Direct entity IDs from recipient selection
   userIds?: string[]           // Direct user IDs from recipient selection
-  stateFilter?: {
-    stateKeys: string[]        // e.g., ["unpaid_invoices"]
-    mode: "has" | "missing"
-  }
 }
 
 /**
@@ -178,11 +170,8 @@ export type QuestStatus =
  * This is what actually gets executed
  */
 export type QuestConfirmedSelection = {
-  contactTypes?: string[]
-  groupIds?: string[]           // Resolved from groupNames by server
   entityIds?: string[]          // Direct entity IDs selected by user
   userIds?: string[]            // Direct user IDs selected by user
-  stateFilter?: RecipientFilter
 }
 
 /**
@@ -323,11 +312,11 @@ export type QuestExecutionResult = {
  * Ensures LLM can only output valid labels that exist in the user's organization
  */
 export type OrganizationContext = {
-  availableContactTypes: string[]  // ["EMPLOYEE", "VENDOR", "CLIENT", ...]
+  availableContactTypes: string[]  // kept for backward compatibility, always empty
   availableGroups: Array<{
     id: string
     name: string
-  }>
+  }>  // kept for backward compatibility, always empty
   availableStateKeys: Array<{
     stateKey: string
     count: number

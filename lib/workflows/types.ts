@@ -195,9 +195,6 @@ export interface ActionContext {
 // ─── Send Request Action Params ──────────────────────────────────────────
 
 export type RecipientSourceType =
-  | "contact_types"
-  | "groups"
-  | "specific_contacts"
   | "specific_users"
   | "database"
   | "task_history"
@@ -215,9 +212,6 @@ export interface SendRequestActionParams {
 
   // Recipients
   recipientSourceType?: RecipientSourceType
-  contactTypes?: string[]
-  groupIds?: string[]
-  entityIds?: string[]
   userIds?: string[]
   databaseId?: string
   emailColumnKey?: string

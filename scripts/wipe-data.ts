@@ -52,15 +52,7 @@ async function wipeData() {
     const emailDrafts = await prisma.emailDraft.deleteMany({})
     console.log(`  ✓ Deleted ${emailDrafts.count} email drafts`)
 
-    // 8. Delete job contact labels
-    const jobContactLabels = await prisma.taskInstanceContactLabel.deleteMany({})
-    console.log(`  ✓ Deleted ${jobContactLabels.count} job contact labels`)
-
-    // 9. Delete job labels
-    const jobLabels = await prisma.taskInstanceLabel.deleteMany({})
-    console.log(`  ✓ Deleted ${jobLabels.count} job labels`)
-
-    // 10. Delete job comments
+    // 8. Delete job comments
     const jobComments = await prisma.taskInstanceComment.deleteMany({})
     console.log(`  ✓ Deleted ${jobComments.count} job comments`)
 
@@ -76,15 +68,7 @@ async function wipeData() {
     const boards = await prisma.board.deleteMany({})
     console.log(`  ✓ Deleted ${boards.count} boards`)
 
-    // 14. Delete entity-group associations
-    const entityGroups = await prisma.entityGroup.deleteMany({})
-    console.log(`  ✓ Deleted ${entityGroups.count} entity-group associations`)
-
-    // 15. Delete groups
-    const groups = await prisma.group.deleteMany({})
-    console.log(`  ✓ Deleted ${groups.count} groups`)
-
-    // 16. Delete entities (contacts)
+    // 14. Delete entities (contacts)
     const entities = await prisma.entity.deleteMany({})
     console.log(`  ✓ Deleted ${entities.count} contacts`)
 

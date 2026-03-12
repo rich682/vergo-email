@@ -1,8 +1,6 @@
 import { callOpenAI } from "@/lib/utils/openai-retry"
 import { getOpenAIClient } from "@/lib/utils/openai-client"
 import { prisma } from "@/lib/prisma"
-import { EntityService } from "./entity.service"
-import { GroupService } from "./group.service"
 import { CampaignType } from "@prisma/client"
 
 export interface GeneratedEmailDraft {
@@ -15,7 +13,6 @@ export interface GeneratedEmailDraft {
   htmlBodyTemplate?: string
   suggestedRecipients: {
     entityIds?: string[]
-    groupIds?: string[]
   }
   suggestedCampaignName?: string
   suggestedCampaignType?: CampaignType
@@ -41,7 +38,6 @@ export class AIEmailGenerationService {
     prompt: string
     selectedRecipients?: {
       entityIds?: string[]
-      groupIds?: string[]
     }
     correlationId?: string
     senderName?: string
@@ -60,23 +56,9 @@ export class AIEmailGenerationService {
       where: { id: data.organizationId }
     })
 
-    // Get entities and groups for context
-    const entities = await EntityService.findByOrganization(data.organizationId)
-    const groups = await GroupService.findByOrganization(data.organizationId)
-
     // Build context for AI
     const context = {
       organization: organization?.name,
-      entities: entities.map(e => ({
-        id: e.id,
-        name: e.firstName,
-        email: e.email
-      })),
-      groups: groups.map(g => ({
-        id: g.id,
-        name: g.name,
-        description: g.description
-      }))
     }
 
     // Generate email with GPT-4o-mini (30s timeout to allow for complex personalized emails)
@@ -239,7 +221,6 @@ export class AIEmailGenerationService {
         htmlBodyTemplate: htmlBodyTemplate,
         suggestedRecipients: {
           entityIds: data.selectedRecipients?.entityIds || [],
-          groupIds: data.selectedRecipients?.groupIds || []
         },
         suggestedCampaignName: undefined,
         suggestedCampaignType: undefined,
@@ -344,7 +325,7 @@ export class AIEmailGenerationService {
             - subjectTemplate: string (same as subject, but explicitly use {{Tag Name}} if personalization is enabled, including {{First Name}} if relevant)
             - bodyTemplate: string (same as body, but explicitly use {{Tag Name}} if personalization is enabled, including {{First Name}} in greeting if available. Use \\n for line breaks)
             - htmlBodyTemplate: string (same as htmlBody, but explicitly use {{Tag Name}} if personalization is enabled, including {{First Name}} in greeting if available. Use <br> for line breaks, <br><br> for paragraph breaks)
-            - suggestedRecipients: { entityIds?: string[], groupIds?: string[] } (optional)
+            - suggestedRecipients: { entityIds?: string[] } (optional)
             - suggestedCampaignName?: string (optional)
             - suggestedCampaignType?: string (optional, one of: W9, COI, EXPENSE, TIMESHEET, INVOICE, RECEIPT, CUSTOM)
             
@@ -521,33 +502,9 @@ Generate a polite, professional email draft that ${data.availableTags && data.av
         ? `${parsed.htmlBody || parsed.body || ""}<br><br>${signature.replace(/\n/g, '<br>')}`
         : (parsed.htmlBody || parsed.body || "")
 
-    // Use selected recipients if provided, otherwise validate AI suggestions
-    let validatedRecipients: GeneratedEmailDraft["suggestedRecipients"] = {
-      entityIds: [],
-      groupIds: []
-    }
-
-    if (data.selectedRecipients) {
-      // Use user-selected recipients
-      validatedRecipients = {
-        entityIds: data.selectedRecipients.entityIds || [],
-        groupIds: data.selectedRecipients.groupIds || []
-      }
-    } else {
-      // Validate and filter AI-suggested recipients
-      if (parsed.suggestedRecipients?.entityIds) {
-        const validEntityIds = entities
-          .filter(e => parsed.suggestedRecipients.entityIds?.includes(e.id))
-          .map(e => e.id)
-        validatedRecipients.entityIds = validEntityIds
-      }
-
-      if (parsed.suggestedRecipients?.groupIds) {
-        const validGroupIds = groups
-          .filter(g => parsed.suggestedRecipients.groupIds?.includes(g.id))
-          .map(g => g.id)
-        validatedRecipients.groupIds = validGroupIds
-      }
+    // Use selected recipients if provided
+    const validatedRecipients: GeneratedEmailDraft["suggestedRecipients"] = {
+      entityIds: data.selectedRecipients?.entityIds || [],
     }
 
     // Validate suggested campaign type

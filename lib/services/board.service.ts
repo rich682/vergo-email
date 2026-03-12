@@ -683,7 +683,6 @@ export class BoardService {
       where: { boardId: previousBoardId, organizationId },
       include: {
         collaborators: true,
-        taskInstanceLabels: { include: { contactLabels: true } },
       }
     })
 
@@ -853,7 +852,6 @@ export class BoardService {
       },
       include: {
         collaborators: true,
-        taskInstanceLabels: { include: { contactLabels: true } },
       }
     })
 

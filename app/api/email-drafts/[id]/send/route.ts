@@ -8,7 +8,6 @@ import { PersonalizationDataService } from "@/lib/services/personalization-data.
 import { renderTemplate, extractTags, validateRenderedContent } from "@/lib/utils/template-renderer"
 import { normalizeTagName } from "@/lib/utils/csv-parser"
 import { prisma } from "@/lib/prisma"
-import { resolveRecipientsWithFilter } from "@/lib/services/recipient-filter.service"
 import crypto from "crypto"
 import { canPerformAction } from "@/lib/permissions"
 
@@ -155,7 +154,7 @@ export async function POST(
         })
       }
     } else {
-      // Contact mode: resolve from selected recipients (with optional filter)
+      // Contact mode: resolve from selected recipients via direct entity lookup
       let selectedRecipients = recipientsPayload ?? (draft as any).suggestedRecipients ?? {}
       if (typeof selectedRecipients === "string") {
         try {
@@ -165,12 +164,24 @@ export async function POST(
         }
       }
 
-      const resolved = await resolveRecipientsWithFilter(session.user.organizationId, selectedRecipients)
-      recipientList = resolved.recipients.map(r => ({
-        email: r.email,
-        name: r.name ?? undefined,
-        entityId: r.entityId ?? undefined
-      }))
+      const entityIds: string[] = selectedRecipients.entityIds || []
+      if (entityIds.length > 0) {
+        const entities = await prisma.entity.findMany({
+          where: {
+            id: { in: entityIds },
+            organizationId: session.user.organizationId,
+            email: { not: null },
+          },
+          select: { id: true, email: true, firstName: true, lastName: true },
+        })
+        recipientList = entities
+          .filter(e => e.email)
+          .map(e => ({
+            email: e.email!,
+            name: e.firstName ?? undefined,
+            entityId: e.id,
+          }))
+      }
     }
 
     if (recipientList.length === 0) {

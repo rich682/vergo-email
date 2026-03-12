@@ -175,25 +175,6 @@ export async function POST(request: NextRequest) {
       })
 
       if (!existingEntity) {
-        // Find or create the Onboarding group
-        let onboardingGroup = await tx.group.findFirst({
-          where: {
-            name: "Onboarding",
-            organizationId: user.organizationId
-          }
-        })
-
-        if (!onboardingGroup) {
-          onboardingGroup = await tx.group.create({
-            data: {
-              name: "Onboarding",
-              description: "New team members for onboarding",
-              color: "#10b981", // Green color
-              organizationId: user.organizationId
-            }
-          })
-        }
-
         // Create entity for the user
         const userEntity = await tx.entity.create({
           data: {
@@ -202,14 +183,6 @@ export async function POST(request: NextRequest) {
             email: user.email,
             contactType: "EMPLOYEE",
             organizationId: user.organizationId
-          }
-        })
-
-        // Add to Onboarding group
-        await tx.entityGroup.create({
-          data: {
-            entityId: userEntity.id,
-            groupId: onboardingGroup.id
           }
         })
 

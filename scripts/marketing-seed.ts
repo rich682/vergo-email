@@ -39,42 +39,25 @@ async function main() {
   })
   console.log(`✓ Found ${users.length} team members`)
 
-  // ============ CONTACT GROUPS ============
-  // Check if groups already exist
-  let clientsGroup = await prisma.group.findFirst({ where: { name: 'Clients', organizationId: orgId } })
-  let vendorsGroup = await prisma.group.findFirst({ where: { name: 'Vendors', organizationId: orgId } })
-  let employeesGroup = await prisma.group.findFirst({ where: { name: 'Employees', organizationId: orgId } })
-
-  if (!clientsGroup) {
-    clientsGroup = await prisma.group.create({ data: { name: 'Clients', color: '#3B82F6', organizationId: orgId } })
-  }
-  if (!vendorsGroup) {
-    vendorsGroup = await prisma.group.create({ data: { name: 'Vendors', color: '#10B981', organizationId: orgId } })
-  }
-  if (!employeesGroup) {
-    employeesGroup = await prisma.group.create({ data: { name: 'Employees', color: '#F59E0B', organizationId: orgId } })
-  }
-  console.log(`✓ Contact groups ready`)
-
   // ============ CONTACTS (with companies) ============
   const contactsData = [
     // Clients
-    { firstName: 'Michael', lastName: 'Thompson', email: 'mthompson@acmecorp.com', companyName: 'ACME Corporation', contactType: ContactType.CLIENT, groupId: clientsGroup.id },
-    { firstName: 'Jennifer', lastName: 'Walsh', email: 'jwalsh@techstartup.io', companyName: 'TechStartup Inc', contactType: ContactType.CLIENT, groupId: clientsGroup.id },
-    { firstName: 'David', lastName: 'Kim', email: 'dkim@blueocean.com', companyName: 'Blue Ocean Ventures', contactType: ContactType.CLIENT, groupId: clientsGroup.id },
-    { firstName: 'Amanda', lastName: 'Foster', email: 'afoster@retailplus.com', companyName: 'RetailPlus LLC', contactType: ContactType.CLIENT, groupId: clientsGroup.id },
-    { firstName: 'Chris', lastName: 'Anderson', email: 'canderson@sunrisemfg.com', companyName: 'Sunrise Manufacturing', contactType: ContactType.CLIENT, groupId: clientsGroup.id },
+    { firstName: 'Michael', lastName: 'Thompson', email: 'mthompson@acmecorp.com', companyName: 'ACME Corporation', contactType: ContactType.CLIENT },
+    { firstName: 'Jennifer', lastName: 'Walsh', email: 'jwalsh@techstartup.io', companyName: 'TechStartup Inc', contactType: ContactType.CLIENT },
+    { firstName: 'David', lastName: 'Kim', email: 'dkim@blueocean.com', companyName: 'Blue Ocean Ventures', contactType: ContactType.CLIENT },
+    { firstName: 'Amanda', lastName: 'Foster', email: 'afoster@retailplus.com', companyName: 'RetailPlus LLC', contactType: ContactType.CLIENT },
+    { firstName: 'Chris', lastName: 'Anderson', email: 'canderson@sunrisemfg.com', companyName: 'Sunrise Manufacturing', contactType: ContactType.CLIENT },
     // Vendors
-    { firstName: 'Robert', lastName: 'Martinez', email: 'rmartinez@officesupply.com', companyName: 'Office Supply Co', contactType: ContactType.VENDOR, groupId: vendorsGroup.id },
-    { firstName: 'Lisa', lastName: 'Chang', email: 'lchang@cloudservices.net', companyName: 'CloudServices Inc', contactType: ContactType.VENDOR, groupId: vendorsGroup.id },
-    { firstName: 'James', lastName: 'Wilson', email: 'jwilson@legalpartners.com', companyName: 'Legal Partners LLP', contactType: ContactType.VENDOR, groupId: vendorsGroup.id },
-    { firstName: 'Maria', lastName: 'Garcia', email: 'mgarcia@cleanpro.com', companyName: 'CleanPro Services', contactType: ContactType.VENDOR, groupId: vendorsGroup.id },
-    { firstName: 'Tom', lastName: 'Baker', email: 'tbaker@securityfirst.com', companyName: 'SecurityFirst Inc', contactType: ContactType.VENDOR, groupId: vendorsGroup.id },
+    { firstName: 'Robert', lastName: 'Martinez', email: 'rmartinez@officesupply.com', companyName: 'Office Supply Co', contactType: ContactType.VENDOR },
+    { firstName: 'Lisa', lastName: 'Chang', email: 'lchang@cloudservices.net', companyName: 'CloudServices Inc', contactType: ContactType.VENDOR },
+    { firstName: 'James', lastName: 'Wilson', email: 'jwilson@legalpartners.com', companyName: 'Legal Partners LLP', contactType: ContactType.VENDOR },
+    { firstName: 'Maria', lastName: 'Garcia', email: 'mgarcia@cleanpro.com', companyName: 'CleanPro Services', contactType: ContactType.VENDOR },
+    { firstName: 'Tom', lastName: 'Baker', email: 'tbaker@securityfirst.com', companyName: 'SecurityFirst Inc', contactType: ContactType.VENDOR },
     // Employees (for W-2, benefits, expense reports)
-    { firstName: 'Kevin', lastName: 'Brown', email: 'kbrown@company.demo', companyName: 'Greenfield Accounting', contactType: ContactType.EMPLOYEE, groupId: employeesGroup.id },
-    { firstName: 'Rachel', lastName: 'Green', email: 'rgreen@company.demo', companyName: 'Greenfield Accounting', contactType: ContactType.EMPLOYEE, groupId: employeesGroup.id },
-    { firstName: 'Steve', lastName: 'Miller', email: 'smiller@company.demo', companyName: 'Greenfield Accounting', contactType: ContactType.EMPLOYEE, groupId: employeesGroup.id },
-    { firstName: 'Nancy', lastName: 'Taylor', email: 'ntaylor@company.demo', companyName: 'Greenfield Accounting', contactType: ContactType.EMPLOYEE, groupId: employeesGroup.id },
+    { firstName: 'Kevin', lastName: 'Brown', email: 'kbrown@company.demo', companyName: 'Greenfield Accounting', contactType: ContactType.EMPLOYEE },
+    { firstName: 'Rachel', lastName: 'Green', email: 'rgreen@company.demo', companyName: 'Greenfield Accounting', contactType: ContactType.EMPLOYEE },
+    { firstName: 'Steve', lastName: 'Miller', email: 'smiller@company.demo', companyName: 'Greenfield Accounting', contactType: ContactType.EMPLOYEE },
+    { firstName: 'Nancy', lastName: 'Taylor', email: 'ntaylor@company.demo', companyName: 'Greenfield Accounting', contactType: ContactType.EMPLOYEE },
   ]
 
   let contactsCreated = 0
@@ -89,7 +72,6 @@ async function main() {
           companyName: c.companyName,
           contactType: c.contactType,
           organizationId: orgId,
-          groups: { create: { groupId: c.groupId } }
         }
       })
       contactsCreated++

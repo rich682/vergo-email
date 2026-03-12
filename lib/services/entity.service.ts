@@ -10,12 +10,11 @@ export class EntityService {
     phone?: string
     companyName?: string
     organizationId: string
-    groupIds?: string[]
     contactType?: any
     contactTypeCustomLabel?: string
     isInternal?: boolean
   }): Promise<Entity> {
-    const entity = await prisma.entity.create({
+    return prisma.entity.create({
       data: {
         firstName: data.firstName,
         lastName: data.lastName,
@@ -28,17 +27,6 @@ export class EntityService {
         organizationId: data.organizationId
       }
     })
-
-    if (data.groupIds && data.groupIds.length > 0) {
-      await prisma.entityGroup.createMany({
-        data: data.groupIds.map(groupId => ({
-          entityId: entity.id,
-          groupId
-        }))
-      })
-    }
-
-    return entity
   }
 
   static async findById(
@@ -49,13 +37,6 @@ export class EntityService {
       where: {
         id,
         organizationId
-      },
-      include: {
-        groups: {
-          include: {
-            group: true
-          }
-        }
       }
     })
   }
@@ -68,13 +49,6 @@ export class EntityService {
       where: {
         email,
         organizationId
-      },
-      include: {
-        groups: {
-          include: {
-            group: true
-          }
-        }
       }
     })
   }
@@ -85,7 +59,7 @@ export class EntityService {
     organizationId: string
   }): Promise<Entity> {
     const existing = await this.findByEmail(data.email, data.organizationId)
-    
+
     if (existing) {
       return existing
     }
@@ -94,116 +68,6 @@ export class EntityService {
       firstName: data.firstName || data.email.split("@")[0],
       email: data.email,
       organizationId: data.organizationId
-    })
-  }
-
-  static async findByOrganization(
-    organizationId: string,
-    options?: {
-      groupId?: string
-      search?: string
-      contactType?: string
-      isInternal?: boolean
-      tagIds?: string[] // Filter by tags (groups)
-    }
-  ): Promise<Entity[]> {
-    const where: any = {
-      organizationId
-    }
-
-    // Support single groupId for backwards compatibility
-    if (options?.groupId) {
-      where.groups = {
-        some: {
-          groupId: options.groupId
-        }
-      }
-    }
-
-    // Filter by multiple tags - entity must have at least one of the specified tags
-    if (options?.tagIds && options.tagIds.length > 0) {
-      where.groups = {
-        some: {
-          groupId: { in: options.tagIds }
-        }
-      }
-    }
-
-    if (options?.search) {
-      where.OR = [
-        { firstName: { contains: options.search, mode: "insensitive" } },
-        { email: { contains: options.search, mode: "insensitive" } }
-      ]
-    }
-
-    if (options?.contactType) {
-      where.contactType = options.contactType
-    }
-
-    // Filter by internal/external status
-    if (options?.isInternal !== undefined) {
-      where.isInternal = options.isInternal
-    }
-
-    return prisma.entity.findMany({
-      where,
-      include: {
-        groups: {
-          include: {
-            group: true
-          }
-        }
-      },
-      orderBy: {
-        firstName: "asc"
-      }
-    })
-  }
-
-  static async update(
-    id: string,
-    organizationId: string,
-    data: Partial<Pick<Entity, "firstName" | "lastName" | "email" | "phone" | "companyName" | "contactType" | "contactTypeCustomLabel" | "isInternal">>
-  ): Promise<Entity> {
-    return prisma.entity.update({
-      where: {
-        id,
-        organizationId
-      },
-      data
-    })
-  }
-
-  static async addToGroup(
-    entityId: string,
-    groupId: string
-  ): Promise<void> {
-    await prisma.entityGroup.upsert({
-      where: {
-        entityId_groupId: {
-          entityId,
-          groupId
-        }
-      },
-      create: {
-        entityId,
-        groupId
-      },
-      update: {}
-    })
-  }
-
-  static async removeFromGroup(
-    entityId: string,
-    groupId: string
-  ): Promise<void> {
-    await prisma.entityGroup.delete({
-      where: {
-        entityId_groupId: {
-          entityId,
-          groupId
-        }
-      }
     })
   }
 
@@ -232,4 +96,3 @@ export class EntityService {
     return DomainDetectionService.isInternalEmail(email, organizationId)
   }
 }
-

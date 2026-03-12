@@ -4,7 +4,6 @@ import { authOptions } from "@/lib/auth"
 import { EmailDraftService } from "@/lib/services/email-draft.service"
 import { AIEmailGenerationService } from "@/lib/services/ai-email-generation.service"
 import { prisma } from "@/lib/prisma"
-import { resolveRecipientsWithFilter, buildRecipientPersonalizationData } from "@/lib/services/recipient-filter.service"
 import { checkRateLimit } from "@/lib/utils/rate-limit"
 import { canPerformAction } from "@/lib/permissions"
 
@@ -83,41 +82,25 @@ export async function POST(request: NextRequest) {
     }
 
     // Resolve recipients early to derive available tags from data personalization fields
-    let resolvedRecipients: Awaited<ReturnType<typeof resolveRecipientsWithFilter>> | null = null
+    let resolvedRecipientCount = 0
     let derivedTags: string[] = providedTags || []
-    
+
     if (recipientsWithFilter && personalizationMode === "contact") {
-      resolvedRecipients = await resolveRecipientsWithFilter(
-        session.user.organizationId,
-        recipientsWithFilter
-      )
-      
-      // Get selected data field keys - support both single key and multiple keys
-      const selectedKeys = recipientsWithFilter.stateFilter?.stateKeys?.length 
-        ? recipientsWithFilter.stateFilter.stateKeys 
-        : recipientsWithFilter.stateFilter?.stateKey 
-          ? [recipientsWithFilter.stateFilter.stateKey]
-          : []
-      
-      // Start with base contact fields
+      // Resolve recipients via direct entity lookup
+      const entityIds: string[] = recipientsWithFilter.entityIds || []
+      if (entityIds.length > 0) {
+        const entityCount = await prisma.entity.count({
+          where: {
+            id: { in: entityIds },
+            organizationId: session.user.organizationId,
+            email: { not: null },
+          },
+        })
+        resolvedRecipientCount = entityCount
+      }
+
+      // Base contact fields
       const dataKeys = new Set<string>(["First Name", "Email"])
-      
-      // Add selected data personalization fields as available tags
-      // (even if no recipients, so LLM knows what fields to use)
-      for (const key of selectedKeys) {
-        dataKeys.add(key)
-      }
-      
-      // If we have recipients, also derive tags from their actual contact state metadata
-      if (selectedKeys.length > 0 && resolvedRecipients.recipients.length > 0) {
-        for (const recipient of resolvedRecipients.recipients) {
-          const data = buildRecipientPersonalizationData(recipient)
-          for (const key of Object.keys(data)) {
-            dataKeys.add(key)
-          }
-        }
-      }
-      
       derivedTags = Array.from(dataKeys)
     }
 
@@ -277,10 +260,10 @@ export async function POST(request: NextRequest) {
 
     const dbUpdateStartTime = Date.now()
     
-    // Use already-resolved recipients if available, otherwise resolve now
+    // Recipient stats via direct entity count
     const recipientStats =
       requestName && recipientsWithFilter && personalizationMode !== "csv"
-        ? (resolvedRecipients || await resolveRecipientsWithFilter(session.user.organizationId, recipientsWithFilter))
+        ? { counts: { included: resolvedRecipientCount, excluded: 0 } }
         : null
 
     await EmailDraftService.update(draft.id, session.user.organizationId, {

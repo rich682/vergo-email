@@ -36,7 +36,6 @@ export type ModuleKey =
   | "forms"
   | "databases"
   | "reconciliations"
-  | "contacts"
   | "agents"
   | "analysis"
 
@@ -53,7 +52,6 @@ const MODULE_ROUTE_MAP: { path: string; module: ModuleKey }[] = [
   { path: "/dashboard/forms", module: "forms" },
   { path: "/dashboard/databases", module: "databases" },
   { path: "/dashboard/reconciliations", module: "reconciliations" },
-  { path: "/dashboard/contacts", module: "contacts" },
   // API route mappings
   { path: "/api/boards", module: "boards" },
   { path: "/api/task-instances", module: "boards" },
@@ -66,8 +64,6 @@ const MODULE_ROUTE_MAP: { path: string; module: ModuleKey }[] = [
   { path: "/api/form-requests", module: "forms" },
   { path: "/api/databases", module: "databases" },
   { path: "/api/reconciliations", module: "reconciliations" },
-  { path: "/api/contacts", module: "contacts" },
-  { path: "/api/entities", module: "contacts" },
   { path: "/dashboard/agents", module: "agents" },
   { path: "/api/agents", module: "agents" },
   { path: "/dashboard/analysis", module: "analysis" },
@@ -117,12 +113,6 @@ const EXEMPT_ROUTE_PATTERNS: RegExp[] = [
  * Format: "module:action" for readability and grouping.
  */
 export type ActionKey =
-  // Contacts
-  | "contacts:view"
-  | "contacts:manage"
-  | "contacts:import"
-  | "contacts:manage_groups"
-  | "contacts:manage_types"
   // Tasks & Boards
   | "tasks:view_all"
   | "boards:view_all"
@@ -132,9 +122,7 @@ export type ActionKey =
   | "tasks:import"
   | "boards:manage"
   | "boards:edit_columns"
-  // Labels & Attachments
-  | "labels:manage"
-  | "labels:apply_contacts"
+  // Attachments
   | "attachments:upload"
   // Inbox
   | "inbox:view_all"
@@ -217,9 +205,8 @@ export interface ActionDefinition {
  * All valid action keys as an array (for validation).
  */
 export const ALL_ACTION_KEYS: ActionKey[] = [
-  "contacts:view", "contacts:manage", "contacts:import", "contacts:manage_groups", "contacts:manage_types",
   "tasks:view_all", "boards:view_all", "tasks:create", "tasks:edit_any", "tasks:delete", "tasks:import", "boards:manage", "boards:edit_columns",
-  "labels:manage", "labels:apply_contacts", "attachments:upload",
+  "attachments:upload",
   "inbox:view_all", "inbox:manage_requests", "inbox:send_emails", "inbox:manage_drafts", "inbox:manage_quests", "inbox:review",
   "requests:view", "requests:manage",
   "reports:view_definitions", "reports:view_all_definitions", "reports:view_generated", "reports:manage", "reports:generate",
@@ -241,11 +228,6 @@ export const ALL_ACTION_KEYS: ActionKey[] = [
  */
 export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolean>> = {
   MANAGER: {
-    "contacts:view": true,
-    "contacts:manage": true,
-    "contacts:import": true,
-    "contacts:manage_groups": true,
-    "contacts:manage_types": true,
     "tasks:view_all": true,
     "boards:view_all": true,
     "tasks:create": true,
@@ -254,8 +236,6 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
     "tasks:import": true,
     "boards:manage": true,
     "boards:edit_columns": true,
-    "labels:manage": true,
-    "labels:apply_contacts": true,
     "attachments:upload": true,
     "inbox:view_all": true,
     "inbox:manage_requests": true,
@@ -296,11 +276,6 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
     "analysis:query": true,
   },
   MEMBER: {
-    "contacts:view": false,
-    "contacts:manage": false,
-    "contacts:import": false,
-    "contacts:manage_groups": false,
-    "contacts:manage_types": false,
     "tasks:view_all": false,
     "boards:view_all": false,
     "tasks:create": true,
@@ -309,8 +284,6 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
     "tasks:import": false,
     "boards:manage": false,
     "boards:edit_columns": false,
-    "labels:manage": true,
-    "labels:apply_contacts": false,
     "attachments:upload": true,
     "inbox:view_all": false,
     "inbox:manage_requests": false,
@@ -357,17 +330,6 @@ export const DEFAULT_ACTION_PERMISSIONS: Record<string, Record<ActionKey, boolea
  */
 export const ACTION_CATEGORIES: ActionCategory[] = [
   {
-    key: "contacts",
-    label: "Contacts",
-    actions: [
-      { key: "contacts:view", label: "View contacts" },
-      { key: "contacts:manage", label: "Create, edit & delete contacts" },
-      { key: "contacts:import", label: "Import contacts (CSV/file)" },
-      { key: "contacts:manage_groups", label: "Create, edit & delete contact groups" },
-      { key: "contacts:manage_types", label: "Create & delete custom contact types" },
-    ],
-  },
-  {
     key: "tasks_boards",
     label: "Tasks & Boards",
     actions: [
@@ -382,11 +344,9 @@ export const ACTION_CATEGORIES: ActionCategory[] = [
     ],
   },
   {
-    key: "labels_attachments",
-    label: "Labels & Attachments",
+    key: "attachments",
+    label: "Attachments",
     actions: [
-      { key: "labels:manage", label: "Create, edit & delete task labels" },
-      { key: "labels:apply_contacts", label: "Apply / remove labels on contacts" },
       { key: "attachments:upload", label: "Upload task attachments" },
     ],
   },
@@ -499,7 +459,6 @@ export const MODULE_ACTION_KEYS: Record<ModuleKey, ActionKey[]> = {
   forms:           ["forms:view_templates", "forms:view_all_templates", "forms:view_submissions", "forms:manage", "forms:send"],
   databases:       ["databases:view_databases", "databases:view_all_databases", "databases:view_data", "databases:manage", "databases:import"],
   reconciliations: ["reconciliations:view_configs", "reconciliations:view_all_configs", "reconciliations:view_runs", "reconciliations:manage", "reconciliations:resolve"],
-  contacts:        ["contacts:view", "contacts:manage", "contacts:import", "contacts:manage_groups", "contacts:manage_types"],
   agents:          ["agents:view", "agents:manage", "agents:execute"],
   analysis:        ["analysis:view", "analysis:view_all", "analysis:manage", "analysis:query"],
 }

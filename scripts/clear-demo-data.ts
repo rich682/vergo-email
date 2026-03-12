@@ -103,13 +103,7 @@ async function main() {
   })
   console.log(`   ✓ Deleted ${deletedEmailDrafts.count} email drafts`)
 
-  // 9. Delete job labels
-  const deletedJobLabels = await prisma.taskInstanceLabel.deleteMany({
-    where: { organizationId }
-  })
-  console.log(`   ✓ Deleted ${deletedJobLabels.count} job labels`)
-
-  // 10. Delete job comments
+  // 9. Delete job comments
   const deletedJobComments = await prisma.taskInstanceComment.deleteMany({
     where: { taskInstance: { organizationId } }
   })
