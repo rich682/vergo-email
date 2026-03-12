@@ -9,6 +9,7 @@ import { useState } from "react"
 const MODULE_LIST = [
   { key: "accountsPayable", label: "Accounts Payable", description: "Expense tracking, invoices, approvals, and reimbursements" },
   { key: "agentsEnabled", label: "AI Agents", description: "AI-powered agents for reconciliation and task automation" },
+  { key: "reviewHub", label: "Review Hub", description: "Centralized review of agent outputs, email replies, and form submissions" },
   { key: "advancedBoardTypes", label: "Advanced Board Types", description: "Enable all board cadences and manual board creation. OFF = simplified monthly book close mode." },
 ]
 
