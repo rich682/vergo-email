@@ -179,7 +179,7 @@ function EmailSetupContent() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="px-8 py-4">
+      <div className="p-8">
         {/* Success/Error Messages */}
         {message && (
           <div

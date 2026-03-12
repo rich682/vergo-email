@@ -109,15 +109,12 @@ export default function ReviewHubPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-8 py-8">
+    <div className="p-8 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Review Hub</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Items requiring your attention
-          </p>
-        </div>
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">
+          Items requiring your attention
+        </p>
         {!loading && totalCount > 0 && (
           <span className="text-sm text-gray-500">
             {totalCount} item{totalCount !== 1 ? "s" : ""} pending
@@ -126,7 +123,7 @@ export default function ReviewHubPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 mb-4 border-b border-gray-100 pb-px">
+      <div className="flex items-center gap-1 border-b border-gray-100 pb-px">
         {TAB_CONFIG.map(tab => {
           const count = tab.key === "all" ? totalCount : (counts[tab.key] || 0)
           const isActive = activeTab === tab.key
@@ -157,7 +154,7 @@ export default function ReviewHubPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3">
         <div className="relative">
           <select
             value={selectedBoardId}

@@ -31,6 +31,8 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/agents": "Agents",
   "/dashboard/campaigns": "Campaigns",
   "/dashboard/analysis": "Analytics",
+  "/dashboard/review-hub": "Review Hub",
+  "/dashboard/settings/email": "Settings",
 }
 
 export function PageTitle() {
