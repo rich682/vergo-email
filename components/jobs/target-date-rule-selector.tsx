@@ -62,6 +62,7 @@ interface TargetDateRuleSelectorProps {
   boardPeriodStart?: string | null
   boardPeriodEnd?: string | null
   compact?: boolean
+  fallbackDateDisplay?: string | null // Display string for raw dueDate when no rule is set
 }
 
 // ── Component ───────────────────────────────────────────────────────
@@ -72,6 +73,7 @@ export function TargetDateRuleSelector({
   boardPeriodStart,
   boardPeriodEnd,
   compact = false,
+  fallbackDateDisplay,
 }: TargetDateRuleSelectorProps) {
   const frequency: FrequencyType = value ? getFrequencyFromRule(value) : "monthly"
 
@@ -240,6 +242,8 @@ export function TargetDateRuleSelector({
               <span className="text-sm text-gray-500">
                 {describeTargetDateRule(value)}
               </span>
+            ) : fallbackDateDisplay ? (
+              <span className="text-sm text-gray-700">{fallbackDateDisplay}</span>
             ) : (
               <span className="text-sm text-gray-400">Set date</span>
             )}

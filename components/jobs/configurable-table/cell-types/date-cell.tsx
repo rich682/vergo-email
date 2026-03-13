@@ -43,6 +43,7 @@ export function DateCell({
           boardPeriodStart={boardPeriodStart}
           boardPeriodEnd={boardPeriodEnd}
           compact
+          fallbackDateDisplay={displayValue}
         />
       </div>
     )
