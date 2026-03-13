@@ -92,6 +92,7 @@ interface KanbanColumn {
   statuses: string[] // Statuses that belong to this column
   color: string
   bgColor: string
+  borderColor: string
 }
 
 const KANBAN_COLUMNS: KanbanColumn[] = [
@@ -101,6 +102,7 @@ const KANBAN_COLUMNS: KanbanColumn[] = [
     statuses: ["NOT_STARTED"],
     color: "text-gray-600",
     bgColor: "bg-gray-100",
+    borderColor: "border-l-gray-400",
   },
   {
     id: "in_progress",
@@ -108,6 +110,7 @@ const KANBAN_COLUMNS: KanbanColumn[] = [
     statuses: ["IN_PROGRESS", "ACTIVE", "WAITING"],
     color: "text-blue-600",
     bgColor: "bg-blue-100",
+    borderColor: "border-l-blue-500",
   },
   {
     id: "complete",
@@ -115,6 +118,7 @@ const KANBAN_COLUMNS: KanbanColumn[] = [
     statuses: ["COMPLETE", "COMPLETED"],
     color: "text-green-600",
     bgColor: "bg-green-100",
+    borderColor: "border-l-green-500",
   },
 ]
 
@@ -193,12 +197,12 @@ function TaskCard({ job, onClick, onOwnerChange, teamMembers }: TaskCardProps) {
   return (
     <div
       onClick={onClick}
-      className="bg-white border border-gray-200 rounded-lg px-3 py-2 shadow-sm hover:shadow-md hover:border-gray-300 cursor-pointer transition-all"
+      className="bg-white border border-gray-100 rounded-lg px-3 py-2.5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] hover:-translate-y-[1px] cursor-pointer transition-all"
     >
       <div className="flex items-center gap-2">
         {/* Task Type Badge */}
         {job.taskType && TASK_TYPE_CONFIG[job.taskType] && (
-          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap ${TASK_TYPE_CONFIG[job.taskType].bg} ${TASK_TYPE_CONFIG[job.taskType].text}`}>
+          <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium whitespace-nowrap ${TASK_TYPE_CONFIG[job.taskType].bg} ${TASK_TYPE_CONFIG[job.taskType].text}`}>
             {TASK_TYPE_CONFIG[job.taskType].label}
           </span>
         )}
@@ -291,11 +295,11 @@ function KanbanColumnComponent({ column, jobs, onTaskClick, onDropTask, onOwnerC
       onDrop={handleDrop}
     >
       {/* Column Header */}
-      <div className={`flex items-center gap-2 px-3 py-2 rounded-t-lg ${column.bgColor}`}>
-        <h3 className={`font-medium text-sm ${column.color}`}>
+      <div className={`flex items-center gap-2 px-3 py-2 rounded-t-lg border-l-[3px] ${column.borderColor} ${column.bgColor}`}>
+        <h3 className={`font-semibold text-sm ${column.color}`}>
           {column.title}
         </h3>
-        <span className={`text-xs px-1.5 py-0.5 rounded-full ${column.bgColor} ${column.color}`}>
+        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${column.bgColor} ${column.color}`}>
           {jobs.length}
         </span>
       </div>

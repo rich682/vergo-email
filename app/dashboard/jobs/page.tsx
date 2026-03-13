@@ -36,7 +36,9 @@ import {
   Tag,
   Zap,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Columns3,
+  LayoutList
 } from "lucide-react"
 import { format } from "date-fns"
 import { formatDateInTimezone, formatDateOnlyRange } from "@/lib/utils/timezone"
@@ -53,7 +55,7 @@ import { AIBulkUploadModal } from "@/components/jobs/ai-bulk-upload-modal"
 import { AISummaryPanel } from "@/components/jobs/ai-summary-panel"
 // Onboarding checklist hidden for now - not at that product stage
 // import { OnboardingChecklist } from "@/components/onboarding-checklist"
-import { JobRow } from "@/components/jobs/configurable-table"
+import { ConfigurableTable, JobRow } from "@/components/jobs/configurable-table"
 import { KanbanView } from "@/components/jobs/kanban-view"
 import { EditBoardModal } from "@/components/boards/edit-board-modal"
 import { usePermissions } from "@/components/permissions-context"
@@ -192,6 +194,17 @@ export default function JobsPage() {
   const [showMyTasksOnly, setShowMyTasksOnly] = useState(false)
   const [taskTypeFilter, setTaskTypeFilter] = useState("")
   const [ownerFilter, setOwnerFilter] = useState("")
+
+  // View mode: kanban (cards) or table (columns)
+  type TaskViewMode = "kanban" | "table"
+  const [taskViewMode, setTaskViewMode] = useState<TaskViewMode>(() => {
+    if (typeof window === "undefined") return "table"
+    return (localStorage.getItem("vergo-task-view-mode") as TaskViewMode) || "table"
+  })
+  const handleViewModeChange = useCallback((mode: TaskViewMode) => {
+    setTaskViewMode(mode)
+    localStorage.setItem("vergo-task-view-mode", mode)
+  }, [])
 
   // Create modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -1040,7 +1053,7 @@ export default function JobsPage() {
             {canCreateTasks && (
             <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
               <DialogTrigger asChild>
-                <Button>
+                <Button variant="brand">
                   <Plus className="w-4 h-4 mr-2" />
                   New Task
                 </Button>
@@ -1192,11 +1205,37 @@ export default function JobsPage() {
         )}
 
         {/* View Toggle — visible on all tabs */}
-        {canAssignOwner && (
-          <div className="mb-4">
+        <div className="mb-4 flex items-center justify-between">
+          {canAssignOwner ? (
             <ViewToggle showMine={showMyTasksOnly} onToggle={setShowMyTasksOnly} myLabel="My Tasks" />
-          </div>
-        )}
+          ) : <div />}
+          {activeTab === "tasks" && (
+            <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+              <button
+                onClick={() => handleViewModeChange("table")}
+                className={`p-1.5 rounded-md transition-colors ${
+                  taskViewMode === "table"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-400 hover:text-gray-600"
+                }`}
+                title="Table view"
+              >
+                <LayoutList className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => handleViewModeChange("kanban")}
+                className={`p-1.5 rounded-md transition-colors ${
+                  taskViewMode === "kanban"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-400 hover:text-gray-600"
+                }`}
+                title="Kanban view"
+              >
+                <Columns3 className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Tab Content */}
         {activeTab === "requests" && boardId && (
@@ -1299,12 +1338,22 @@ export default function JobsPage() {
           <div className="text-center py-12 text-gray-500">
             No tasks match "{searchQuery}"
           </div>
-        ) : (
+        ) : taskViewMode === "kanban" ? (
           <KanbanView
             jobs={jobRows}
             onStatusChange={handleStatusChange}
             onOwnerChange={canAssignOwner ? handleOwnerChange : undefined}
             teamMembers={teamMembers}
+          />
+        ) : (
+          <ConfigurableTable
+            jobs={jobRows}
+            teamMembers={teamMembers}
+            boardId={boardId}
+            onJobUpdate={handleJobUpdate}
+            onAddTask={() => setIsCreateOpen(true)}
+            onDelete={canCreateTasks ? handleBulkDelete : undefined}
+            onDuplicate={canCreateTasks ? handleBulkDuplicate : undefined}
           />
         )}
       </>)}

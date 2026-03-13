@@ -5,6 +5,7 @@ import { Sidebar } from "./sidebar"
 import { UserMenu } from "./user-menu"
 import { NotificationBell } from "./notification-bell"
 import { PageTitle } from "./page-title"
+import { TrainingCallCTA } from "./training-call-cta"
 import type { OrgActionPermissions } from "@/lib/permissions"
 import { PermissionsProvider } from "./permissions-context"
 
@@ -71,7 +72,7 @@ export function DashboardShell({
           style={{ paddingLeft: pinned ? 208 : 52 }}
         >
           {/* Top header bar */}
-          <header className="h-16 border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 bg-white z-30">
+          <header className="h-14 border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 bg-white z-30">
             <PageTitle />
             <div className="flex items-center gap-4">
               <NotificationBell />
@@ -85,10 +86,13 @@ export function DashboardShell({
           </header>
 
           {/* Page content */}
-          <main className="min-h-[calc(100vh-4rem)]">
+          <main className="min-h-[calc(100vh-3.5rem)]">
             {children}
           </main>
         </div>
+
+        {/* Floating training call CTA */}
+        <TrainingCallCTA />
       </div>
     </PermissionsProvider>
   )

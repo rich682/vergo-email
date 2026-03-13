@@ -45,16 +45,16 @@ export const shadows = {
 export const colors = {
   // Neutrals
   gray: {
-    50: '#FAFAFA',
-    100: '#F5F5F5',
-    200: '#E5E5E5',
-    300: '#D4D4D4',
-    400: '#A3A3A3',
-    500: '#737373',
-    600: '#525252',
-    700: '#404040',
-    800: '#262626',
-    900: '#171717',
+    50: '#FAF9F7',
+    100: '#F5F4F2',
+    200: '#E8E5E1',
+    300: '#D6D3CE',
+    400: '#A8A29E',
+    500: '#78716C',
+    600: '#57534E',
+    700: '#44403C',
+    800: '#292524',
+    900: '#1C1917',
   },
   
   // Primary (Green)
@@ -86,8 +86,8 @@ export const colors = {
 // ============================================
 export const typography = {
   fontFamily: {
-    display: '"NeueHaasDisplay-Roman", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    body: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    display: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    body: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   },
   fontSize: {
     xs: '11px',

@@ -276,8 +276,8 @@ export function Sidebar({
       "flex items-center rounded-lg transition-all duration-150",
       collapsed ? "justify-center mx-1.5 p-2" : "gap-3 mx-2 px-2.5 py-1.5",
       active
-        ? "bg-gray-100 text-gray-900"
-        : "text-gray-500 hover:bg-gray-50 hover:text-gray-700",
+        ? "bg-orange-50 text-gray-900 border-l-[3px] border-l-orange-500 [&_svg]:text-orange-600"
+        : "text-gray-500 hover:bg-gray-50 hover:text-gray-700 border-l-[3px] border-l-transparent [&_svg]:text-gray-400 [&_svg]:hover:text-gray-500",
     ].join(" ")
 
   const labelCls = collapsed

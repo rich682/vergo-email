@@ -3,7 +3,11 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import React from "react";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-inter",
+});
 
 export const metadata: Metadata = {
   title: "Vergo",
@@ -17,7 +21,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className={`${inter.variable} ${inter.className}`}>
         {children}
         {/* Global error handler for uncaught errors */}
         <script

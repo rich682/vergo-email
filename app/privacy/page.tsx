@@ -23,7 +23,7 @@ export default function PrivacyPolicyPage() {
 
       {/* Content */}
       <main className="max-w-4xl mx-auto px-6 py-12">
-        <h1 className="font-display text-4xl text-gray-900 mb-4">Privacy Policy</h1>
+        <h1 className="font-semibold text-4xl text-gray-900 mb-4">Privacy Policy</h1>
         <p className="text-gray-500 mb-12">Last updated: January 17, 2026</p>
 
         <div className="prose prose-gray max-w-none">

@@ -102,7 +102,7 @@ export default function SignupPage() {
               <Mail className="w-10 h-10 text-white" />
             </div>
 
-            <h1 className="font-display text-3xl text-gray-900 mb-3">
+            <h1 className="font-semibold text-3xl text-gray-900 mb-3">
               Check your inbox
             </h1>
             <p className="text-gray-500 mb-8">
@@ -142,7 +142,7 @@ export default function SignupPage() {
           </div>
           <div className="relative z-10 flex flex-col justify-center px-16 text-white">
             <div className="max-w-lg">
-              <h2 className="font-display text-4xl mb-6">
+              <h2 className="font-semibold text-4xl mb-6">
                 You're almost there!
               </h2>
               <p className="text-xl text-white/80 leading-relaxed">
@@ -173,7 +173,7 @@ export default function SignupPage() {
 
           {/* Header */}
           <div className="mb-8">
-            <h1 className="font-display text-3xl text-gray-900 mb-2">
+            <h1 className="font-semibold text-3xl text-gray-900 mb-2">
               Create your account
             </h1>
             <p className="text-gray-500">
@@ -395,7 +395,7 @@ export default function SignupPage() {
           <div className="max-w-lg">
             {/* Value prop */}
             <div>
-              <h2 className="text-5xl font-display leading-tight mb-6">
+              <h2 className="text-5xl font-semibold leading-tight mb-6">
                 Stop chasing.<br />Start closing.
               </h2>
               <p className="text-xl text-white/80 leading-relaxed">

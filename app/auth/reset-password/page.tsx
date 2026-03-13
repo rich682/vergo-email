@@ -119,7 +119,7 @@ function ResetPasswordContent() {
             <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-gradient-to-br from-red-400 to-rose-500 flex items-center justify-center shadow-lg shadow-red-500/25">
               <AlertCircle className="w-8 h-8 text-white" />
             </div>
-            <h1 className="font-display text-2xl text-gray-900 mb-2">Invalid Reset Link</h1>
+            <h1 className="font-semibold text-2xl text-gray-900 mb-2">Invalid Reset Link</h1>
             <p className="text-gray-500 mb-8">
               {tokenError || "This password reset link is invalid or has expired."}
             </p>
@@ -157,7 +157,7 @@ function ResetPasswordContent() {
             <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shadow-lg shadow-green-500/25">
               <CheckCircle className="w-8 h-8 text-white" />
             </div>
-            <h1 className="font-display text-2xl text-gray-900 mb-2">Password Reset!</h1>
+            <h1 className="font-semibold text-2xl text-gray-900 mb-2">Password Reset!</h1>
             <p className="text-gray-500 mb-8">
               Your password has been successfully reset. You can now sign in with your new password.
             </p>
@@ -186,7 +186,7 @@ function ResetPasswordContent() {
             <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/25">
               <Lock className="w-8 h-8 text-white" />
             </div>
-            <h1 className="font-display text-2xl text-gray-900 mb-2">Set new password</h1>
+            <h1 className="font-semibold text-2xl text-gray-900 mb-2">Set new password</h1>
             {userEmail && (
               <p className="text-gray-500">
                 Enter a new password for <span className="font-medium text-gray-700">{userEmail}</span>

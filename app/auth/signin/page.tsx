@@ -56,7 +56,7 @@ export default function SignInPage() {
 
           {/* Header */}
           <div className="mb-8">
-            <h1 className="font-display text-3xl text-gray-900 mb-2">
+            <h1 className="font-semibold text-3xl text-gray-900 mb-2">
               Welcome back
             </h1>
             <p className="text-gray-500">
@@ -169,7 +169,7 @@ export default function SignInPage() {
         {/* Content */}
         <div className="relative z-10 flex flex-col justify-center px-16 text-white">
           <div className="max-w-lg">
-            <h2 className="font-display text-5xl leading-tight mb-6">
+            <h2 className="font-semibold text-5xl leading-tight mb-6">
               Stop chasing.<br />Start closing.
             </h2>
             <p className="text-xl text-white/80 mb-12 leading-relaxed">

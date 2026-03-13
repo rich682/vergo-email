@@ -61,7 +61,7 @@ export default function ForgotPasswordPage() {
                   <CheckCircle className="w-8 h-8 text-white" />
                 </div>
 
-                <h1 className="font-display text-2xl text-gray-900 mb-2">
+                <h1 className="font-semibold text-2xl text-gray-900 mb-2">
                   Check your email
                 </h1>
                 <p className="text-gray-500 mb-6">
@@ -100,7 +100,7 @@ export default function ForgotPasswordPage() {
                   <Mail className="w-8 h-8 text-white" />
                 </div>
 
-                <h1 className="font-display text-2xl text-gray-900 mb-2">
+                <h1 className="font-semibold text-2xl text-gray-900 mb-2">
                   Forgot your password?
                 </h1>
                 <p className="text-gray-500">

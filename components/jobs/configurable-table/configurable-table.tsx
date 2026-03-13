@@ -378,7 +378,7 @@ export function ConfigurableTable({
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
                         {/* Select All Checkbox for Group */}
-                        <th className="w-12 px-3 py-2 text-center">
+                        <th className="w-12 px-3 py-3 text-center">
                           <input
                             type="checkbox"
                             checked={isGroupAllSelected(group.status)}
@@ -389,17 +389,17 @@ export function ConfigurableTable({
                             className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500 cursor-pointer"
                           />
                         </th>
-                        <th className="w-10 px-2 py-2 text-center"></th>
+                        <th className="w-10 px-2 py-3 text-center"></th>
                         {visibleColumns.map((column) => (
                           <th
                             key={column.id}
-                            className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                            className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                             style={{ width: column.width ? `${column.width}px` : "auto" }}
                           >
                             {column.label}
                           </th>
                         ))}
-                        <th className="w-12 px-2 py-2">
+                        <th className="w-12 px-2 py-3">
                           <ColumnHeader
                             columns={columns}
                             onColumnsChange={handleColumnsChange}
@@ -424,7 +424,7 @@ export function ConfigurableTable({
                           }}
                         >
                           {/* Row Checkbox */}
-                          <td className="w-12 px-3 py-2 text-center">
+                          <td className="w-12 px-3 py-3 text-center">
                             <input
                               type="checkbox"
                               checked={selectedJobs.has(job.id)}
@@ -432,7 +432,7 @@ export function ConfigurableTable({
                               className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500 cursor-pointer"
                             />
                           </td>
-                          <td className="w-10 px-2 py-2 text-center">
+                          <td className="w-10 px-2 py-3 text-center">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation()
@@ -447,7 +447,7 @@ export function ConfigurableTable({
                           {visibleColumns.map((column) => (
                             <td
                               key={column.id}
-                              className="px-3 py-2"
+                              className="px-3 py-3"
                             >
                               <EditableCell
                                 column={column}
@@ -457,7 +457,7 @@ export function ConfigurableTable({
                               />
                             </td>
                           ))}
-                          <td className="px-2 py-2"></td>
+                          <td className="px-2 py-3"></td>
                         </tr>
                       ))}
                     </tbody>

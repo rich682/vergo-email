@@ -74,7 +74,7 @@ function VerifyEmailContent() {
             <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-gradient-to-br from-red-400 to-rose-500 flex items-center justify-center shadow-lg shadow-red-500/25">
               <AlertCircle className="w-8 h-8 text-white" />
             </div>
-            <h1 className="font-display text-2xl text-gray-900 mb-2">Verification Failed</h1>
+            <h1 className="font-semibold text-2xl text-gray-900 mb-2">Verification Failed</h1>
             <p className="text-gray-500 mb-4">{error}</p>
             <p className="text-sm text-gray-400 mb-8">
               The verification link may have expired or already been used.
@@ -111,7 +111,7 @@ function VerifyEmailContent() {
           <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shadow-lg shadow-green-500/25">
             <CheckCircle className="w-8 h-8 text-white" />
           </div>
-          <h1 className="font-display text-2xl text-gray-900 mb-2">Email Verified!</h1>
+          <h1 className="font-semibold text-2xl text-gray-900 mb-2">Email Verified!</h1>
           <p className="text-gray-500 mb-6">
             {orgName ? (
               <>Your account for <span className="font-medium text-gray-700">{orgName}</span> is now active.</>
