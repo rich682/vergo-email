@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { validateOrigin } from "@/lib/utils/csrf"
+import { fireWebhook } from "@/lib/services/webhook.service"
 import { validatePassword } from "@/lib/utils/password-validation"
 
 /**
@@ -154,7 +155,7 @@ export async function POST(request: NextRequest) {
 
     // Update user and create entity in a transaction
     await prisma.$transaction(async (tx) => {
-      // Update user: set password, clear token, mark as verified
+      // Update user: set password, clear token, mark as verified, skip onboarding wizard
       await tx.user.update({
         where: { id: user.id },
         data: {
@@ -162,7 +163,8 @@ export async function POST(request: NextRequest) {
           name: finalName,
           verificationToken: null,
           tokenExpiresAt: null,
-          emailVerified: true
+          emailVerified: true,
+          onboardingCompleted: true,
         }
       })
 
@@ -191,6 +193,16 @@ export async function POST(request: NextRequest) {
     })
 
     console.log(`[AcceptInvite] User ${user.id} accepted invite to ${user.organization.name}`)
+
+    // Fire webhook for external integrations (e.g. n8n → HubSpot)
+    fireWebhook("user.invite_accepted", {
+      email: user.email,
+      firstName,
+      lastName,
+      company: user.organization.name,
+      role: user.role,
+      organizationId: user.organizationId,
+    })
 
     return NextResponse.json({
       success: true,

@@ -56,6 +56,7 @@ export default async function DashboardLayout({
       orgActionPermissions={(session.user.orgActionPermissions as OrgActionPermissions) || null}
       orgName={orgName}
       orgFeatures={orgFeatures}
+      onboardingCompleted={session.user.onboardingCompleted}
     >
       {children}
     </DashboardShell>

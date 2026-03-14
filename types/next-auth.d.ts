@@ -11,6 +11,7 @@ declare module "next-auth" {
       role: UserRole
       organizationId: string
       orgActionPermissions: OrgActionPermissions
+      onboardingCompleted: boolean
     }
   }
 
@@ -21,6 +22,7 @@ declare module "next-auth" {
     role: UserRole
     organizationId: string
     orgActionPermissions: OrgActionPermissions
+    onboardingCompleted: boolean
   }
 }
 
@@ -32,6 +34,7 @@ declare module "next-auth/jwt" {
     role: UserRole
     organizationId: string
     orgActionPermissions: OrgActionPermissions
+    onboardingCompleted: boolean
     permissionsUpdatedAt?: number
   }
 }

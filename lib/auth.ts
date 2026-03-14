@@ -59,6 +59,7 @@ export const authOptions: NextAuthOptions = {
           role: user.role,
           organizationId: user.organizationId,
           orgActionPermissions: orgActionPermissions as OrgActionPermissions,
+          onboardingCompleted: user.onboardingCompleted,
         }
       }
     })
@@ -72,6 +73,7 @@ export const authOptions: NextAuthOptions = {
         token.role = user.role
         token.organizationId = user.organizationId
         token.orgActionPermissions = user.orgActionPermissions || null
+        token.onboardingCompleted = user.onboardingCompleted
         token.permissionsUpdatedAt = Date.now()
       }
 
@@ -89,13 +91,14 @@ export const authOptions: NextAuthOptions = {
             }),
             prisma.user.findUnique({
               where: { id: token.id as string },
-              select: { role: true }
+              select: { role: true, onboardingCompleted: true }
             })
           ])
           const features = (org?.features as Record<string, any>) || {}
           token.orgActionPermissions = features.roleActionPermissions || null
           if (freshUser) {
             token.role = freshUser.role
+            token.onboardingCompleted = freshUser.onboardingCompleted
           }
           token.permissionsUpdatedAt = now
         } catch {
@@ -113,6 +116,7 @@ export const authOptions: NextAuthOptions = {
         session.user.role = token.role as UserRole
         session.user.organizationId = token.organizationId as string
         session.user.orgActionPermissions = (token.orgActionPermissions as OrgActionPermissions) || null
+        session.user.onboardingCompleted = token.onboardingCompleted as boolean
       }
       return session
     }

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { usePathname, useRouter } from "next/navigation"
 import { Sidebar } from "./sidebar"
 import { UserMenu } from "./user-menu"
 import { NotificationBell } from "./notification-bell"
@@ -17,6 +18,7 @@ interface DashboardShellProps {
   orgActionPermissions?: OrgActionPermissions
   orgName?: string
   orgFeatures?: Record<string, boolean>
+  onboardingCompleted?: boolean
 }
 
 const SIDEBAR_PINNED_KEY = "vergo-sidebar-pinned"
@@ -29,9 +31,19 @@ export function DashboardShell({
   orgActionPermissions,
   orgName,
   orgFeatures = {},
+  onboardingCompleted,
 }: DashboardShellProps) {
+  const pathname = usePathname()
+  const router = useRouter()
   const [pinned, setPinned] = useState(true)
   const [hovered, setHovered] = useState(false)
+
+  // Redirect new users to the activation wizard
+  useEffect(() => {
+    if (onboardingCompleted === false && pathname !== "/dashboard/get-started") {
+      router.replace("/dashboard/get-started")
+    }
+  }, [onboardingCompleted, pathname, router])
 
   // Load persisted pin state from localStorage
   useEffect(() => {
@@ -51,6 +63,15 @@ export function DashboardShell({
   }, [])
 
   const expanded = pinned || hovered
+
+  // Full-page experience for the activation wizard (no sidebar/header)
+  if (pathname === "/dashboard/get-started") {
+    return (
+      <PermissionsProvider role={userRole} orgActionPermissions={orgActionPermissions || null}>
+        {children}
+      </PermissionsProvider>
+    )
+  }
 
   return (
     <PermissionsProvider role={userRole} orgActionPermissions={orgActionPermissions || null}>
