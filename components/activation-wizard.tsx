@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, X, Loader2, FileText, BarChart3, GitCompareArrows, Circle } from "lucide-react"
+import { Plus, X, Loader2, FileText, BarChart3, GitCompareArrows, Circle, ArrowRight, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -45,11 +45,15 @@ function generateId() {
 
 const CURRENT_MONTH = new Date().toLocaleString("default", { month: "long", year: "numeric" })
 
+// Replace with your actual Loom video ID
+const LOOM_VIDEO_ID = "PLACEHOLDER_VIDEO_ID"
+
 interface ActivationWizardProps {
   userName: string
 }
 
 export function ActivationWizard({ userName }: ActivationWizardProps) {
+  const [step, setStep] = useState<"checklist" | "video">("checklist")
   const [tasks, setTasks] = useState<WizardTask[]>([
     { id: generateId(), name: "", taskType: "reconciliation" },
   ])
@@ -97,8 +101,8 @@ export function ActivationWizard({ userName }: ActivationWizardProps) {
         throw new Error(data.error || "Failed to create tasks")
       }
 
-      // Hard navigation to refresh the JWT with onboardingCompleted = true
-      window.location.href = "/dashboard/boards"
+      // Move to video step
+      setStep("video")
     } catch (err: any) {
       setError(err.message || "Something went wrong. Please try again.")
       setSubmitting(false)
@@ -113,14 +117,88 @@ export function ActivationWizard({ userName }: ActivationWizardProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "complete" }),
       })
-      window.location.href = "/dashboard/boards"
+      // Move to video step
+      setStep("video")
     } catch {
       setSkipping(false)
     }
   }
 
+  const handleGoToBoard = () => {
+    // Hard navigation to refresh the JWT with onboardingCompleted = true
+    window.location.href = "/dashboard/boards"
+  }
+
   const filledTasks = tasks.filter((t) => t.name.trim().length > 0)
 
+  // ── Step 2: Founder Video ──────────────────────────────────────────
+  if (step === "video") {
+    return (
+      <div className="min-h-screen flex">
+        {/* Left Panel - Video */}
+        <div className="w-full lg:w-[55%] flex flex-col px-8 md:px-16 lg:px-20 py-10">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-16">
+            <img src="/logo.svg" alt="Vergo" className="h-6 w-auto" />
+            <button
+              onClick={handleGoToBoard}
+              className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              Skip
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 flex flex-col max-w-xl">
+            <h1 className="text-2xl font-semibold text-gray-900">
+              A quick word from our founder
+            </h1>
+            <p className="text-gray-500 mt-2 text-sm">
+              See how teams use Vergo to close faster.
+            </p>
+
+            {/* Loom Embed */}
+            <div className="mt-8 rounded-xl overflow-hidden shadow-lg border border-gray-200/60 bg-gray-900 aspect-video">
+              <iframe
+                src={`https://www.loom.com/embed/${LOOM_VIDEO_ID}?autoplay=1&hide_owner=true&hide_share=true&hide_title=true`}
+                frameBorder="0"
+                allowFullScreen
+                allow="autoplay; fullscreen"
+                className="w-full h-full"
+              />
+            </div>
+
+            {/* CTA */}
+            <Button
+              onClick={handleGoToBoard}
+              className="mt-8 h-11 w-full"
+              variant="brand"
+            >
+              Go to my board
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Right Panel - Training nudge */}
+        <div className="hidden lg:flex w-[45%] bg-gradient-to-br from-orange-50 to-amber-50 items-center justify-center p-12">
+          <div className="text-center max-w-xs">
+            <div className="w-14 h-14 bg-white rounded-2xl shadow-md flex items-center justify-center mx-auto mb-6">
+              <Calendar className="w-7 h-7 text-orange-500" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">
+              Need help getting set up?
+            </h3>
+            <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+              Book a free training session anytime using the widget in the bottom-right corner.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Step 1: Checklist ──────────────────────────────────────────────
   return (
     <div className="min-h-screen flex">
       {/* Left Panel - Form */}
