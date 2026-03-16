@@ -41,7 +41,7 @@ export async function POST(
     // 2. Parse fields and response data
     const fields = (formDef.fields || []) as unknown as FormField[]
     const body = await request.json()
-    const { responseData, submitterName, submitterEmail } = body
+    const { responseData, submitterName, submitterEmail, fileUploads } = body
 
     if (!responseData || typeof responseData !== "object") {
       return NextResponse.json(
@@ -50,13 +50,23 @@ export async function POST(
       )
     }
 
+    // Parse file uploads: array of { url, filename, mimeType, sizeBytes, fieldKey }
+    const uploads: Array<{ url: string; filename: string; mimeType: string; sizeBytes: number; fieldKey: string }> = Array.isArray(fileUploads) ? fileUploads : []
+
     // 3. Validate required fields
     const errors: Record<string, string> = {}
     for (const field of fields) {
       if (field.required) {
-        const value = responseData[field.key]
-        if (value === null || value === undefined || value === "") {
-          errors[field.key] = `${field.label} is required`
+        if (field.type === "file") {
+          const fieldFiles = uploads.filter(u => u.fieldKey === field.key)
+          if (fieldFiles.length === 0) {
+            errors[field.key] = `${field.label} is required - please upload a file`
+          }
+        } else {
+          const value = responseData[field.key]
+          if (value === null || value === undefined || value === "") {
+            errors[field.key] = `${field.label} is required`
+          }
         }
       }
     }
@@ -169,7 +179,38 @@ export async function POST(
       },
     })
 
-    // 9. Send owner notification (non-blocking)
+    // 9. Create FormAttachment records for uploaded files
+    if (uploads.length > 0) {
+      await prisma.formAttachment.createMany({
+        data: uploads.map(u => ({
+          organizationId: formDef.organizationId,
+          formRequestId: formRequest.id,
+          fieldKey: u.fieldKey,
+          filename: u.filename,
+          url: u.url,
+          mimeType: u.mimeType,
+          sizeBytes: u.sizeBytes,
+        })),
+      })
+
+      // Store filenames in responseData for file fields
+      for (const field of fields) {
+        if (field.type === "file") {
+          const fieldFiles = uploads.filter(u => u.fieldKey === field.key)
+          if (fieldFiles.length > 0) {
+            responseData[field.key] = fieldFiles.map(f => f.filename).join(", ")
+          }
+        }
+      }
+
+      // Update responseData with file info
+      await prisma.formRequest.update({
+        where: { id: formRequest.id },
+        data: { responseData: responseData as any },
+      })
+    }
+
+    // 10. Send owner notification (non-blocking)
     FormNotificationService.sendOwnerSubmissionNotification({
       formRequestId: formRequest.id,
       formName: formDef.name,

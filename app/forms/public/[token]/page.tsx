@@ -16,6 +16,9 @@ import {
   Loader2,
   CheckCircle,
   AlertCircle,
+  Upload,
+  FileText,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -34,6 +37,14 @@ const safeString = (value: unknown): string => {
   if (value === null || value === undefined) return ""
   if (typeof value === "string") return value
   return String(value)
+}
+
+interface FileUpload {
+  url: string
+  filename: string
+  mimeType: string
+  sizeBytes: number
+  fieldKey: string
 }
 
 interface PublicFormData {
@@ -57,6 +68,10 @@ export default function PublicFormPage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+
+  // File upload state
+  const [fileUploads, setFileUploads] = useState<Record<string, FileUpload[]>>({})
+  const [uploadingFields, setUploadingFields] = useState<Record<string, boolean>>({})
 
   // Optional submitter info
   const [submitterName, setSubmitterName] = useState("")
@@ -110,9 +125,15 @@ export default function PublicFormPage() {
     const errors: Record<string, string> = {}
     for (const field of form.fields) {
       if (field.required) {
-        const value = formValues[field.key]
-        if (value === null || value === undefined || value === "") {
-          errors[field.key] = `${field.label} is required`
+        if (field.type === "file") {
+          if ((fileUploads[field.key] || []).length === 0) {
+            errors[field.key] = `${field.label} is required - please upload a file`
+          }
+        } else {
+          const value = formValues[field.key]
+          if (value === null || value === undefined || value === "") {
+            errors[field.key] = `${field.label} is required`
+          }
         }
       }
     }
@@ -127,6 +148,9 @@ export default function PublicFormPage() {
     setSubmitError(null)
 
     try {
+      // Flatten all file uploads into a single array
+      const allFileUploads = Object.values(fileUploads).flat()
+
       const response = await fetch(`/api/forms/public/${token}/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -134,6 +158,7 @@ export default function PublicFormPage() {
           responseData: formValues,
           submitterName: submitterName.trim() || undefined,
           submitterEmail: submitterEmail.trim() || undefined,
+          fileUploads: allFileUploads.length > 0 ? allFileUploads : undefined,
         }),
       })
 
@@ -151,6 +176,53 @@ export default function PublicFormPage() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleFileUpload = async (fieldKey: string, file: File) => {
+    setUploadingFields(prev => ({ ...prev, [fieldKey]: true }))
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("fieldKey", fieldKey)
+
+      const response = await fetch(`/api/forms/public/${token}/upload`, {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to upload file")
+      }
+
+      const { upload } = await response.json()
+      setFileUploads(prev => ({
+        ...prev,
+        [fieldKey]: [...(prev[fieldKey] || []), upload],
+      }))
+      setValidationErrors(prev => {
+        const next = { ...prev }
+        delete next[fieldKey]
+        return next
+      })
+    } catch (err: any) {
+      setSubmitError(err.message)
+    } finally {
+      setUploadingFields(prev => ({ ...prev, [fieldKey]: false }))
+    }
+  }
+
+  const handleFileRemove = (fieldKey: string, url: string) => {
+    setFileUploads(prev => ({
+      ...prev,
+      [fieldKey]: (prev[fieldKey] || []).filter(f => f.url !== url),
+    }))
+  }
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
   if (loading) {
@@ -186,6 +258,7 @@ export default function PublicFormPage() {
             onClick={() => {
               setSubmitted(false)
               setFormValues({})
+              setFileUploads({})
               setSubmitError(null)
               setSubmitterName("")
               setSubmitterEmail("")
@@ -382,9 +455,75 @@ export default function PublicFormPage() {
                     </div>
                   )}
                   {field.type === "file" && (
-                    <p className="text-sm text-gray-500 italic">
-                      File uploads are not supported in public form submissions.
-                    </p>
+                    <div className="space-y-3">
+                      {(fileUploads[field.key] || []).length > 0 && (
+                        <div className="space-y-2">
+                          {fileUploads[field.key].map((upload) => (
+                            <div
+                              key={upload.url}
+                              className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border"
+                            >
+                              <FileText className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">
+                                  {upload.filename}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  {formatFileSize(upload.sizeBytes)}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleFileRemove(field.key, upload.url)}
+                                className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
+                                title="Remove"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div
+                        className={`relative border-2 border-dashed rounded-lg p-6 transition-colors ${
+                          validationErrors[field.key]
+                            ? "border-red-300 bg-red-50"
+                            : "border-gray-300 hover:border-orange-400 hover:bg-orange-50"
+                        }`}
+                      >
+                        <input
+                          id={field.key}
+                          type="file"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              handleFileUpload(field.key, file)
+                              e.target.value = ""
+                            }
+                          }}
+                          disabled={uploadingFields[field.key]}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                        />
+                        <div className="flex flex-col items-center text-center">
+                          {uploadingFields[field.key] ? (
+                            <>
+                              <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
+                              <p className="mt-2 text-sm text-gray-600">Uploading...</p>
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-8 h-8 text-gray-400" />
+                              <p className="mt-2 text-sm text-gray-600">
+                                <span className="font-medium text-orange-600">Click to upload</span> or drag and drop
+                              </p>
+                              <p className="mt-1 text-xs text-gray-500">
+                                PDF, Word, Excel, CSV, or images (max 10MB)
+                              </p>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
                 {validationErrors[field.key] && (
