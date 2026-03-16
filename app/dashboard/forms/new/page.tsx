@@ -40,8 +40,7 @@ export default function NewFormPage() {
           name: name.trim(),
           fields: [],
           settings: {
-            allowEdit: false,
-            enforceDeadline: false,
+            customStatuses: ["In Progress", "Submitted"],
           },
         }),
       })

@@ -18,8 +18,6 @@ import { DatabaseService, type DatabaseSchemaColumn, type DatabaseSchema } from 
 
 // Default settings for new forms
 const defaultSettings: FormSettings = {
-  allowEdit: false,
-  enforceDeadline: false,
   customStatuses: ["In Progress", "Submitted"],
 }
 

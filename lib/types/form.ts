@@ -40,8 +40,6 @@ export interface FormField {
 
 // Form-level settings
 export interface FormSettings {
-  allowEdit: boolean           // Can recipient edit after submit?
-  enforceDeadline: boolean     // Block submissions after deadline?
   customStatuses?: string[]    // Custom status options for internal tracking
 }
 
@@ -145,8 +143,6 @@ export interface FormRequestProgress {
 
 // Default form settings
 export const DEFAULT_FORM_SETTINGS: FormSettings = {
-  allowEdit: false,
-  enforceDeadline: false,
   customStatuses: ["In Progress", "Submitted"],
 }
 

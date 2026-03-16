@@ -29,6 +29,7 @@ import {
   Link2,
   Copy,
   Check,
+  UserCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -92,11 +93,18 @@ interface FormData {
   databaseId: string | null
   universalLinkEnabled: boolean
   universalAccessToken: string | null
+  createdBy: { id: string; name: string | null; email: string } | null
   database: {
     id: string
     name: string
     schema: { columns: Array<{ key: string; label: string; dataType: string; dropdownOptions?: string[] }> }
   } | null
+}
+
+interface OrgMember {
+  id: string
+  name: string | null
+  email: string
 }
 
 export default function FormBuilderPage() {
@@ -123,6 +131,8 @@ export default function FormBuilderPage() {
   const [newCustomStatus, setNewCustomStatus] = useState("")
   const [copiedLink, setCopiedLink] = useState(false)
   const [togglingUniversalLink, setTogglingUniversalLink] = useState(false)
+  const [orgMembers, setOrgMembers] = useState<OrgMember[]>([])
+  const [changingOwner, setChangingOwner] = useState(false)
 
   // Field editor state
   const [editingField, setEditingField] = useState<FormField | null>(null)
@@ -171,8 +181,6 @@ export default function FormBuilderPage() {
 
         // Ensure settings has boolean values
         const safeSettings = {
-          allowEdit: Boolean(settings?.allowEdit),
-          enforceDeadline: Boolean(settings?.enforceDeadline),
           customStatuses: Array.isArray(settings?.customStatuses) ? settings.customStatuses : ["In Progress", "Submitted"],
         }
 
@@ -191,6 +199,11 @@ export default function FormBuilderPage() {
           databaseId: data.form.databaseId || null,
           universalLinkEnabled: Boolean(data.form.universalLinkEnabled),
           universalAccessToken: data.form.universalAccessToken || null,
+          createdBy: data.form.createdBy ? {
+            id: String(data.form.createdBy.id),
+            name: data.form.createdBy.name || null,
+            email: String(data.form.createdBy.email),
+          } : null,
           database: data.form.database ? {
             id: String(data.form.database.id || ''),
             name: String(data.form.database.name || ''),
@@ -451,6 +464,48 @@ export default function FormBuilderPage() {
     setTimeout(() => setCopiedLink(false), 2000)
   }
 
+  // Fetch org members for owner selector
+  const fetchOrgMembers = useCallback(async () => {
+    try {
+      const response = await fetch("/api/org/users", { credentials: "include" })
+      if (response.ok) {
+        const data = await response.json()
+        const members = (data.users || []).map((u: any) => ({
+          id: String(u.id),
+          name: u.name || null,
+          email: String(u.email),
+        }))
+        setOrgMembers(members)
+      }
+    } catch (err) {
+      console.error("Error fetching org members:", err)
+    }
+  }, [])
+
+  const changeOwner = async (newOwnerId: string) => {
+    if (!form || changingOwner) return
+    setChangingOwner(true)
+    try {
+      const response = await fetch(`/api/forms/${form.id}/owner`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newOwnerId }),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setForm(prev => prev ? {
+          ...prev,
+          createdBy: data.createdBy,
+        } : prev)
+      }
+    } catch (err) {
+      console.error("Error changing form owner:", err)
+    } finally {
+      setChangingOwner(false)
+    }
+  }
+
   const moveField = (fromIndex: number, toIndex: number) => {
     if (!form) return
 
@@ -536,7 +591,7 @@ export default function FormBuilderPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setShowSettingsDialog(true)}
+                onClick={() => { setShowSettingsDialog(true); fetchOrgMembers() }}
               >
                 <Settings className="w-4 h-4 mr-2" />
                 Settings
@@ -896,39 +951,6 @@ export default function FormBuilderPage() {
             <DialogTitle>Form Settings</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label>Allow Editing After Submit</Label>
-                <p className="text-xs text-gray-500">
-                  Recipients can edit their responses
-                </p>
-              </div>
-              <Switch
-                checked={form.settings.allowEdit}
-                onCheckedChange={(checked) =>
-                  updateForm({
-                    settings: { ...form.settings, allowEdit: checked },
-                  })
-                }
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <Label>Enforce Deadline</Label>
-                <p className="text-xs text-gray-500">
-                  Block submissions after the deadline
-                </p>
-              </div>
-              <Switch
-                checked={form.settings.enforceDeadline}
-                onCheckedChange={(checked) =>
-                  updateForm({
-                    settings: { ...form.settings, enforceDeadline: checked },
-                  })
-                }
-              />
-            </div>
-
             {/* Universal Link */}
             <div className="pt-4 border-t">
               <div className="flex items-center justify-between">
@@ -1078,6 +1100,34 @@ export default function FormBuilderPage() {
                   </p>
                 </div>
               )}
+            </div>
+
+            {/* Form Owner */}
+            <div className="pt-4 border-t">
+              <div className="flex items-center gap-2 mb-3">
+                <UserCircle className="w-4 h-4 text-gray-500" />
+                <Label>Form Owner</Label>
+              </div>
+              <p className="text-xs text-gray-500 mb-3">
+                The owner receives notifications when responses are submitted
+              </p>
+              <Select
+                value={form.createdBy?.id || ""}
+                onValueChange={(value) => changeOwner(value)}
+                disabled={changingOwner}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select owner" />
+                </SelectTrigger>
+                <SelectContent>
+                  {orgMembers.map((member) => (
+                    <SelectItem key={member.id} value={member.id}>
+                      {member.name || member.email}
+                      {member.name && <span className="text-gray-400 ml-1">({member.email})</span>}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>

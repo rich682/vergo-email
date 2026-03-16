@@ -73,10 +73,7 @@ interface FormRequestData {
     name: string
     description: string | null
     fields: FormField[]
-    settings: {
-      allowEdit?: boolean
-      enforceDeadline?: boolean
-    }
+    settings: Record<string, unknown>
   }
   taskInstance: {
     id: string
@@ -300,20 +297,11 @@ export default function FormFillPage() {
 
       // Check status
       if (normalizedFormRequest.status === "SUBMITTED") {
-        if (!safeSettings.allowEdit) {
-          setPageState("submitted")
-          return
-        }
-      }
-
-      if (normalizedFormRequest.status === "EXPIRED") {
-        setPageState("expired")
+        setPageState("submitted")
         return
       }
 
-      // Check deadline
-      const deadline = normalizedFormRequest.deadlineDate
-      if (deadline && safeSettings.enforceDeadline && new Date(deadline) < new Date()) {
+      if (normalizedFormRequest.status === "EXPIRED") {
         setPageState("expired")
         return
       }

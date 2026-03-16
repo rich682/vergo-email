@@ -583,13 +583,8 @@ export class FormRequestService {
     },
     responseData: Record<string, unknown>
   ) {
-    if (formRequest.status === "SUBMITTED" && !formRequest.formDefinition.settings) {
+    if (formRequest.status === "SUBMITTED") {
       throw new Error("Form has already been submitted")
-    }
-
-    const settings = formRequest.formDefinition.settings as { allowEdit?: boolean } || {}
-    if (formRequest.status === "SUBMITTED" && !settings.allowEdit) {
-      throw new Error("Form has already been submitted and editing is not allowed")
     }
 
     // Validate required fields
