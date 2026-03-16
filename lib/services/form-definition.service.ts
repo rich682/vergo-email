@@ -306,7 +306,7 @@ export class FormDefinitionService {
     }
 
     const keys = new Set<string>()
-    const validTypes = ["text", "longText", "number", "currency", "percentage", "date", "dropdown", "checkbox", "file", "accountingPeriod"]
+    const validTypes = ["text", "longText", "number", "currency", "percentage", "date", "dropdown", "checkbox", "file", "accountingPeriod", "users"]
 
     for (const field of fields) {
       // Check required properties
