@@ -52,6 +52,7 @@ export async function GET(request: NextRequest) {
         email: true,
         name: true,
         role: true,
+        tags: true,
         moduleAccess: true,
         emailVerified: true,  // Used to determine "pending" vs "active" status
         createdAt: true,
@@ -83,6 +84,7 @@ export async function GET(request: NextRequest) {
         email: user.email,
         name: user.name,
         role: user.role,
+        tags: (user.tags as string[]) || [],
         moduleAccess: user.moduleAccess || null,
         status: user.emailVerified ? "active" : "pending",
         createdAt: user.createdAt.toISOString(),

@@ -16,6 +16,7 @@ export type FormFieldType =
   | "checkbox"         // Boolean toggle
   | "file"             // File upload
   | "accountingPeriod" // Accounting period date picker (routes responses to correct board)
+  | "users"            // User picker dropdown (auto-populated with org members, stores user ID)
 
 // Validation rules for form fields
 export interface FormFieldValidation {
@@ -34,6 +35,7 @@ export interface FormField {
   helpText?: string             // Help text shown below field
   defaultValue?: unknown        // Default value
   options?: string[]            // Options for dropdown type
+  userTagFilter?: string[]      // For "users" type: only show users with these tags (empty = all)
   validation?: FormFieldValidation
   order: number                 // Display order
 }

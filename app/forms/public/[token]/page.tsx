@@ -69,6 +69,9 @@ export default function PublicFormPage() {
   const [submitted, setSubmitted] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
+  // Org users for "users" type fields
+  const [orgUsers, setOrgUsers] = useState<{ id: string; name: string | null; email: string; tags?: string[] }[]>([])
+
   // File upload state
   const [fileUploads, setFileUploads] = useState<Record<string, FileUpload[]>>({})
   const [uploadingFields, setUploadingFields] = useState<Record<string, boolean>>({})
@@ -96,6 +99,9 @@ export default function PublicFormPage() {
           fields: Array.isArray(fields) ? fields : [],
           settings,
         })
+        if (data.orgUsers) {
+          setOrgUsers(data.orgUsers)
+        }
       } else {
         const data = await response.json().catch(() => ({}))
         setError(data.error || "Form not found")
@@ -440,6 +446,28 @@ export default function PublicFormPage() {
                       </SelectContent>
                     </Select>
                   )}
+                  {field.type === "users" && (() => {
+                    const filteredUsers = field.userTagFilter?.length
+                      ? orgUsers.filter(u => u.tags?.some(t => field.userTagFilter!.includes(t)))
+                      : orgUsers
+                    return (
+                      <Select
+                        value={(formValues[field.key] as string) || ""}
+                        onValueChange={(value) => updateField(field.key, value)}
+                      >
+                        <SelectTrigger className={validationErrors[field.key] ? "border-red-500" : ""}>
+                          <SelectValue placeholder="Select a user" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {filteredUsers.map((user) => (
+                            <SelectItem key={user.id} value={user.id}>
+                              {user.name || user.email}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )
+                  })()}
                   {field.type === "checkbox" && (
                     <div className="flex items-center gap-2">
                       <input

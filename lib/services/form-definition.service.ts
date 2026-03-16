@@ -33,6 +33,7 @@ const FIELD_TYPE_TO_DB_TYPE: Record<FormFieldType, DatabaseSchemaColumn["dataTyp
   checkbox: "boolean",
   file: "file",
   accountingPeriod: "date",
+  users: "text",  // Stores user ID as text
 }
 
 export class FormDefinitionService {

@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { FormRequestService } from "@/lib/services/form-request.service"
+import type { FormField } from "@/lib/types/form"
 import { FormNotificationService } from "@/lib/services/form-notification.service"
 import { NotificationService } from "@/lib/services/notification.service"
 import { ActivityEventService } from "@/lib/activity-events"
@@ -80,8 +81,21 @@ export async function GET(
       databaseId: formRequest.formDefinition.databaseId,
     }
 
+    // If form has any "users" type fields, include org users for the dropdown
+    const fields = normalizedFormDefinition.fields as FormField[]
+    const hasUsersField = Array.isArray(fields) && fields.some((f: FormField) => f.type === "users")
+    let orgUsers: { id: string; name: string | null; email: string; tags: unknown }[] = []
+    if (hasUsersField) {
+      orgUsers = await prisma.user.findMany({
+        where: { organizationId: formRequest.organizationId, isDebugUser: false },
+        select: { id: true, name: true, email: true, tags: true },
+        orderBy: { name: "asc" },
+      })
+    }
+
     // Return form request data in a normalized format
-    return NextResponse.json({ 
+    return NextResponse.json({
+      orgUsers,
       formRequest: {
         id: formRequest.id,
         status: formRequest.status,

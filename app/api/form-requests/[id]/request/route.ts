@@ -7,7 +7,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
+import { prisma } from "@/lib/prisma"
 import { FormRequestService } from "@/lib/services/form-request.service"
+import type { FormField } from "@/lib/types/form"
 
 export async function GET(
   request: NextRequest,
@@ -63,7 +65,19 @@ export async function GET(
       } : null,
     }
 
-    return NextResponse.json({ formRequest: normalizedFormRequest })
+    // If form has any "users" type fields, include org users for the dropdown
+    const fields = safeParseJson(formRequest.formDefinition?.fields, []) as FormField[]
+    const hasUsersField = fields.some((f: FormField) => f.type === "users")
+    let orgUsers: { id: string; name: string | null; email: string; tags: unknown }[] = []
+    if (hasUsersField) {
+      orgUsers = await prisma.user.findMany({
+        where: { organizationId: session.user.organizationId, isDebugUser: false },
+        select: { id: true, name: true, email: true, tags: true },
+        orderBy: { name: "asc" },
+      })
+    }
+
+    return NextResponse.json({ formRequest: normalizedFormRequest, orgUsers })
   } catch (error: any) {
     console.error("Error fetching form request:", error)
     return NextResponse.json(

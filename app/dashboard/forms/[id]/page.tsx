@@ -82,6 +82,7 @@ const FIELD_TYPE_CONFIG: Record<
   checkbox: { label: "Checkbox", icon: CheckSquare },
   file: { label: "File Upload", icon: FileUp },
   accountingPeriod: { label: "Accounting Period", icon: CalendarRange },
+  users: { label: "Users", icon: UserCircle },
 }
 
 interface FormData {
@@ -138,6 +139,7 @@ export default function FormBuilderPage() {
   const [editingField, setEditingField] = useState<FormField | null>(null)
   const [isNewField, setIsNewField] = useState(false)
   const [showFieldDialog, setShowFieldDialog] = useState(false)
+  const [availableOrgTags, setAvailableOrgTags] = useState<string[]>([])
   const [showSettingsDialog, setShowSettingsDialog] = useState(false)
   const [viewers, setViewers] = useState<Viewer[]>([])
 
@@ -381,6 +383,11 @@ export default function FormBuilderPage() {
     setEditingField({ ...field })
     setIsNewField(false)
     setShowFieldDialog(true)
+    if (field.type === "users") {
+      fetch("/api/org/tags").then(r => r.json()).then(d => {
+        if (d.tags) setAvailableOrgTags(d.tags)
+      }).catch(() => {})
+    }
   }
 
   const saveField = () => {
@@ -789,6 +796,13 @@ export default function FormBuilderPage() {
                         {field.type === "accountingPeriod" && (
                           <Input type="date" disabled placeholder="Select accounting period" />
                         )}
+                        {field.type === "users" && (
+                          <Select disabled>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a user" />
+                            </SelectTrigger>
+                          </Select>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -841,12 +855,17 @@ export default function FormBuilderPage() {
                 <Label>Type</Label>
                 <Select
                   value={safeString(editingField.type)}
-                  onValueChange={(value) =>
+                  onValueChange={(value) => {
                     setEditingField({
                       ...editingField,
                       type: value as FormFieldType,
                     })
-                  }
+                    if (value === "users" && availableOrgTags.length === 0) {
+                      fetch("/api/org/tags").then(r => r.json()).then(d => {
+                        if (d.tags) setAvailableOrgTags(d.tags)
+                      }).catch(() => {})
+                    }
+                  }}
                 >
                   <SelectTrigger className="mt-1.5">
                     <SelectValue />
@@ -901,6 +920,40 @@ export default function FormBuilderPage() {
                       Add Option
                     </button>
                   </div>
+                </div>
+              )}
+
+              {editingField.type === "users" && (
+                <div>
+                  <Label>Filter by Tags (optional)</Label>
+                  <p className="text-xs text-gray-500 mt-0.5 mb-2">
+                    Only show users with these tags. Leave empty to show all users.
+                  </p>
+                  {availableOrgTags.length > 0 ? (
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                      {availableOrgTags.map((tag) => (
+                        <label key={tag} className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={(editingField.userTagFilter || []).includes(tag)}
+                            onChange={(e) => {
+                              const current = editingField.userTagFilter || []
+                              const updated = e.target.checked
+                                ? [...current, tag]
+                                : current.filter(t => t !== tag)
+                              setEditingField({ ...editingField, userTagFilter: updated })
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                          />
+                          {tag}
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-400 italic">
+                      No tags found. Add tags to users in Settings &gt; Team first.
+                    </p>
+                  )}
                 </div>
               )}
 

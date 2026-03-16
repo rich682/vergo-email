@@ -197,6 +197,9 @@ export default function FormFillPage() {
   const [uploadingFields, setUploadingFields] = useState<Record<string, boolean>>({})
   const [uploadedAttachments, setUploadedAttachments] = useState<Record<string, FormAttachment[]>>({})
 
+  // Org users for "users" type fields
+  const [orgUsers, setOrgUsers] = useState<{ id: string; name: string | null; email: string; tags?: string[] }[]>([])
+
   useEffect(() => {
     fetchFormRequest()
   }, [requestId, accessToken])
@@ -241,7 +244,12 @@ export default function FormFillPage() {
       }
 
       const data = await response.json()
-      
+
+      // Store org users if provided (for "users" type fields)
+      if (data.orgUsers) {
+        setOrgUsers(data.orgUsers)
+      }
+
       // Safely parse JSON fields that might be returned as strings
       const rawFormRequest = data.formRequest
       const safeFields = typeof rawFormRequest.formDefinition?.fields === "string"
@@ -784,6 +792,28 @@ export default function FormFillPage() {
                       </SelectContent>
                     </Select>
                   )}
+                  {field.type === "users" && (() => {
+                    const filteredUsers = field.userTagFilter?.length
+                      ? orgUsers.filter(u => u.tags?.some(t => field.userTagFilter!.includes(t)))
+                      : orgUsers
+                    return (
+                      <Select
+                        value={(formValues[field.key] as string) || ""}
+                        onValueChange={(value) => updateField(field.key, value)}
+                      >
+                        <SelectTrigger className={validationErrors[field.key] ? "border-red-500" : ""}>
+                          <SelectValue placeholder="Select a user" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {filteredUsers.map((user) => (
+                            <SelectItem key={user.id} value={user.id}>
+                              {user.name || user.email}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )
+                  })()}
                   {field.type === "checkbox" && (
                     <div className="flex items-center gap-2">
                       <input

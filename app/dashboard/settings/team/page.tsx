@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { UserPlus, Shield, User, Clock, Pencil, Trash2, Plus } from "lucide-react"
+import { UserPlus, Shield, User, Clock, Pencil, Trash2, Plus, X, Tag } from "lucide-react"
 import { EmptyState } from "@/components/ui/empty-state"
 
 interface ConnectedEmail {
@@ -36,6 +36,7 @@ interface OrgUser {
   email: string
   name: string | null
   role: "ADMIN" | "MANAGER" | "MEMBER" | "VIEWER"
+  tags: string[]
   status: "active" | "pending"
   createdAt: string
   connectedEmail: ConnectedEmail | null
@@ -91,6 +92,9 @@ function TeamSettingsContent() {
   const [editFirstName, setEditFirstName] = useState("")
   const [editLastName, setEditLastName] = useState("")
   const [editRole, setEditRole] = useState<"ADMIN" | "MANAGER" | "MEMBER">("MEMBER")
+  const [editTags, setEditTags] = useState<string[]>([])
+  const [tagInput, setTagInput] = useState("")
+  const [orgTags, setOrgTags] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   
   // Delete confirmation state
@@ -171,7 +175,13 @@ function TeamSettingsContent() {
     // Map legacy VIEWER role to MEMBER (VIEWER has been removed)
     const mappedRole = user.role === "VIEWER" ? "MEMBER" : user.role
     setEditRole(mappedRole as "ADMIN" | "MANAGER" | "MEMBER")
+    setEditTags(user.tags || [])
+    setTagInput("")
     setIsEditOpen(true)
+    // Fetch org tags for autocomplete
+    fetch("/api/org/tags").then(r => r.json()).then(d => {
+      if (d.tags) setOrgTags(d.tags)
+    }).catch(() => {})
   }
 
   const handleSaveUser = async () => {
@@ -186,6 +196,7 @@ function TeamSettingsContent() {
         body: JSON.stringify({
           name: fullName,
           role: editRole,
+          tags: editTags,
         })
       })
 
@@ -427,9 +438,16 @@ function TeamSettingsContent() {
                         <span className="font-medium text-gray-900">
                           {user.name || <span className="text-gray-400 italic">No name set</span>}
                         </span>
-                        {user.isCurrentUser && (
-                          <span className="text-xs text-orange-600">You</span>
-                        )}
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {user.isCurrentUser && (
+                            <span className="text-xs text-orange-600">You</span>
+                          )}
+                          {user.tags?.map(tag => (
+                            <span key={tag} className="inline-flex items-center px-1.5 py-0 bg-gray-100 text-gray-500 text-[10px] font-medium rounded">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     </div>
                     
@@ -546,6 +564,68 @@ function TeamSettingsContent() {
                    editRole === "MANAGER" ? "Can see all tasks and manage team workflows" :
                    "Access determined by role permissions"}
                 </p>
+              </div>
+
+              <div>
+                <Label>Tags</Label>
+                <p className="text-xs text-gray-500 mt-0.5 mb-2">
+                  Tags help filter users in form fields (e.g. &quot;Project Manager&quot;, &quot;Accountant&quot;)
+                </p>
+                {editTags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {editTags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 border border-gray-200 text-gray-700 text-xs font-medium rounded-full"
+                      >
+                        {tag}
+                        <button
+                          type="button"
+                          onClick={() => setEditTags(editTags.filter(t => t !== tag))}
+                          className="text-gray-400 hover:text-red-500"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="relative">
+                  <Input
+                    placeholder="Type a tag and press Enter"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault()
+                        const trimmed = tagInput.trim()
+                        if (trimmed && !editTags.includes(trimmed)) {
+                          setEditTags([...editTags, trimmed])
+                        }
+                        setTagInput("")
+                      }
+                    }}
+                  />
+                  {tagInput && orgTags.filter(t => t.toLowerCase().includes(tagInput.toLowerCase()) && !editTags.includes(t)).length > 0 && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-32 overflow-y-auto">
+                      {orgTags
+                        .filter(t => t.toLowerCase().includes(tagInput.toLowerCase()) && !editTags.includes(t))
+                        .map(tag => (
+                          <button
+                            key={tag}
+                            type="button"
+                            className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50"
+                            onClick={() => {
+                              setEditTags([...editTags, tag])
+                              setTagInput("")
+                            }}
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">

@@ -221,6 +221,7 @@ model User {
   // { boards: true, inbox: true, requests: false, collection: false, reports: true, forms: true, databases: false, reconciliations: false, contacts: false }
   // null = default access based on role (ADMIN gets all, MEMBER gets boards+inbox+reports+forms)
   moduleAccess   Json?
+  tags           Json    @default("[]") // Array of string tags, e.g. ["Project Manager", "Accountant"]
   signature      String? // User's email signature
   organizationId String
   createdAt      DateTime  @default(now())

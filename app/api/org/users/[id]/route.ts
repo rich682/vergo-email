@@ -57,6 +57,7 @@ export async function GET(
         email: true,
         name: true,
         role: true,
+        tags: true,
         passwordHash: true,
         createdAt: true,
         updatedAt: true
@@ -77,6 +78,7 @@ export async function GET(
         email: user.email,
         name: user.name,
         role: user.role,
+        tags: (user.tags as string[]) || [],
         status: user.passwordHash && user.passwordHash.length > 10 ? "active" : "pending",
         createdAt: user.createdAt.toISOString(),
         updatedAt: user.updatedAt.toISOString()
@@ -126,7 +128,7 @@ export async function PATCH(
 
     const { id: targetUserId } = await params
     const body = await request.json()
-    const { role: newRole, name } = body
+    const { role: newRole, name, tags } = body
 
     // Find the target user
     const targetUser = await prisma.user.findFirst({
@@ -144,7 +146,7 @@ export async function PATCH(
     }
 
     // Build update data
-    const updateData: { role?: UserRole; name?: string } = {}
+    const updateData: { role?: UserRole; name?: string; tags?: string[] } = {}
 
     // Handle role update
     if (newRole !== undefined) {
@@ -181,6 +183,17 @@ export async function PATCH(
       updateData.name = name.trim() || null
     }
 
+    // Handle tags update
+    if (tags !== undefined) {
+      if (!Array.isArray(tags) || tags.some((t: unknown) => typeof t !== "string")) {
+        return NextResponse.json(
+          { error: "Tags must be an array of strings" },
+          { status: 400 }
+        )
+      }
+      updateData.tags = tags.map((t: string) => t.trim()).filter(Boolean).slice(0, 20)
+    }
+
     // Check if there's anything to update
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json(
@@ -198,6 +211,7 @@ export async function PATCH(
         email: true,
         name: true,
         role: true,
+        tags: true,
         passwordHash: true,
         createdAt: true,
         updatedAt: true
@@ -211,6 +225,7 @@ export async function PATCH(
         email: updatedUser.email,
         name: updatedUser.name,
         role: updatedUser.role,
+        tags: (updatedUser.tags as string[]) || [],
         status: updatedUser.passwordHash && updatedUser.passwordHash.length > 10 ? "active" : "pending",
         createdAt: updatedUser.createdAt.toISOString(),
         updatedAt: updatedUser.updatedAt.toISOString()
