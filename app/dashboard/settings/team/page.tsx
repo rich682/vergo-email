@@ -19,7 +19,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { UserPlus, Shield, User, Clock, Pencil, Trash2, Plus, X, Tag } from "lucide-react"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { UserPlus, Shield, User, Clock, Pencil, Trash2, Plus, X, Tag, Check, ChevronDown } from "lucide-react"
 import { EmptyState } from "@/components/ui/empty-state"
 
 interface ConnectedEmail {
@@ -101,10 +106,16 @@ function TeamSettingsContent() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
   const [deletingUser, setDeletingUser] = useState<OrgUser | null>(null)
   const [deleting, setDeleting] = useState(false)
-  
+
+  // Inline tag popover state
+  const [inlineTagInput, setInlineTagInput] = useState("")
 
   useEffect(() => {
     fetchTeamUsers()
+    // Fetch org tags for inline tag dropdowns
+    fetch("/api/org/tags").then(r => r.json()).then(d => {
+      if (d.tags) setOrgTags(d.tags)
+    }).catch(() => {})
   }, [])
 
   const fetchTeamUsers = async () => {
@@ -250,6 +261,56 @@ function TeamSettingsContent() {
     } finally {
       setDeleting(false)
     }
+  }
+
+  const handleInlineTagToggle = async (user: OrgUser, tag: string) => {
+    const currentTags = user.tags || []
+    const newTags = currentTags.includes(tag)
+      ? currentTags.filter(t => t !== tag)
+      : [...currentTags, tag]
+
+    // Optimistic update
+    setTeamUsers(prev => prev.map(u => u.id === user.id ? { ...u, tags: newTags } : u))
+
+    try {
+      const response = await fetch(`/api/org/users/${user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tags: newTags }),
+      })
+      if (!response.ok) throw new Error("Failed")
+      const data = await response.json()
+      setTeamUsers(prev => prev.map(u => u.id === user.id ? { ...u, ...data.user } : u))
+    } catch {
+      // Revert on failure
+      setTeamUsers(prev => prev.map(u => u.id === user.id ? { ...u, tags: currentTags } : u))
+    }
+  }
+
+  const handleInlineAddTag = async (user: OrgUser, newTag: string) => {
+    const trimmed = newTag.trim()
+    if (!trimmed || (user.tags || []).includes(trimmed)) return
+    const newTags = [...(user.tags || []), trimmed]
+
+    setTeamUsers(prev => prev.map(u => u.id === user.id ? { ...u, tags: newTags } : u))
+
+    try {
+      const response = await fetch(`/api/org/users/${user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tags: newTags }),
+      })
+      if (!response.ok) throw new Error("Failed")
+      const data = await response.json()
+      setTeamUsers(prev => prev.map(u => u.id === user.id ? { ...u, ...data.user } : u))
+      // Add to orgTags if new
+      if (!orgTags.includes(trimmed)) {
+        setOrgTags(prev => [...prev, trimmed].sort((a, b) => a.localeCompare(b)))
+      }
+    } catch {
+      setTeamUsers(prev => prev.map(u => u.id === user.id ? { ...u, tags: (user.tags || []) } : u))
+    }
+    setInlineTagInput("")
   }
 
   if (loading) {
@@ -413,11 +474,12 @@ function TeamSettingsContent() {
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             {/* Table Header */}
             <div className="grid grid-cols-12 gap-4 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider">
-              <div className="col-span-4">Name</div>
-              <div className="col-span-4">Email</div>
-              <div className="col-span-2">Role</div>
+              <div className="col-span-3">Name</div>
+              <div className="col-span-3">Email</div>
+              <div className="col-span-2">Tags</div>
+              <div className="col-span-1">Role</div>
               <div className="col-span-1">Status</div>
-              <div className="col-span-1 text-right">{isAdmin ? "Actions" : ""}</div>
+              <div className="col-span-2 text-right">{isAdmin ? "Actions" : ""}</div>
             </div>
             
             {/* Table Body */}
@@ -428,36 +490,97 @@ function TeamSettingsContent() {
                 return (
                   <div key={user.id} className="grid grid-cols-12 gap-4 px-4 py-3 items-center hover:bg-gray-50">
                     {/* Name */}
-                    <div className="col-span-4 flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-medium ${
+                    <div className="col-span-3 flex items-center gap-3">
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-medium shrink-0 ${
                         user.isCurrentUser ? "bg-orange-100 text-orange-700" : "bg-gray-200 text-gray-600"
                       }`}>
                         {initials}
                       </div>
-                      <div className="flex flex-col">
-                        <span className="font-medium text-gray-900">
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-medium text-gray-900 truncate">
                           {user.name || <span className="text-gray-400 italic">No name set</span>}
                         </span>
+                        {user.isCurrentUser && (
+                          <span className="text-xs text-orange-600">You</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Email */}
+                    <div className="col-span-3 text-sm text-gray-600 truncate">
+                      {user.email}
+                    </div>
+
+                    {/* Tags */}
+                    <div className="col-span-2">
+                      {isAdmin ? (
+                        <Popover onOpenChange={(open) => { if (!open) setInlineTagInput("") }}>
+                          <PopoverTrigger asChild>
+                            <button className="flex items-center gap-1 min-h-[28px] max-w-full text-left group">
+                              {(user.tags || []).length > 0 ? (
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  {user.tags.map(tag => (
+                                    <span key={tag} className="inline-flex items-center px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[11px] font-medium rounded">
+                                      {tag}
+                                    </span>
+                                  ))}
+                                  <ChevronDown className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                                </div>
+                              ) : (
+                                <span className="text-xs text-gray-400 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Plus className="w-3 h-3" /> Add tag
+                                </span>
+                              )}
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-56 p-2" align="start">
+                            <div className="space-y-1">
+                              <Input
+                                placeholder="New tag..."
+                                value={inlineTagInput}
+                                onChange={(e) => setInlineTagInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault()
+                                    handleInlineAddTag(user, inlineTagInput)
+                                  }
+                                }}
+                                className="h-8 text-sm"
+                                autoFocus
+                              />
+                              {orgTags.length > 0 && (
+                                <div className="max-h-40 overflow-y-auto pt-1 border-t border-gray-100 mt-1">
+                                  {orgTags.map(tag => {
+                                    const isSelected = (user.tags || []).includes(tag)
+                                    return (
+                                      <button
+                                        key={tag}
+                                        className="flex items-center justify-between w-full px-2 py-1.5 text-sm rounded hover:bg-gray-50 text-left"
+                                        onClick={() => handleInlineTagToggle(user, tag)}
+                                      >
+                                        <span className={isSelected ? "text-gray-900 font-medium" : "text-gray-600"}>{tag}</span>
+                                        {isSelected && <Check className="w-3.5 h-3.5 text-green-600" />}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      ) : (
                         <div className="flex items-center gap-1 flex-wrap">
-                          {user.isCurrentUser && (
-                            <span className="text-xs text-orange-600">You</span>
-                          )}
-                          {user.tags?.map(tag => (
-                            <span key={tag} className="inline-flex items-center px-1.5 py-0 bg-gray-100 text-gray-500 text-[10px] font-medium rounded">
+                          {(user.tags || []).map(tag => (
+                            <span key={tag} className="inline-flex items-center px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[11px] font-medium rounded">
                               {tag}
                             </span>
                           ))}
                         </div>
-                      </div>
+                      )}
                     </div>
-                    
-                    {/* Email */}
-                    <div className="col-span-4 text-sm text-gray-600 truncate">
-                      {user.email}
-                    </div>
-                    
+
                     {/* Role */}
-                    <div className="col-span-2">
+                    <div className="col-span-1">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${
                         user.role === "ADMIN"
                           ? "border-purple-200 text-purple-700 bg-purple-50"
@@ -468,7 +591,7 @@ function TeamSettingsContent() {
                         {user.role === "ADMIN" ? "Admin" : user.role === "MANAGER" ? "Manager" : "Employee"}
                       </span>
                     </div>
-                    
+
                     {/* Status */}
                     <div className="col-span-1">
                       {user.status === "active" ? (
@@ -483,9 +606,9 @@ function TeamSettingsContent() {
                         </span>
                       )}
                     </div>
-                    
+
                     {/* Actions - only show for admins */}
-                    <div className="col-span-1 flex items-center justify-end gap-1">
+                    <div className="col-span-2 flex items-center justify-end gap-1">
                       {isAdmin && (
                         <>
                           <button

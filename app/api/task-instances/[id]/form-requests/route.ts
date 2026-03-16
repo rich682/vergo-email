@@ -66,10 +66,22 @@ export async function GET(
       })
       const viewableFormIds = new Set(viewerEntries.map((v) => v.formDefinitionId))
 
-      // Filter: keep requests for viewable forms OR requests where the user is the recipient
-      filteredFormRequests = formRequests.filter((fr: any) =>
-        viewableFormIds.has(fr.formDefinitionId) || fr.recipientUserId === session.user.id
-      )
+      // Check if user is a collaborator on this task
+      const isCollaborator = await prisma.taskInstanceCollaborator.findFirst({
+        where: { taskInstanceId, userId: session.user.id },
+        select: { id: true },
+      })
+
+      const isRecipientInTask = formRequests.some((fr: any) => fr.recipientUserId === session.user.id)
+
+      filteredFormRequests = formRequests.filter((fr: any) => {
+        // Collaborators who are recipients: only see their own responses
+        if (isCollaborator && isRecipientInTask) {
+          return fr.recipientUserId === session.user.id
+        }
+        // Viewers / other non-admins: existing logic
+        return viewableFormIds.has(fr.formDefinitionId) || fr.recipientUserId === session.user.id
+      })
 
       if (filteredFormRequests.length < formRequests.length) {
         viewerRestricted = true

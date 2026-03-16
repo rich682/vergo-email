@@ -530,4 +530,105 @@ Vergo`
 
     return { sent, failed }
   }
+
+  /**
+   * Send email notification when a form request's custom status changes
+   */
+  static async sendStatusChangeEmail(data: {
+    formName: string
+    taskName: string
+    oldStatus: string
+    newStatus: string
+    recipientEmail: string
+    recipientName: string | null
+    organizationId: string
+    accessToken?: string | null
+    changerName: string | null
+  }): Promise<boolean> {
+    const {
+      formName,
+      taskName,
+      oldStatus,
+      newStatus,
+      recipientEmail,
+      recipientName,
+      organizationId,
+      accessToken,
+      changerName,
+    } = data
+
+    const greeting = recipientName ? `Hi ${recipientName.split(" ")[0]},` : "Hello,"
+    const changerText = changerName || "Your team"
+    const baseUrl = getBaseUrl()
+    const viewUrl = accessToken
+      ? `${baseUrl}/forms/token/${accessToken}`
+      : `${baseUrl}/dashboard`
+
+    const subject = `Status Update: "${formName}"`
+
+    const body = `${greeting}
+
+${changerText} has updated the status of your form submission:
+
+📝 ${formName}
+📋 ${taskName}
+
+Status changed: ${oldStatus} → ${newStatus}
+
+${accessToken ? `View your submission here:\n${viewUrl}` : `Log in to view your submission:\n${viewUrl}`}
+
+Best regards,
+Vergo`
+
+    const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <p>${greeting}</p>
+
+  <p><strong>${changerText}</strong> has updated the status of your form submission:</p>
+
+  <div style="background: #f8f9fa; border-radius: 8px; padding: 16px; margin: 20px 0;">
+    <p style="margin: 0 0 8px 0;"><strong>📝 ${formName}</strong></p>
+    <p style="margin: 0 0 8px 0; color: #666;">📋 ${taskName}</p>
+    <p style="margin: 0;">Status: <span style="text-decoration: line-through; color: #999;">${oldStatus}</span> → <strong style="color: #16a34a;">${newStatus}</strong></p>
+  </div>
+
+  <div style="text-align: center; margin: 30px 0;">
+    <a href="${viewUrl}" style="display: inline-block; background: #f97316; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 500;">
+      View Submission →
+    </a>
+  </div>
+
+  <p style="color: #666; font-size: 14px;">
+    Best regards,<br>
+    Vergo
+  </p>
+</body>
+</html>`
+
+    try {
+      console.log(`[FormNotification] Sending status change email to ${recipientEmail}: ${oldStatus} → ${newStatus}`)
+
+      await EmailSendingService.sendEmail({
+        organizationId,
+        to: recipientEmail,
+        toName: recipientName || undefined,
+        subject,
+        body,
+        htmlBody,
+        campaignName: formName,
+        campaignType: "form_status_change",
+      })
+
+      return true
+    } catch (error) {
+      console.error(`[FormNotification] Failed to send status change email:`, error)
+      return false
+    }
+  }
 }
