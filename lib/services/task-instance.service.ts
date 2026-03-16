@@ -57,6 +57,7 @@ export interface CreateTaskInstanceInput {
   tags?: string[]
   taskType?: TaskType
   targetDateRule?: Record<string, any> | null
+  formDefinitionId?: string
 }
 
 export interface UpdateTaskInstanceInput {
@@ -273,6 +274,7 @@ export class TaskInstanceService {
         targetDateRule: input.targetDateRule || undefined,
         labels: labels as any,
         taskType: input.taskType || null,
+        formDefinitionId: input.formDefinitionId || null,
         status: JobStatus.NOT_STARTED
       },
       include: {

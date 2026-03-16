@@ -27,6 +27,18 @@ export function formatResponseValue(value: unknown, fieldType?: string): string 
     return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
   if (fieldType === "checkbox") return value ? "Yes" : "No"
+  if (fieldType === "accountingPeriod" && typeof value === "string") {
+    try {
+      const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/)
+      if (isoMatch) {
+        const d = new Date(+isoMatch[1], +isoMatch[2] - 1, +isoMatch[3])
+        return d.toLocaleDateString(undefined, { year: "numeric", month: "long" })
+      }
+      return String(value)
+    } catch {
+      return String(value)
+    }
+  }
   if (fieldType === "date" && typeof value === "string") {
     try {
       // Parse YYYY-MM-DD as local date to avoid UTC timezone shift

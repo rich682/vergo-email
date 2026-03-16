@@ -19,6 +19,13 @@ import {
   Download,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { format } from "date-fns"
 import * as XLSX from "xlsx"
 import { formatResponseValue } from "@/lib/utils/form-formatting"
@@ -34,6 +41,7 @@ interface FormAttachment {
 interface FormRequestItem {
   id: string
   status: string
+  customStatus: string | null
   submittedAt: string | null
   responseData: Record<string, unknown> | null
   remindersSent: number
@@ -56,8 +64,10 @@ interface FormSubmissionsTableProps {
   formName: string
   fields: FormField[]
   formRequests: FormRequestItem[]
+  customStatuses: string[]
   canSendForms: boolean
   onSendReminder: (requestId: string) => void
+  onCustomStatusChange?: (requestId: string, status: string) => void
   sendingReminder: string | null
 }
 
@@ -66,6 +76,8 @@ function getRecipientName(req: FormRequestItem): string {
   if (req.recipientEntity) {
     return `${req.recipientEntity.firstName}${req.recipientEntity.lastName ? ` ${req.recipientEntity.lastName}` : ""}`
   }
+  // Universal link submissions have no recipient
+  if (!req.recipientUser && !req.recipientEntity) return "Via Link"
   return "Unknown"
 }
 
@@ -99,8 +111,10 @@ export function FormSubmissionsTable({
   formName,
   fields,
   formRequests,
+  customStatuses,
   canSendForms,
   onSendReminder,
+  onCustomStatusChange,
   sendingReminder,
 }: FormSubmissionsTableProps) {
   const sortedFields = [...fields].sort((a, b) => (a.order || 0) - (b.order || 0))
@@ -114,8 +128,16 @@ export function FormSubmissionsTable({
   const submitted = formRequests.filter(r => r.status === "SUBMITTED").length
   const total = formRequests.length
 
+  // Resolve display status: use customStatus if set, else derive from system status
+  const getDisplayStatus = (req: FormRequestItem): string => {
+    if (req.customStatus) return req.customStatus
+    if (req.status === "SUBMITTED") return "Submitted"
+    if (req.status === "PENDING") return "In Progress"
+    return req.status
+  }
+
   const handleExportExcel = () => {
-    const headers = ["Recipient", "Email", "Status", ...sortedFields.map(f => f.label), "Submitted"]
+    const headers = ["Recipient", "Email", "Form Status", "Status", ...sortedFields.map(f => f.label), "Submitted"]
     const data: (string | number | boolean | null)[][] = [headers]
 
     for (const req of sortedRequests) {
@@ -123,6 +145,7 @@ export function FormSubmissionsTable({
         getRecipientName(req),
         getRecipientEmail(req) || "",
         req.status,
+        getDisplayStatus(req),
         ...sortedFields.map(f =>
           req.status === "SUBMITTED" && req.responseData
             ? formatResponseValue(req.responseData[f.key], f.type)
@@ -207,12 +230,19 @@ export function FormSubmissionsTable({
               >
                 Recipient
               </th>
-              {/* Status column */}
+              {/* System status column */}
               <th
                 className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200"
                 style={{ width: 110, minWidth: 110 }}
               >
                 Status
+              </th>
+              {/* Custom status column */}
+              <th
+                className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200"
+                style={{ width: 150, minWidth: 150 }}
+              >
+                Tracking
               </th>
               {/* Dynamic field columns */}
               {sortedFields.map(field => (
@@ -266,6 +296,30 @@ export function FormSubmissionsTable({
                   {/* Status */}
                   <td className="px-4 py-2.5 border-l border-gray-100">
                     <StatusBadge status={req.status} />
+                  </td>
+                  {/* Custom status */}
+                  <td className="px-4 py-2.5 border-l border-gray-100">
+                    {isSubmitted && customStatuses.length > 0 ? (
+                      <Select
+                        value={getDisplayStatus(req)}
+                        onValueChange={(value) => onCustomStatusChange?.(req.id, value)}
+                      >
+                        <SelectTrigger className="h-7 text-xs w-full border-gray-200">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {customStatuses.map((s) => (
+                            <SelectItem key={s} value={s} className="text-xs">
+                              {s}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <span className="text-xs text-gray-500">
+                        {getDisplayStatus(req)}
+                      </span>
+                    )}
                   </td>
                   {/* Field values */}
                   {sortedFields.map(field => (

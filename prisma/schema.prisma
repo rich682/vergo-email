@@ -126,6 +126,12 @@ enum SubtaskStatus {
   DONE
 }
 
+enum SubscriptionStatus {
+  FREE_TRIAL
+  TRIAL_ENDED
+  PAYING_CUSTOMER
+}
+
 model Organization {
   id                   String   @id @default(cuid())
   name                 String
@@ -135,6 +141,8 @@ model Organization {
   fiscalYearStartMonth Int      @default(1) // 1 = January, 12 = December
   timezone             String   @default("UTC") // IANA timezone e.g. "America/New_York", "Australia/Sydney"
   aiContext            Json? // AI context for report insights: { industry, entityType, keyMetrics[], terminology{} }
+  subscriptionStatus   SubscriptionStatus @default(FREE_TRIAL)
+  trialStartedAt       DateTime?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -407,6 +415,9 @@ model TaskInstance {
   // Task type - optional classification for agent integration
   taskType String? // "reconciliation" | "report" | "form" | "request" | "analysis" | "other"
 
+  // Linked form definition - universal form responses route into this task
+  formDefinitionId String?
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   completedAt DateTime? // When the task was completed — used for target vs actual analytics
@@ -423,6 +434,7 @@ model TaskInstance {
   board                Board?                     @relation(fields: [boardId], references: [id], onDelete: SetNull)
   reportDefinition     ReportDefinition?          @relation(fields: [reportDefinitionId], references: [id], onDelete: SetNull)
   reconciliationConfig ReconciliationConfig?      @relation(fields: [reconciliationConfigId], references: [id], onDelete: SetNull)
+  formDefinition       FormDefinition?            @relation("LinkedFormDefinition", fields: [formDefinitionId], references: [id], onDelete: SetNull)
   collaborators        TaskInstanceCollaborator[] // Team members who can collaborate on this job
   requests             Request[] // Child tasks (requests) belonging to this job
   emailDrafts          EmailDraft[] // Request-level association
@@ -448,6 +460,7 @@ model TaskInstance {
   @@index([reconciliationConfigId])
   @@index([organizationId, boardId, status]) // Board page: filtered task queries
   @@index([organizationId, ownerId, status]) // My tasks: owner-scoped queries
+  @@index([formDefinitionId])
   @@index([organizationId, deletedAt])
   @@map("Job")
 }
@@ -1204,6 +1217,10 @@ model FormDefinition {
   // { allowEdit: boolean, enforceDeadline: boolean }
   settings Json @default("{}")
 
+  // Universal link - allows anyone with the link to fill out the form
+  universalLinkEnabled Boolean  @default(false)
+  universalAccessToken String?  @unique
+
   // Target database for storing responses
   databaseId    String?
   // Mapping from form field keys to database column keys
@@ -1223,12 +1240,14 @@ model FormDefinition {
   database     Database?              @relation(fields: [databaseId], references: [id], onDelete: SetNull)
   createdBy    User                   @relation("FormDefinitionCreator", fields: [createdById], references: [id])
   deletedBy    User?                  @relation("FormDefinitionDeleter", fields: [deletedById], references: [id])
-  formRequests FormRequest[]
-  viewers      FormDefinitionViewer[]
+  formRequests  FormRequest[]
+  viewers       FormDefinitionViewer[]
+  linkedTasks   TaskInstance[]           @relation("LinkedFormDefinition")
 
   @@index([organizationId])
   @@index([databaseId])
   @@index([organizationId, deletedAt])
+  @@index([universalAccessToken])
 }
 
 // FormRequest represents a form sent to a specific user for completion
@@ -1247,8 +1266,9 @@ model FormRequest {
   accessToken String? @unique
 
   // Status: PENDING (awaiting response), SUBMITTED (completed), EXPIRED (past deadline)
-  status      String    @default("PENDING")
-  submittedAt DateTime?
+  status       String    @default("PENDING")
+  customStatus String?   // Internal/custom status for process tracking (e.g. "In Progress", "Submitted", user-defined)
+  submittedAt  DateTime?
 
   // Response data (JSON object of form field values)
   responseData     Json?

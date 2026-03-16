@@ -810,6 +810,15 @@ export default function FormFillPage() {
                       </label>
                     </div>
                   )}
+                  {field.type === "accountingPeriod" && (
+                    <Input
+                      id={field.key}
+                      type="date"
+                      value={(formValues[field.key] as string) || ""}
+                      onChange={(e) => updateField(field.key, e.target.value)}
+                      className={validationErrors[field.key] ? "border-red-500" : ""}
+                    />
+                  )}
                   {field.type === "file" && (
                     <div className="space-y-3">
                       {/* Uploaded files */}

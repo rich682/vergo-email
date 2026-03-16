@@ -20,6 +20,7 @@ import { DatabaseService, type DatabaseSchemaColumn, type DatabaseSchema } from 
 const defaultSettings: FormSettings = {
   allowEdit: false,
   enforceDeadline: false,
+  customStatuses: ["In Progress", "Submitted"],
 }
 
 // Map form field types to database column types
@@ -33,6 +34,7 @@ const FIELD_TYPE_TO_DB_TYPE: Record<FormFieldType, DatabaseSchemaColumn["dataTyp
   dropdown: "dropdown",
   checkbox: "boolean",
   file: "file",
+  accountingPeriod: "date",
 }
 
 export class FormDefinitionService {
@@ -305,7 +307,7 @@ export class FormDefinitionService {
     }
 
     const keys = new Set<string>()
-    const validTypes = ["text", "longText", "number", "currency", "percentage", "date", "dropdown", "checkbox", "file"]
+    const validTypes = ["text", "longText", "number", "currency", "percentage", "date", "dropdown", "checkbox", "file", "accountingPeriod"]
 
     for (const field of fields) {
       // Check required properties

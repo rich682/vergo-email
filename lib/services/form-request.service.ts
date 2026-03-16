@@ -139,6 +139,7 @@ export class FormRequestService {
             recipientEntityId: recipient.id,
             accessToken,
             status: "PENDING",
+            customStatus: "In Progress",
             deadlineDate: deadlineDate || null,
             remindersEnabled: config.enabled,
             remindersMaxCount: config.maxCount,
@@ -258,6 +259,7 @@ export class FormRequestService {
             recipientUserId: recipient.id,
             accessToken,
             status: "PENDING",
+            customStatus: "In Progress",
             deadlineDate: deadlineDate || null,
             remindersEnabled: config.enabled,
             remindersMaxCount: config.maxCount,
@@ -413,6 +415,7 @@ export class FormRequestService {
             name: true,
             databaseId: true,
             fields: true,
+            settings: true,
           },
         },
         recipientUser: {
@@ -634,6 +637,7 @@ export class FormRequestService {
       where: { id: formRequest.id },
       data: {
         status: "SUBMITTED",
+        customStatus: "Submitted",
         submittedAt: new Date(),
         responseData: responseData as any,
         databaseRowIndex: newDatabaseRowIndex,

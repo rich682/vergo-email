@@ -23,6 +23,11 @@ export default withAuth(
       return NextResponse.next()
     }
 
+    // Allow public form access (universal link submissions)
+    if (pathname.startsWith("/api/forms/public/")) {
+      return NextResponse.next()
+    }
+
     // Check role-based access via action permissions
     const role = token?.role as string | undefined
     const orgActionPermissions = (token?.orgActionPermissions as OrgActionPermissions) || null
@@ -73,6 +78,11 @@ export default withAuth(
 
         // Allow token-based form access (external stakeholders without accounts)
         if (pathname.startsWith("/api/form-requests/token/")) {
+          return true
+        }
+
+        // Allow public form access (universal link submissions)
+        if (pathname.startsWith("/api/forms/public/")) {
           return true
         }
 

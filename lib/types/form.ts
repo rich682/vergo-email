@@ -6,15 +6,16 @@
 
 // Field types supported by the form builder
 export type FormFieldType =
-  | "text"       // Single-line text input
-  | "longText"   // Multi-line textarea
-  | "number"     // Numeric input
-  | "currency"   // Currency input with formatting
-  | "percentage" // Percentage input with % formatting
-  | "date"       // Date picker
-  | "dropdown"   // Select from options
-  | "checkbox"   // Boolean toggle
-  | "file"       // File upload
+  | "text"             // Single-line text input
+  | "longText"         // Multi-line textarea
+  | "number"           // Numeric input
+  | "currency"         // Currency input with formatting
+  | "percentage"       // Percentage input with % formatting
+  | "date"             // Date picker
+  | "dropdown"         // Select from options
+  | "checkbox"         // Boolean toggle
+  | "file"             // File upload
+  | "accountingPeriod" // Accounting period date picker (routes responses to correct board)
 
 // Validation rules for form fields
 export interface FormFieldValidation {
@@ -41,6 +42,7 @@ export interface FormField {
 export interface FormSettings {
   allowEdit: boolean           // Can recipient edit after submit?
   enforceDeadline: boolean     // Block submissions after deadline?
+  customStatuses?: string[]    // Custom status options for internal tracking
 }
 
 // Form request status
@@ -69,6 +71,7 @@ export interface FormRequestData {
   formDefinitionId: string
   recipientUserId: string
   status: FormRequestStatus
+  customStatus?: string | null
   submittedAt?: Date | null
   responseData?: Record<string, unknown> | null
   databaseRowIndex?: number | null
@@ -144,6 +147,7 @@ export interface FormRequestProgress {
 export const DEFAULT_FORM_SETTINGS: FormSettings = {
   allowEdit: false,
   enforceDeadline: false,
+  customStatuses: ["In Progress", "Submitted"],
 }
 
 // Default reminder config

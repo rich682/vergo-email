@@ -707,6 +707,7 @@ export class BoardService {
         taskType: prevAny.taskType || null,
         targetDateRule: prevAny.targetDateRule || null,
         reconciliationConfigId: prevAny.reconciliationConfigId || null,
+        formDefinitionId: prevAny.formDefinitionId || null,
       }
 
       // Compute dueDate from targetDateRule for the new board's period
@@ -1273,6 +1274,7 @@ export class BoardService {
           reportDefinitionId: sourceAny.reportDefinitionId || null,
           reportFilterBindings: sourceAny.reportFilterBindings || null,
           reconciliationConfigId: sourceAny.reconciliationConfigId || null,
+          formDefinitionId: sourceAny.formDefinitionId || null,
         },
       })
 

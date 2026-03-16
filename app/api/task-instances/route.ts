@@ -122,7 +122,8 @@ export async function POST(request: NextRequest) {
       boardId,
       lineageId,
       taskType,
-      targetDateRule
+      targetDateRule,
+      formDefinitionId
     } = body
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {
@@ -165,7 +166,8 @@ export async function POST(request: NextRequest) {
       labels: labels || undefined,
       tags: tags || undefined,
       lineageId: lineageId || undefined,
-      taskType: taskType || undefined
+      taskType: taskType || undefined,
+      formDefinitionId: formDefinitionId || undefined,
     })
 
     // In simplified mode, propagate new tasks to future monthly boards

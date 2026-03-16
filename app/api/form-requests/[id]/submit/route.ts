@@ -7,7 +7,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
+import { prisma } from "@/lib/prisma"
 import { FormRequestService } from "@/lib/services/form-request.service"
+import { FormNotificationService } from "@/lib/services/form-notification.service"
 import { NotificationService } from "@/lib/services/notification.service"
 import { ActivityEventService } from "@/lib/activity-events"
 import { inngest } from "@/inngest/client"
@@ -52,6 +54,32 @@ export async function POST(
         `A form response has been submitted.`,
         { formRequestId: updated.id }
       ).catch((err) => console.error("Failed to send form response notifications:", err))
+    }
+
+    // Send email notification to form creator (non-blocking)
+    {
+      const formDefId = (updated as any).formDefinitionId || (updated as any).formDefinition?.id
+      if (formDefId) {
+        prisma.formDefinition.findUnique({
+          where: { id: formDefId },
+          include: { createdBy: { select: { id: true, name: true, email: true } } },
+        }).then((formDef) => {
+          if (formDef?.createdBy && formDef.createdBy.id !== session.user.id) {
+            const taskName = (updated as any).taskInstance?.name || (updated as any).formDefinition?.name || "a task"
+            FormNotificationService.sendOwnerSubmissionNotification({
+              formRequestId: updated.id,
+              formName: formDef.name,
+              taskName,
+              submitterName: session.user.name || "Someone",
+              submitterEmail: session.user.email || null,
+              organizationId: session.user.organizationId,
+              ownerEmail: formDef.createdBy.email,
+              ownerName: formDef.createdBy.name,
+              taskInstanceId: updated.taskInstanceId,
+            }).catch(err => console.error("Failed to send owner submission notification:", err))
+          }
+        }).catch(err => console.error("Failed to fetch form definition for owner notification:", err))
+      }
     }
 
     // Log activity event (non-blocking)

@@ -8,7 +8,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
 import { FormRequestService } from "@/lib/services/form-request.service"
+import { FormNotificationService } from "@/lib/services/form-notification.service"
 import { NotificationService } from "@/lib/services/notification.service"
 import { ActivityEventService } from "@/lib/activity-events"
 import { inngest } from "@/inngest/client"
@@ -147,6 +149,33 @@ export async function POST(
         `A form response has been submitted.`,
         { formRequestId: result.id }
       ).catch((err) => console.error("Failed to send form response notifications:", err))
+    }
+
+    // Send email notification to form creator (non-blocking)
+    {
+      const formDefId = (result as any).formDefinitionId || (result as any).formDefinition?.id
+      if (formDefId) {
+        const submitterEmail = result.recipientEntity?.email || result.recipientUser?.email || null
+        prisma.formDefinition.findUnique({
+          where: { id: formDefId },
+          include: { createdBy: { select: { id: true, name: true, email: true } } },
+        }).then((formDef) => {
+          if (formDef?.createdBy) {
+            const taskName = (result as any).taskInstance?.name || formDef.name || "a task"
+            FormNotificationService.sendOwnerSubmissionNotification({
+              formRequestId: result.id,
+              formName: formDef.name,
+              taskName,
+              submitterName,
+              submitterEmail,
+              organizationId: result.organizationId,
+              ownerEmail: formDef.createdBy.email,
+              ownerName: formDef.createdBy.name,
+              taskInstanceId: result.taskInstanceId,
+            }).catch(err => console.error("Failed to send owner submission notification:", err))
+          }
+        }).catch(err => console.error("Failed to fetch form definition for owner notification:", err))
+      }
     }
 
     // Log activity event (non-blocking)

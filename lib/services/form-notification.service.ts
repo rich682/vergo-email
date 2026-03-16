@@ -335,6 +335,100 @@ The Team`
   }
 
   /**
+   * Send email notification to form creator/owner when a form is submitted
+   */
+  static async sendOwnerSubmissionNotification(data: {
+    formRequestId: string
+    formName: string
+    taskName: string
+    submitterName: string
+    submitterEmail: string | null
+    organizationId: string
+    ownerEmail: string
+    ownerName: string | null
+    taskInstanceId: string
+  }): Promise<boolean> {
+    const {
+      formName,
+      taskName,
+      submitterName,
+      submitterEmail,
+      organizationId,
+      ownerEmail,
+      ownerName,
+      taskInstanceId,
+    } = data
+
+    const greeting = ownerName ? `Hi ${ownerName.split(" ")[0]},` : "Hello,"
+    const taskUrl = `${getBaseUrl()}/dashboard/jobs/${taskInstanceId}`
+
+    const subject = `Form Submitted: ${formName}`
+
+    const body = `${greeting}
+
+${submitterName}${submitterEmail ? ` (${submitterEmail})` : ""} has submitted a response to your form:
+
+📝 ${formName}
+📋 ${taskName}
+
+View the response here:
+${taskUrl}
+
+Best regards,
+Vergo`
+
+    const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <p>${greeting}</p>
+
+  <p><strong>${submitterName}</strong>${submitterEmail ? ` (${submitterEmail})` : ""} has submitted a response to your form:</p>
+
+  <div style="background: #f8f9fa; border-radius: 8px; padding: 16px; margin: 20px 0;">
+    <p style="margin: 0 0 8px 0;"><strong>📝 ${formName}</strong></p>
+    <p style="margin: 0; color: #666;">📋 ${taskName}</p>
+  </div>
+
+  <div style="text-align: center; margin: 30px 0;">
+    <a href="${taskUrl}" style="display: inline-block; background: #f97316; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 500;">
+      View Response →
+    </a>
+  </div>
+
+  <p style="color: #666; font-size: 14px;">
+    Best regards,<br>
+    Vergo
+  </p>
+</body>
+</html>`
+
+    try {
+      console.log(`[FormNotification] Sending owner submission notification to ${ownerEmail}`)
+
+      await EmailSendingService.sendEmail({
+        organizationId,
+        to: ownerEmail,
+        toName: ownerName || undefined,
+        subject,
+        body,
+        htmlBody,
+        campaignName: formName,
+        campaignType: "form_submission_notification",
+      })
+
+      return true
+    } catch (error) {
+      console.error(`[FormNotification] Failed to send owner submission notification:`, error)
+      return false
+    }
+  }
+
+  /**
    * Send form request emails to all recipients in a batch (internal users)
    */
   static async sendBulkFormRequestEmails(

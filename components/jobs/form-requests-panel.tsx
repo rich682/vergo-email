@@ -25,6 +25,13 @@ import {
   Paperclip,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
 import { usePermissions } from "@/components/permissions-context"
 import { parseFields, formatResponseValue } from "@/lib/utils/form-formatting"
@@ -42,6 +49,7 @@ interface FormAttachment {
 interface FormRequestItem {
   id: string
   status: string
+  customStatus: string | null
   submittedAt: string | null
   deadlineDate: string | null
   remindersSent: number
@@ -52,6 +60,7 @@ interface FormRequestItem {
     name: string
     databaseId: string | null
     fields: FormField[] | string
+    settings?: { customStatuses?: string[] } | string | null
   }
   recipientUser: {
     id: string
@@ -150,6 +159,42 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
     } finally {
       setSendingReminder(null)
     }
+  }
+
+  const handleCustomStatusChange = async (formRequestId: string, customStatus: string) => {
+    try {
+      const response = await fetch(`/api/form-requests/${formRequestId}/custom-status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ customStatus }),
+      })
+      if (response.ok) {
+        await fetchFormRequests()
+      } else {
+        const data = await response.json()
+        console.error("Failed to update custom status:", data.error)
+      }
+    } catch (error) {
+      console.error("Error updating custom status:", error)
+    }
+  }
+
+  // Parse settings safely (may come as string from API)
+  const parseSettings = (settings: unknown): { customStatuses?: string[] } => {
+    if (!settings) return {}
+    if (typeof settings === "string") {
+      try { return JSON.parse(settings) } catch { return {} }
+    }
+    return settings as { customStatuses?: string[] }
+  }
+
+  // Get display status for a request
+  const getDisplayStatus = (req: FormRequestItem): string => {
+    if (req.customStatus) return req.customStatus
+    if (req.status === "SUBMITTED") return "Submitted"
+    if (req.status === "PENDING") return "In Progress"
+    return req.status
   }
 
   if (loading) {
@@ -283,8 +328,32 @@ export function FormRequestsPanel({ jobId, onRefresh }: FormRequestsPanelProps) 
                       <div className="flex items-center gap-2">
                         {req.status === "SUBMITTED" ? (
                           <>
-                            <span className="text-xs text-gray-500">
-                              Submitted{" "}
+                            {(() => {
+                              const settings = parseSettings(req.formDefinition.settings)
+                              const statuses = settings.customStatuses || ["In Progress", "Submitted"]
+                              return statuses.length > 0 ? (
+                                <Select
+                                  value={getDisplayStatus(req)}
+                                  onValueChange={(value) => handleCustomStatusChange(req.id, value)}
+                                >
+                                  <SelectTrigger className="h-6 text-xs w-[120px] border-gray-200">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {statuses.map((s) => (
+                                      <SelectItem key={s} value={s} className="text-xs">
+                                        {s}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <span className="text-xs text-gray-500">
+                                  {getDisplayStatus(req)}
+                                </span>
+                              )
+                            })()}
+                            <span className="text-xs text-gray-400">
                               {req.submittedAt &&
                                 new Date(req.submittedAt).toLocaleDateString()}
                             </span>

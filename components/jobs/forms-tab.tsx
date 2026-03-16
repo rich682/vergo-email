@@ -25,6 +25,7 @@ interface FormAttachment {
 interface FormRequestItem {
   id: string
   status: string
+  customStatus: string | null
   submittedAt: string | null
   responseData: Record<string, unknown> | null
   remindersSent: number
@@ -33,6 +34,7 @@ interface FormRequestItem {
     id: string
     name: string
     fields: FormField[] | string
+    settings?: { customStatuses?: string[] } | string | null
   }
   recipientUser: {
     id: string
@@ -102,6 +104,34 @@ export function FormsTab({ jobId, onFormsSent }: FormsTabProps) {
     }
   }
 
+  const handleCustomStatusChange = async (formRequestId: string, customStatus: string) => {
+    try {
+      const response = await fetch(`/api/form-requests/${formRequestId}/custom-status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ customStatus }),
+      })
+      if (response.ok) {
+        await fetchFormRequests()
+      } else {
+        const data = await response.json()
+        console.error("Failed to update custom status:", data.error)
+      }
+    } catch (error) {
+      console.error("Error updating custom status:", error)
+    }
+  }
+
+  // Parse settings safely (may come as string from API)
+  const parseSettings = (settings: unknown): { customStatuses?: string[] } => {
+    if (!settings) return {}
+    if (typeof settings === "string") {
+      try { return JSON.parse(settings) } catch { return {} }
+    }
+    return settings as { customStatuses?: string[] }
+  }
+
   // Expose refresh for parent to call after sending forms
   useEffect(() => {
     if (onFormsSent) {
@@ -134,15 +164,17 @@ export function FormsTab({ jobId, onFormsSent }: FormsTabProps) {
     if (!req?.formDefinition) return acc
     const formId = req.formDefinition.id
     if (!acc[formId]) {
+      const settings = parseSettings(req.formDefinition.settings)
       acc[formId] = {
         formName: req.formDefinition.name || "Unnamed Form",
         fields: parseFields(req.formDefinition.fields),
+        customStatuses: settings.customStatuses || ["In Progress", "Submitted"],
         requests: [],
       }
     }
     acc[formId].requests.push(req)
     return acc
-  }, {} as Record<string, { formName: string; fields: FormField[]; requests: FormRequestItem[] }>)
+  }, {} as Record<string, { formName: string; fields: FormField[]; customStatuses: string[]; requests: FormRequestItem[] }>)
 
   return (
     <div className="space-y-6">
@@ -152,8 +184,10 @@ export function FormsTab({ jobId, onFormsSent }: FormsTabProps) {
           formName={group.formName}
           fields={group.fields}
           formRequests={group.requests}
+          customStatuses={group.customStatuses}
           canSendForms={canSendForms}
           onSendReminder={handleSendReminder}
+          onCustomStatusChange={handleCustomStatusChange}
           sendingReminder={sendingReminder}
         />
       ))}

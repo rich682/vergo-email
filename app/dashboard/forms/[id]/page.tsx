@@ -25,6 +25,10 @@ import {
   Database,
   ExternalLink,
   X,
+  CalendarRange,
+  Link2,
+  Copy,
+  Check,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -76,6 +80,7 @@ const FIELD_TYPE_CONFIG: Record<
   dropdown: { label: "Dropdown", icon: ChevronDown },
   checkbox: { label: "Checkbox", icon: CheckSquare },
   file: { label: "File Upload", icon: FileUp },
+  accountingPeriod: { label: "Accounting Period", icon: CalendarRange },
 }
 
 interface FormData {
@@ -85,6 +90,8 @@ interface FormData {
   fields: FormField[]
   settings: FormSettings
   databaseId: string | null
+  universalLinkEnabled: boolean
+  universalAccessToken: string | null
   database: {
     id: string
     name: string
@@ -111,6 +118,11 @@ export default function FormBuilderPage() {
   // Ref to track latest form data for auto-save
   const formRef = useRef<FormData | null>(null)
   formRef.current = form
+
+  // Custom status input state
+  const [newCustomStatus, setNewCustomStatus] = useState("")
+  const [copiedLink, setCopiedLink] = useState(false)
+  const [togglingUniversalLink, setTogglingUniversalLink] = useState(false)
 
   // Field editor state
   const [editingField, setEditingField] = useState<FormField | null>(null)
@@ -161,6 +173,7 @@ export default function FormBuilderPage() {
         const safeSettings = {
           allowEdit: Boolean(settings?.allowEdit),
           enforceDeadline: Boolean(settings?.enforceDeadline),
+          customStatuses: Array.isArray(settings?.customStatuses) ? settings.customStatuses : ["In Progress", "Submitted"],
         }
 
         // Ensure name and description are strings
@@ -176,6 +189,8 @@ export default function FormBuilderPage() {
           fields: safeFields,
           settings: safeSettings,
           databaseId: data.form.databaseId || null,
+          universalLinkEnabled: Boolean(data.form.universalLinkEnabled),
+          universalAccessToken: data.form.universalAccessToken || null,
           database: data.form.database ? {
             id: String(data.form.database.id || ''),
             name: String(data.form.database.name || ''),
@@ -385,6 +400,55 @@ export default function FormBuilderPage() {
       .filter((f) => f.key !== key)
       .map((f, i) => ({ ...f, order: i }))
     updateForm({ fields: updatedFields })
+  }
+
+  const toggleUniversalLink = async (enabled: boolean) => {
+    setTogglingUniversalLink(true)
+    try {
+      const response = await fetch(`/api/forms/${id}/universal-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ enabled }),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setForm(prev => prev ? {
+          ...prev,
+          universalLinkEnabled: data.universalLinkEnabled,
+          universalAccessToken: data.universalAccessToken,
+        } : null)
+        // Auto-add accountingPeriod field if enabling and none exists
+        if (enabled && form) {
+          const hasAccountingPeriod = form.fields.some(f => f.type === "accountingPeriod")
+          if (!hasAccountingPeriod) {
+            const newField: FormField = {
+              key: "accounting_period",
+              label: "Accounting Period",
+              type: "accountingPeriod",
+              required: true,
+              helpText: "Select the accounting period this submission belongs to",
+              order: 0,
+            }
+            // Shift existing fields down
+            const updatedFields = [newField, ...form.fields.map(f => ({ ...f, order: f.order + 1 }))]
+            updateForm({ fields: updatedFields })
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error toggling universal link:", error)
+    } finally {
+      setTogglingUniversalLink(false)
+    }
+  }
+
+  const copyUniversalLink = () => {
+    if (!form?.universalAccessToken) return
+    const url = `${window.location.origin}/forms/public/${form.universalAccessToken}`
+    navigator.clipboard.writeText(url)
+    setCopiedLink(true)
+    setTimeout(() => setCopiedLink(false), 2000)
   }
 
   const moveField = (fromIndex: number, toIndex: number) => {
@@ -667,6 +731,9 @@ export default function FormBuilderPage() {
                             </p>
                           </div>
                         )}
+                        {field.type === "accountingPeriod" && (
+                          <Input type="date" disabled placeholder="Select accounting period" />
+                        )}
                       </div>
                     </div>
                   ))}
@@ -860,6 +927,129 @@ export default function FormBuilderPage() {
                   })
                 }
               />
+            </div>
+
+            {/* Universal Link */}
+            <div className="pt-4 border-t">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="flex items-center gap-2">
+                    <Link2 className="w-4 h-4" />
+                    Universal Link
+                  </Label>
+                  <p className="text-xs text-gray-500">
+                    Share a public URL anyone can use to submit this form
+                  </p>
+                </div>
+                <Switch
+                  checked={form.universalLinkEnabled}
+                  onCheckedChange={toggleUniversalLink}
+                  disabled={togglingUniversalLink}
+                />
+              </div>
+              {form.universalLinkEnabled && form.universalAccessToken && (
+                <div className="mt-3 bg-gray-50 rounded-lg p-3">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      readOnly
+                      value={`${typeof window !== 'undefined' ? window.location.origin : ''}/forms/public/${form.universalAccessToken}`}
+                      className="flex-1 text-xs h-8 bg-white"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 shrink-0"
+                      onClick={copyUniversalLink}
+                    >
+                      {copiedLink ? (
+                        <><Check className="w-3 h-3 mr-1" /> Copied</>
+                      ) : (
+                        <><Copy className="w-3 h-3 mr-1" /> Copy</>
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Submissions require an Accounting Period field to route responses to the correct task.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Custom Statuses */}
+            <div className="pt-4 border-t">
+              <Label>Custom Statuses</Label>
+              <p className="text-xs text-gray-500 mb-3">
+                Define statuses for tracking form responses internally
+              </p>
+              <div className="space-y-2">
+                {(form.settings.customStatuses || ["In Progress", "Submitted"]).map((status, idx) => {
+                  const isDefault = status === "In Progress" || status === "Submitted"
+                  return (
+                    <div key={idx} className="flex items-center gap-2">
+                      <span className="flex-1 text-sm text-gray-700 px-3 py-1.5 bg-gray-50 rounded-md">
+                        {status}
+                      </span>
+                      {!isDefault && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = (form.settings.customStatuses || []).filter((_, i) => i !== idx)
+                            updateForm({
+                              settings: { ...form.settings, customStatuses: updated },
+                            })
+                          }}
+                          className="p-1 text-gray-400 hover:text-red-500 rounded hover:bg-gray-100"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                      {isDefault && (
+                        <span className="text-xs text-gray-400 px-1">Default</span>
+                      )}
+                    </div>
+                  )
+                })}
+                <div className="flex items-center gap-2 mt-2">
+                  <Input
+                    value={newCustomStatus}
+                    onChange={(e) => setNewCustomStatus(e.target.value)}
+                    placeholder="New status name"
+                    className="flex-1 h-8 text-sm"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newCustomStatus.trim()) {
+                        e.preventDefault()
+                        const current = form.settings.customStatuses || ["In Progress", "Submitted"]
+                        if (!current.includes(newCustomStatus.trim())) {
+                          updateForm({
+                            settings: { ...form.settings, customStatuses: [...current, newCustomStatus.trim()] },
+                          })
+                        }
+                        setNewCustomStatus("")
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() => {
+                      if (newCustomStatus.trim()) {
+                        const current = form.settings.customStatuses || ["In Progress", "Submitted"]
+                        if (!current.includes(newCustomStatus.trim())) {
+                          updateForm({
+                            settings: { ...form.settings, customStatuses: [...current, newCustomStatus.trim()] },
+                          })
+                        }
+                        setNewCustomStatus("")
+                      }
+                    }}
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add
+                  </Button>
+                </div>
+              </div>
             </div>
 
             {/* Response Database Info (read-only) */}
