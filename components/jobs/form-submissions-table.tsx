@@ -10,9 +10,6 @@
  */
 
 import {
-  Check,
-  Clock,
-  AlertCircle,
   Bell,
   Loader2,
   Paperclip,
@@ -85,28 +82,6 @@ function getRecipientEmail(req: FormRequestItem): string | null {
   return req.recipientUser?.email || req.recipientEntity?.email || null
 }
 
-function StatusBadge({ status }: { status: string }) {
-  if (status === "SUBMITTED") {
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">
-        <Check className="w-3 h-3" /> Submitted
-      </span>
-    )
-  }
-  if (status === "EXPIRED") {
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
-        <AlertCircle className="w-3 h-3" /> Expired
-      </span>
-    )
-  }
-  return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
-      <Clock className="w-3 h-3" /> Pending
-    </span>
-  )
-}
-
 export function FormSubmissionsTable({
   formName,
   fields,
@@ -137,14 +112,13 @@ export function FormSubmissionsTable({
   }
 
   const handleExportExcel = () => {
-    const headers = ["Recipient", "Email", "Form Status", "Status", ...sortedFields.map(f => f.label), "Submitted"]
+    const headers = ["Recipient", "Email", "Status", ...sortedFields.map(f => f.label), "Submitted"]
     const data: (string | number | boolean | null)[][] = [headers]
 
     for (const req of sortedRequests) {
       const row = [
         getRecipientName(req),
         getRecipientEmail(req) || "",
-        req.status,
         getDisplayStatus(req),
         ...sortedFields.map(f =>
           req.status === "SUBMITTED" && req.responseData
@@ -230,13 +204,6 @@ export function FormSubmissionsTable({
               >
                 Recipient
               </th>
-              {/* System status column */}
-              <th
-                className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200"
-                style={{ width: 110, minWidth: 110 }}
-              >
-                Status
-              </th>
               {/* Custom status column */}
               <th
                 className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200"
@@ -292,10 +259,6 @@ export function FormSubmissionsTable({
                         {email}
                       </p>
                     )}
-                  </td>
-                  {/* Status */}
-                  <td className="px-4 py-2.5 border-l border-gray-100">
-                    <StatusBadge status={req.status} />
                   </td>
                   {/* Custom status */}
                   <td className="px-4 py-2.5 border-l border-gray-100">

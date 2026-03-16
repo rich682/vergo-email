@@ -106,10 +106,15 @@ export async function POST(
         organizationId: formDef.organizationId,
         periodStart: { lte: periodDate },
         periodEnd: { gt: periodDate },
+        deletedAt: null,
       },
+      orderBy: { periodStart: "desc" },
     })
 
     if (!board) {
+      console.error(
+        `Universal link: no board found for date ${accountingPeriodValue} (parsed: ${periodDate.toISOString()}), org ${formDef.organizationId}`
+      )
       return NextResponse.json(
         { error: "No accounting period found for the selected date. Please select a valid date." },
         { status: 404 }
@@ -127,6 +132,9 @@ export async function POST(
     })
 
     if (!taskInstance) {
+      console.error(
+        `Universal link: no task found for form "${formDef.name}" (${formDef.id}) in board "${board.name}" (${board.id}), org ${formDef.organizationId}, periodDate ${accountingPeriodValue}`
+      )
       return NextResponse.json(
         { error: "No task is set up to receive responses for this form in the selected accounting period. Please contact your administrator." },
         { status: 404 }
