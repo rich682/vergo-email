@@ -231,9 +231,9 @@ export async function POST(
       formRequest: result,
     })
   } catch (error: any) {
-    console.error("Error submitting form by token:", error)
+    console.error("Error submitting form by token:", error?.message, error?.stack)
     return NextResponse.json(
-      { error: "Failed to submit form" },
+      { error: error?.message || "Failed to submit form" },
       { status: 500 }
     )
   }

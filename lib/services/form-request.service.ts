@@ -540,6 +540,9 @@ export class FormRequestService {
             database: true,
           },
         },
+        recipientUser: {
+          select: { id: true, name: true, email: true },
+        },
         recipientEntity: {
           select: { id: true, firstName: true, lastName: true, email: true },
         },
