@@ -591,7 +591,12 @@ export class FormRequestService {
     }
 
     // Validate required fields
-    const fields = formRequest.formDefinition.fields as FormField[]
+    const rawFields = formRequest.formDefinition.fields
+    const fields: FormField[] = Array.isArray(rawFields)
+      ? rawFields
+      : typeof rawFields === "string"
+      ? (() => { try { return JSON.parse(rawFields) } catch { return [] } })()
+      : []
     for (const field of fields) {
       if (field.required) {
         const value = responseData[field.key]
@@ -610,9 +615,15 @@ export class FormRequestService {
           (formRequest.recipientEntity ? `${formRequest.recipientEntity.firstName}${formRequest.recipientEntity.lastName ? ` ${formRequest.recipientEntity.lastName}` : ""}` : null)
         const recipientEmail = formRequest.recipientUser?.email || formRequest.recipientEntity?.email || null
 
+        const rawMapping = formRequest.formDefinition.columnMapping
+        const safeColumnMapping: Record<string, string> = typeof rawMapping === "object" && rawMapping !== null
+          ? rawMapping as Record<string, string>
+          : typeof rawMapping === "string"
+          ? (() => { try { return JSON.parse(rawMapping) } catch { return {} } })()
+          : {}
         newDatabaseRowIndex = await this.createDatabaseRow(
           formRequest.formDefinition.database.id,
-          formRequest.formDefinition.columnMapping as Record<string, string>,
+          safeColumnMapping,
           responseData,
           { name: recipientName, email: recipientEmail },
           formRequest.taskInstance?.board || null,
@@ -623,7 +634,7 @@ export class FormRequestService {
         await this.updateDatabaseRow(
           formRequest.formDefinition.database.id,
           formRequest.databaseRowIndex,
-          formRequest.formDefinition.columnMapping as Record<string, string>,
+          safeColumnMapping,
           responseData,
           formRequest.organizationId
         )
@@ -732,9 +743,15 @@ export class FormRequestService {
       throw new Error("Database not found")
     }
 
-    const schema = database.schema as unknown as DatabaseSchema
+    const rawSchema = database.schema as unknown
+    const schema: DatabaseSchema = typeof rawSchema === "object" && rawSchema !== null
+      ? rawSchema as DatabaseSchema
+      : typeof rawSchema === "string"
+      ? (() => { try { return JSON.parse(rawSchema) } catch { return { columns: [] } } })()
+      : { columns: [] }
     const existingRows = (database.rows || []) as unknown as DatabaseRow[]
-    const schemaKeys = new Set(schema.columns.map(c => c.key))
+    const columns = Array.isArray(schema.columns) ? schema.columns : []
+    const schemaKeys = new Set(columns.map(c => c.key))
 
     // Validate row capacity before inserting
     if (existingRows.length >= MAX_ROWS) {
@@ -763,14 +780,14 @@ export class FormRequestService {
     }
 
     // Add recipient info if columns exist
-    const emailColumnKey = schema.columns.find(c => 
+    const emailColumnKey = columns.find(c =>
       c.key.toLowerCase().includes("email")
     )?.key
     if (emailColumnKey && recipient.email && !row[emailColumnKey]) {
       row[emailColumnKey] = recipient.email
     }
 
-    const nameColumnKey = schema.columns.find(c => 
+    const nameColumnKey = columns.find(c =>
       c.key.toLowerCase().includes("first") || c.key.toLowerCase() === "name"
     )?.key
     if (nameColumnKey && recipient.name && !row[nameColumnKey]) {
@@ -778,7 +795,7 @@ export class FormRequestService {
     }
 
     // Add period if column exists
-    const periodColumnKey = schema.columns.find(c => 
+    const periodColumnKey = columns.find(c =>
       c.key.toLowerCase().includes("period")
     )?.key
     if (periodColumnKey && board?.periodStart && !row[periodColumnKey]) {
@@ -787,7 +804,7 @@ export class FormRequestService {
     }
 
     // Add status column
-    const statusColumnKey = schema.columns.find(c => 
+    const statusColumnKey = columns.find(c =>
       c.key.toLowerCase() === "status" || c.key.toLowerCase() === "form_status"
     )?.key
     if (statusColumnKey) {
@@ -795,7 +812,7 @@ export class FormRequestService {
     }
 
     // Add submitted_at if column exists
-    const submittedAtKey = schema.columns.find(c => 
+    const submittedAtKey = columns.find(c =>
       c.key.toLowerCase() === "submitted_at" || c.key.toLowerCase() === "submittedat"
     )?.key
     if (submittedAtKey) {
@@ -803,7 +820,7 @@ export class FormRequestService {
     }
 
     // Initialize any missing columns to null
-    for (const col of schema.columns) {
+    for (const col of columns) {
       if (!(col.key in row)) {
         row[col.key] = null
       }
@@ -857,8 +874,14 @@ export class FormRequestService {
     }
 
     // Update status if column exists
-    const schema = database.schema as unknown as DatabaseSchema
-    const statusColumnKey = schema.columns.find(c => 
+    const rawSchema2 = database.schema as unknown
+    const schema = typeof rawSchema2 === "object" && rawSchema2 !== null
+      ? rawSchema2 as DatabaseSchema
+      : typeof rawSchema2 === "string"
+      ? (() => { try { return JSON.parse(rawSchema2) } catch { return { columns: [] } } })()
+      : { columns: [] }
+    const schemaColumns = Array.isArray(schema.columns) ? schema.columns : []
+    const statusColumnKey = schemaColumns.find(c =>
       c.key.toLowerCase() === "status" || c.key.toLowerCase() === "form_status"
     )?.key
     if (statusColumnKey) {
@@ -866,7 +889,7 @@ export class FormRequestService {
     }
 
     // Update submitted_at if column exists
-    const submittedAtKey = schema.columns.find(c => 
+    const submittedAtKey = schemaColumns.find(c =>
       c.key.toLowerCase() === "submitted_at" || c.key.toLowerCase() === "submittedat"
     )?.key
     if (submittedAtKey) {
