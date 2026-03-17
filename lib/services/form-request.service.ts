@@ -612,6 +612,87 @@ export class FormRequestService {
       throw new Error(`[Step 1: Field validation] ${err.message}`)
     }
 
+    // Step 1b: Re-route to correct board if accounting period differs
+    let targetTaskInstanceId = formRequest.taskInstance?.id || null
+    try {
+      const accountingPeriodField = fields.find(f => f.type === "accountingPeriod")
+      if (accountingPeriodField && formRequest.taskInstance?.board) {
+        const selectedPeriod = responseData[accountingPeriodField.key]
+        if (typeof selectedPeriod === "string" && selectedPeriod) {
+          const periodDate = new Date(selectedPeriod + "T00:00:00Z")
+          if (!isNaN(periodDate.getTime())) {
+            const currentBoard = formRequest.taskInstance.board
+            const boardStart = currentBoard.periodStart ? new Date(currentBoard.periodStart) : null
+            const boardEnd = currentBoard.periodEnd ? new Date(currentBoard.periodEnd) : null
+
+            // Check if the selected period falls outside the current task's board
+            const isOutsideCurrentBoard = boardStart && boardEnd
+              ? (periodDate < boardStart || periodDate >= boardEnd)
+              : false
+
+            if (isOutsideCurrentBoard) {
+              // Find the board that contains the selected accounting period
+              const targetBoard = await prisma.board.findFirst({
+                where: {
+                  organizationId: formRequest.organizationId,
+                  periodStart: { lte: periodDate },
+                  periodEnd: { gt: periodDate },
+                  deletedAt: null,
+                },
+                orderBy: { periodStart: "desc" },
+              })
+
+              if (targetBoard) {
+                // Find the matching task in the target board (same form definition)
+                const targetTask = await prisma.taskInstance.findFirst({
+                  where: {
+                    boardId: targetBoard.id,
+                    formDefinitionId: formRequest.formDefinition.id,
+                    organizationId: formRequest.organizationId,
+                    deletedAt: null,
+                  },
+                })
+
+                // Fallback: find task via existing form requests
+                let resolvedTaskId = targetTask?.id || null
+                if (!resolvedTaskId) {
+                  const formRequestWithTask = await prisma.formRequest.findFirst({
+                    where: {
+                      formDefinitionId: formRequest.formDefinition.id,
+                      taskInstance: {
+                        boardId: targetBoard.id,
+                        organizationId: formRequest.organizationId,
+                        deletedAt: null,
+                      },
+                    },
+                    select: { taskInstanceId: true },
+                  })
+                  resolvedTaskId = formRequestWithTask?.taskInstanceId || null
+                }
+
+                if (resolvedTaskId) {
+                  // Re-route the form request to the correct task/board
+                  await prisma.formRequest.update({
+                    where: { id: formRequest.id },
+                    data: { taskInstanceId: resolvedTaskId },
+                  })
+                  targetTaskInstanceId = resolvedTaskId
+                  console.log(`[FormSubmit] Re-routed form request ${formRequest.id} from board ${formRequest.taskInstance.id} to task ${resolvedTaskId} in board ${targetBoard.id} (period: ${selectedPeriod})`)
+                } else {
+                  console.warn(`[FormSubmit] No matching task found for form "${formRequest.formDefinition.name}" in board for period ${selectedPeriod}. Keeping on current task.`)
+                }
+              } else {
+                console.warn(`[FormSubmit] No board found for accounting period ${selectedPeriod}. Keeping on current task.`)
+              }
+            }
+          }
+        }
+      }
+    } catch (err: any) {
+      // Non-fatal: if re-routing fails, keep form on original task
+      console.error("[FormSubmit] Failed to re-route by accounting period:", err.message)
+    }
+
     // Step 2: Create or update database row if linked
     let newDatabaseRowIndex = formRequest.databaseRowIndex
     if (formRequest.formDefinition.database) {
@@ -692,17 +773,18 @@ export class FormRequestService {
     }
 
     // Step 4: Auto-transition task instance to IN_PROGRESS
-    if (formRequest.taskInstance?.id) {
+    const effectiveTaskId = targetTaskInstanceId || formRequest.taskInstance?.id
+    if (effectiveTaskId) {
       try {
         const { TaskInstanceService } = await import("./task-instance.service")
-        await TaskInstanceService.markInProgressIfNotStarted(formRequest.taskInstance.id, formRequest.organizationId)
+        await TaskInstanceService.markInProgressIfNotStarted(effectiveTaskId, formRequest.organizationId)
       } catch (err: any) {
         console.error("[FormRequest] Failed to auto-transition task to IN_PROGRESS:", err.message)
       }
     }
 
     // Step 5: Create CollectedItem records for form attachments
-    if (formRequest.attachments && formRequest.attachments.length > 0 && formRequest.taskInstance?.id) {
+    if (formRequest.attachments && formRequest.attachments.length > 0 && effectiveTaskId) {
       try {
         const recipientName = formRequest.recipientUser?.name ||
           (formRequest.recipientEntity ? `${formRequest.recipientEntity.firstName}${formRequest.recipientEntity.lastName ? ` ${formRequest.recipientEntity.lastName}` : ""}` : null)
@@ -713,7 +795,7 @@ export class FormRequestService {
             prisma.collectedItem.create({
               data: {
                 organizationId: formRequest.organizationId,
-                taskInstanceId: formRequest.taskInstance!.id,
+                taskInstanceId: effectiveTaskId,
                 filename: attachment.filename,
                 fileKey: attachment.url,
                 fileUrl: attachment.url,
