@@ -43,50 +43,43 @@ export async function GET(
       return NextResponse.json({ error: "Board not found" }, { status: 404 })
     }
 
-    // Access check: users with boards:view_all see all, others must be owner or collaborator
-    // Fetch org features in parallel with access checks
-    const hasFullAccess = canPerformAction(userRole, "boards:view_all", session.user.orgActionPermissions)
-
-    // Run access checks + org features fetch in parallel
-    const [accessResult, org] = await Promise.all([
-      // Access check (only if needed)
-      hasFullAccess
-        ? Promise.resolve({ granted: true })
-        : (async () => {
-            const isOwner = board.ownerId === userId
-            if (isOwner) return { granted: true }
-            // Run collaborator + task access checks in parallel
-            const [isCollaborator, hasTaskAccess] = await Promise.all([
-              prisma.boardCollaborator.findUnique({
-                where: { boardId_userId: { boardId, userId } }
-              }),
-              prisma.taskInstance.findFirst({
-                where: {
-                  boardId,
-                  organizationId,
-                  OR: [
-                    { ownerId: userId },
-                    { collaborators: { some: { userId } } }
-                  ]
-                },
-                select: { id: true }
-              })
-            ])
-            return { granted: !!(isCollaborator || hasTaskAccess) }
-          })(),
-      // Org features fetch (always needed)
-      prisma.organization.findUnique({
-        where: { id: organizationId },
-        select: { features: true },
-      })
-    ])
-
-    if (!accessResult.granted) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 })
-    }
-
+    // Fetch org features
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { features: true },
+    })
     const orgFeatures = (org?.features as Record<string, any>) || {}
     const advancedBoardTypes = orgFeatures.advancedBoardTypes === true
+
+    // Access check: in simplified mode all users can view monthly boards;
+    // in advanced mode, users need boards:view_all or must be owner/collaborator
+    if (advancedBoardTypes) {
+      const hasFullAccess = canPerformAction(userRole, "boards:view_all", session.user.orgActionPermissions)
+      if (!hasFullAccess) {
+        const isOwner = board.ownerId === userId
+        if (!isOwner) {
+          const [isCollaborator, hasTaskAccess] = await Promise.all([
+            prisma.boardCollaborator.findUnique({
+              where: { boardId_userId: { boardId, userId } }
+            }),
+            prisma.taskInstance.findFirst({
+              where: {
+                boardId,
+                organizationId,
+                OR: [
+                  { ownerId: userId },
+                  { collaborators: { some: { userId } } }
+                ]
+              },
+              select: { id: true }
+            })
+          ])
+          if (!isCollaborator && !hasTaskAccess) {
+            return NextResponse.json({ error: "Access denied" }, { status: 403 })
+          }
+        }
+      }
+    }
 
     return NextResponse.json({ board, advancedBoardTypes })
   } catch (error: any) {

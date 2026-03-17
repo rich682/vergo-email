@@ -398,12 +398,16 @@ export function Sidebar({
         </ul>
 
         {/* ── Workflows ── */}
-        {!collapsed && (
-          <div className="px-4 pt-4 pb-1">
-            <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">Workflows</span>
-          </div>
+        {(hasAccess("agents") || hasAccess("reports") || hasAccess("forms") || hasAccess("reconciliations") || hasAccess("analysis")) && (
+          <>
+            {!collapsed && (
+              <div className="px-4 pt-4 pb-1">
+                <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">Workflows</span>
+              </div>
+            )}
+            {collapsed && <div className="pt-2 mx-2 border-t border-gray-100 mt-2" />}
+          </>
         )}
-        {collapsed && <div className="pt-2 mx-2 border-t border-gray-100 mt-2" />}
         <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
           {/* Agents */}
           {hasAccess("agents") && (() => {
@@ -492,12 +496,16 @@ export function Sidebar({
         </ul>
 
         {/* ── Data ── */}
-        {!collapsed && (
-          <div className="px-4 pt-4 pb-1">
-            <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">Data</span>
-          </div>
+        {hasAccess("databases") && (
+          <>
+            {!collapsed && (
+              <div className="px-4 pt-4 pb-1">
+                <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">Data</span>
+              </div>
+            )}
+            {collapsed && <div className="pt-2 mx-2 border-t border-gray-100 mt-2" />}
+          </>
         )}
-        {collapsed && <div className="pt-2 mx-2 border-t border-gray-100 mt-2" />}
         <ul className={collapsed ? "space-y-1" : "space-y-0.5"}>
           {/* Databases */}
           {hasAccess("databases") && (() => {

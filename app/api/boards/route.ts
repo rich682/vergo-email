@@ -96,9 +96,13 @@ export async function GET(request: NextRequest) {
       ownerId,
       year,
       includeTaskInstanceCount: true,
-      userId,
-      userRole,
-      orgActionPermissions: session.user.orgActionPermissions,
+      // In simplified mode, all users can see all monthly boards
+      // (task-level filtering controls what they see within each board)
+      ...(advancedBoardTypes ? {
+        userId,
+        userRole,
+        orgActionPermissions: session.user.orgActionPermissions,
+      } : {}),
     })
 
     // Return timezone, or null if not configured (don't default to UTC)
