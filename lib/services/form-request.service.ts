@@ -768,7 +768,10 @@ export class FormRequestService {
       : typeof rawSchema === "string"
       ? (() => { try { return JSON.parse(rawSchema) } catch { return { columns: [] } } })()
       : { columns: [] }
-    const existingRows = (database.rows || []) as unknown as DatabaseRow[]
+    const rawRows = database.rows
+    const existingRows: DatabaseRow[] = Array.isArray(rawRows)
+      ? rawRows as unknown as DatabaseRow[]
+      : []
     const columns = Array.isArray(schema.columns) ? schema.columns : []
     const schemaKeys = new Set(columns.map(c => c.key))
 
@@ -880,7 +883,7 @@ export class FormRequestService {
       throw new Error("Database not found")
     }
 
-    const rows = (database.rows || []) as DatabaseRow[]
+    const rows: DatabaseRow[] = Array.isArray(database.rows) ? database.rows as unknown as DatabaseRow[] : []
     if (rowIndex < 0 || rowIndex >= rows.length) {
       throw new Error("Invalid row index")
     }
