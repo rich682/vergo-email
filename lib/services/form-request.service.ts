@@ -590,103 +590,108 @@ export class FormRequestService {
       throw new Error("Form has already been submitted")
     }
 
-    console.log("[FormSubmit] Processing submission for form request:", formRequest.id, "status:", formRequest.status)
-
-    // Validate required fields
-    const rawFields = formRequest.formDefinition.fields
-    const fields: FormField[] = Array.isArray(rawFields)
-      ? rawFields
-      : typeof rawFields === "string"
-      ? (() => { try { return JSON.parse(rawFields) } catch { return [] } })()
-      : []
-    for (const field of fields) {
-      if (field.required) {
-        const value = responseData[field.key]
-        if (value === undefined || value === null || value === "") {
-          throw new Error(`Field "${field.label}" is required`)
+    // Step 1: Validate required fields
+    let fields: FormField[]
+    try {
+      const rawFields = formRequest.formDefinition.fields
+      fields = Array.isArray(rawFields)
+        ? rawFields
+        : typeof rawFields === "string"
+        ? (() => { try { return JSON.parse(rawFields) } catch { return [] } })()
+        : []
+      for (const field of fields) {
+        if (field.required) {
+          const value = responseData[field.key]
+          if (value === undefined || value === null || value === "") {
+            throw new Error(`Field "${field.label}" is required`)
+          }
         }
       }
+    } catch (err: any) {
+      if (err.message?.includes("is required")) throw err
+      throw new Error(`[Step 1: Field validation] ${err.message}`)
     }
 
-    console.log("[FormSubmit] Fields validated, count:", fields.length, "hasDatabase:", !!formRequest.formDefinition.database)
-
-    // Create or update database row if linked
+    // Step 2: Create or update database row if linked
     let newDatabaseRowIndex = formRequest.databaseRowIndex
     if (formRequest.formDefinition.database) {
-      const rawMapping = formRequest.formDefinition.columnMapping
-      const safeColumnMapping: Record<string, string> = typeof rawMapping === "object" && rawMapping !== null
-        ? rawMapping as Record<string, string>
-        : typeof rawMapping === "string"
-        ? (() => { try { return JSON.parse(rawMapping) } catch { return {} } })()
-        : {}
+      try {
+        const rawMapping = formRequest.formDefinition.columnMapping
+        const safeColumnMapping: Record<string, string> = typeof rawMapping === "object" && rawMapping !== null
+          ? rawMapping as Record<string, string>
+          : typeof rawMapping === "string"
+          ? (() => { try { return JSON.parse(rawMapping) } catch { return {} } })()
+          : {}
 
-      if (formRequest.databaseRowIndex === null) {
-        // Create a new row on first submission
-        const recipientName = formRequest.recipientUser?.name ||
-          (formRequest.recipientEntity ? `${formRequest.recipientEntity.firstName}${formRequest.recipientEntity.lastName ? ` ${formRequest.recipientEntity.lastName}` : ""}` : null)
-        const recipientEmail = formRequest.recipientUser?.email || formRequest.recipientEntity?.email || null
+        if (formRequest.databaseRowIndex === null) {
+          const recipientName = formRequest.recipientUser?.name ||
+            (formRequest.recipientEntity ? `${formRequest.recipientEntity.firstName}${formRequest.recipientEntity.lastName ? ` ${formRequest.recipientEntity.lastName}` : ""}` : null)
+          const recipientEmail = formRequest.recipientUser?.email || formRequest.recipientEntity?.email || null
 
-        newDatabaseRowIndex = await this.createDatabaseRow(
-          formRequest.formDefinition.database.id,
-          safeColumnMapping,
-          responseData,
-          { name: recipientName, email: recipientEmail },
-          formRequest.taskInstance?.board || null,
-          formRequest.organizationId
-        )
-      } else {
-        // Update existing row
-        await this.updateDatabaseRow(
-          formRequest.formDefinition.database.id,
-          formRequest.databaseRowIndex,
-          safeColumnMapping,
-          responseData,
-          formRequest.organizationId
-        )
+          newDatabaseRowIndex = await this.createDatabaseRow(
+            formRequest.formDefinition.database.id,
+            safeColumnMapping,
+            responseData,
+            { name: recipientName, email: recipientEmail },
+            formRequest.taskInstance?.board || null,
+            formRequest.organizationId
+          )
+        } else {
+          await this.updateDatabaseRow(
+            formRequest.formDefinition.database.id,
+            formRequest.databaseRowIndex,
+            safeColumnMapping,
+            responseData,
+            formRequest.organizationId
+          )
+        }
+      } catch (err: any) {
+        throw new Error(`[Step 2: Database row] ${err.message}`)
       }
     }
 
-    console.log("[FormSubmit] Database row handled, newDatabaseRowIndex:", newDatabaseRowIndex)
-
-    // Update form request
-    const updated = await prisma.formRequest.update({
-      where: { id: formRequest.id },
-      data: {
-        status: "SUBMITTED",
-        customStatus: "Submitted",
-        submittedAt: new Date(),
-        responseData: responseData as any,
-        databaseRowIndex: newDatabaseRowIndex,
-        nextReminderAt: null, // Stop reminders
-      },
-      include: {
-        formDefinition: {
-          select: {
-            id: true,
-            name: true,
+    // Step 3: Update form request status
+    let updated
+    try {
+      updated = await prisma.formRequest.update({
+        where: { id: formRequest.id },
+        data: {
+          status: "SUBMITTED",
+          customStatus: "Submitted",
+          submittedAt: new Date(),
+          responseData: responseData as any,
+          databaseRowIndex: newDatabaseRowIndex,
+          nextReminderAt: null,
+        },
+        include: {
+          formDefinition: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          recipientUser: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          recipientEntity: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
           },
         },
-        recipientUser: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        recipientEntity: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-      },
-    })
+      })
+    } catch (err: any) {
+      throw new Error(`[Step 3: Update form request] ${err.message}`)
+    }
 
-    console.log("[FormSubmit] Form request updated to SUBMITTED")
-
-    // Auto-transition task instance to IN_PROGRESS when a form is submitted
+    // Step 4: Auto-transition task instance to IN_PROGRESS
     if (formRequest.taskInstance?.id) {
       try {
         const { TaskInstanceService } = await import("./task-instance.service")
@@ -696,40 +701,44 @@ export class FormRequestService {
       }
     }
 
-    // Create CollectedItem records for form attachments
+    // Step 5: Create CollectedItem records for form attachments
     if (formRequest.attachments && formRequest.attachments.length > 0 && formRequest.taskInstance?.id) {
-      const recipientName = formRequest.recipientUser?.name || 
-        (formRequest.recipientEntity ? `${formRequest.recipientEntity.firstName}${formRequest.recipientEntity.lastName ? ` ${formRequest.recipientEntity.lastName}` : ""}` : null)
-      const recipientEmail = formRequest.recipientUser?.email || formRequest.recipientEntity?.email || null
+      try {
+        const recipientName = formRequest.recipientUser?.name ||
+          (formRequest.recipientEntity ? `${formRequest.recipientEntity.firstName}${formRequest.recipientEntity.lastName ? ` ${formRequest.recipientEntity.lastName}` : ""}` : null)
+        const recipientEmail = formRequest.recipientUser?.email || formRequest.recipientEntity?.email || null
 
-      await Promise.all(
-        formRequest.attachments.map(attachment =>
-          prisma.collectedItem.create({
-            data: {
-              organizationId: formRequest.organizationId,
-              taskInstanceId: formRequest.taskInstance!.id,
-              filename: attachment.filename,
-              fileKey: attachment.url, // Use URL as file key for form attachments
-              fileUrl: attachment.url,
-              fileSize: attachment.sizeBytes,
-              mimeType: attachment.mimeType,
-              source: "FORM_SUBMISSION",
-              submittedBy: recipientEmail,
-              submittedByName: recipientName,
-              receivedAt: new Date(),
-              metadata: {
-                formRequestId: formRequest.id,
-                formDefinitionId: formRequest.formDefinition.id,
-                formName: formRequest.formDefinition.name,
-                fieldKey: attachment.fieldKey,
+        await Promise.all(
+          (Array.isArray(formRequest.attachments) ? formRequest.attachments : []).map(attachment =>
+            prisma.collectedItem.create({
+              data: {
+                organizationId: formRequest.organizationId,
+                taskInstanceId: formRequest.taskInstance!.id,
+                filename: attachment.filename,
+                fileKey: attachment.url,
+                fileUrl: attachment.url,
+                fileSize: attachment.sizeBytes,
+                mimeType: attachment.mimeType,
+                source: "FORM_SUBMISSION",
+                submittedBy: recipientEmail,
+                submittedByName: recipientName,
+                receivedAt: new Date(),
+                metadata: {
+                  formRequestId: formRequest.id,
+                  formDefinitionId: formRequest.formDefinition.id,
+                  formName: formRequest.formDefinition.name,
+                  fieldKey: attachment.fieldKey,
+                },
               },
-            },
-          })
+            })
+          )
         )
-      )
+      } catch (err: any) {
+        console.error("[FormRequest] Failed to create CollectedItems:", err.message)
+        // Don't throw - attachment collection is non-critical
+      }
     }
 
-    console.log("[FormSubmit] processSubmission completed successfully")
     return updated
   }
 
