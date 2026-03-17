@@ -448,7 +448,10 @@ export default function PublicFormPage() {
                   )}
                   {field.type === "users" && (() => {
                     const filteredUsers = field.userTagFilter?.length
-                      ? orgUsers.filter(u => u.tags?.some(t => field.userTagFilter!.includes(t)))
+                      ? orgUsers.filter(u => {
+                          const tags = Array.isArray(u.tags) ? u.tags : []
+                          return tags.some(t => field.userTagFilter!.includes(t))
+                        })
                       : orgUsers
                     return (
                       <Select
