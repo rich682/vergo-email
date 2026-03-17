@@ -590,6 +590,8 @@ export class FormRequestService {
       throw new Error("Form has already been submitted")
     }
 
+    console.log("[FormSubmit] Processing submission for form request:", formRequest.id, "status:", formRequest.status)
+
     // Validate required fields
     const rawFields = formRequest.formDefinition.fields
     const fields: FormField[] = Array.isArray(rawFields)
@@ -606,21 +608,24 @@ export class FormRequestService {
       }
     }
 
+    console.log("[FormSubmit] Fields validated, count:", fields.length, "hasDatabase:", !!formRequest.formDefinition.database)
+
     // Create or update database row if linked
     let newDatabaseRowIndex = formRequest.databaseRowIndex
     if (formRequest.formDefinition.database) {
+      const rawMapping = formRequest.formDefinition.columnMapping
+      const safeColumnMapping: Record<string, string> = typeof rawMapping === "object" && rawMapping !== null
+        ? rawMapping as Record<string, string>
+        : typeof rawMapping === "string"
+        ? (() => { try { return JSON.parse(rawMapping) } catch { return {} } })()
+        : {}
+
       if (formRequest.databaseRowIndex === null) {
         // Create a new row on first submission
-        const recipientName = formRequest.recipientUser?.name || 
+        const recipientName = formRequest.recipientUser?.name ||
           (formRequest.recipientEntity ? `${formRequest.recipientEntity.firstName}${formRequest.recipientEntity.lastName ? ` ${formRequest.recipientEntity.lastName}` : ""}` : null)
         const recipientEmail = formRequest.recipientUser?.email || formRequest.recipientEntity?.email || null
 
-        const rawMapping = formRequest.formDefinition.columnMapping
-        const safeColumnMapping: Record<string, string> = typeof rawMapping === "object" && rawMapping !== null
-          ? rawMapping as Record<string, string>
-          : typeof rawMapping === "string"
-          ? (() => { try { return JSON.parse(rawMapping) } catch { return {} } })()
-          : {}
         newDatabaseRowIndex = await this.createDatabaseRow(
           formRequest.formDefinition.database.id,
           safeColumnMapping,
@@ -640,6 +645,8 @@ export class FormRequestService {
         )
       }
     }
+
+    console.log("[FormSubmit] Database row handled, newDatabaseRowIndex:", newDatabaseRowIndex)
 
     // Update form request
     const updated = await prisma.formRequest.update({
@@ -676,6 +683,8 @@ export class FormRequestService {
         },
       },
     })
+
+    console.log("[FormSubmit] Form request updated to SUBMITTED")
 
     // Auto-transition task instance to IN_PROGRESS when a form is submitted
     if (formRequest.taskInstance?.id) {
@@ -720,6 +729,7 @@ export class FormRequestService {
       )
     }
 
+    console.log("[FormSubmit] processSubmission completed successfully")
     return updated
   }
 

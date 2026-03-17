@@ -231,9 +231,13 @@ export async function POST(
       formRequest: result,
     })
   } catch (error: any) {
-    console.error("Error submitting form by token:", error?.message, error?.stack)
+    const stack = error?.stack || ""
+    console.error("Error submitting form by token:", error?.message, stack)
+    // Extract useful info from minified stack traces
+    const errorDetail = `${error?.message || "Unknown error"} | Stack: ${stack.split("\n").slice(0, 5).join(" -> ")}`
+    console.error("Error detail:", errorDetail)
     return NextResponse.json(
-      { error: error?.message || "Failed to submit form" },
+      { error: error?.message || "Failed to submit form", detail: errorDetail },
       { status: 500 }
     )
   }
