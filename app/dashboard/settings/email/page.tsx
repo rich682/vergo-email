@@ -96,7 +96,7 @@ function EmailSetupContent() {
       if (response.ok) {
         const data = await response.json()
         // Find the current user's active connected email
-        const accounts = data.accounts || []
+        const accounts = Array.isArray(data) ? data : (data.accounts || [])
         const active = accounts.find((a: ConnectedEmail) => a.isActive)
         setConnectedEmail(active || null)
       }
