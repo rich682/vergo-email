@@ -38,7 +38,7 @@ interface RecipientSourceSelectorProps {
 const ROLE_OPTIONS = [
   { value: "ADMIN", label: "Admin" },
   { value: "MANAGER", label: "Manager" },
-  { value: "MEMBER", label: "Member" },
+  { value: "MEMBER", label: "Employee" },
   { value: "VIEWER", label: "Viewer" },
 ]
 
@@ -353,7 +353,7 @@ function UsersTab({
                   </div>
                 </div>
                 <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded capitalize shrink-0">
-                  {member.role.toLowerCase()}
+                  {member.role === "MEMBER" ? "Employee" : member.role.toLowerCase()}
                 </span>
                 {viaRole && (
                   <span className="text-[10px] text-orange-500 shrink-0">

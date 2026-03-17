@@ -17,6 +17,7 @@ import { canPerformAction } from "@/lib/permissions"
 import { ActivityEventService } from "@/lib/activity-events"
 import { prisma } from "@/lib/prisma"
 import { resolveDatabaseRecipients } from "@/lib/services/database-recipient.service"
+import { EmailConnectionService } from "@/lib/services/email-connection.service"
 
 export async function GET(
   request: NextRequest,
@@ -110,6 +111,16 @@ export async function POST(
 
     if (!canPerformAction(session.user.role, "forms:send", session.user.orgActionPermissions)) {
       return NextResponse.json({ error: "You do not have permission to send form requests" }, { status: 403 })
+    }
+
+    // Verify org has an active email account for sending
+    const emailAccount = await EmailConnectionService.getPrimaryAccount(session.user.organizationId)
+      || await EmailConnectionService.getFirstActive(session.user.organizationId)
+    if (!emailAccount) {
+      return NextResponse.json(
+        { error: "No active email account connected. Please connect an email account in Settings before sending form requests." },
+        { status: 400 }
+      )
     }
 
     const { id: taskInstanceId } = await params
@@ -226,6 +237,14 @@ export async function POST(
     }
     
     console.log(`[FormRequests] Created ${totalCount} total form requests successfully`)
+
+    // Ensure the task's formDefinitionId is set (needed for universal form link routing)
+    if (task.formDefinitionId !== formDefinitionId) {
+      await prisma.taskInstance.update({
+        where: { id: taskInstanceId },
+        data: { formDefinitionId },
+      })
+    }
 
     // Send email notifications (non-blocking - don't fail the request if emails fail)
     try {

@@ -18,7 +18,7 @@ const SOURCE_OPTIONS: { value: RecipientSourceType; label: string; description: 
 const ROLE_OPTIONS = [
   { value: "ADMIN", label: "Admin" },
   { value: "MANAGER", label: "Manager" },
-  { value: "MEMBER", label: "Member" },
+  { value: "MEMBER", label: "Employee" },
   { value: "VIEWER", label: "Viewer" },
 ]
 
@@ -239,7 +239,7 @@ export function RecipientSourceConfig({ params, onChange }: RecipientSourceConfi
                       {m.name || m.email}
                     </span>
                     <span className="text-[10px] text-gray-400 capitalize">
-                      {m.role.toLowerCase()}
+                      {m.role === "MEMBER" ? "Employee" : m.role.toLowerCase()}
                     </span>
                   </label>
                 )

@@ -122,7 +122,7 @@ export async function POST(
     }
 
     // 6. Find the task in that board linked to this form
-    const taskInstance = await prisma.taskInstance.findFirst({
+    let taskInstance = await prisma.taskInstance.findFirst({
       where: {
         boardId: board.id,
         formDefinitionId: formDef.id,
@@ -130,6 +130,33 @@ export async function POST(
         deletedAt: null,
       },
     })
+
+    // Fallback: find task via existing form requests (handles tasks where formDefinitionId wasn't set)
+    if (!taskInstance) {
+      const formRequestWithTask = await prisma.formRequest.findFirst({
+        where: {
+          formDefinitionId: formDef.id,
+          taskInstance: {
+            boardId: board.id,
+            organizationId: formDef.organizationId,
+            deletedAt: null,
+          },
+        },
+        select: { taskInstanceId: true },
+      })
+      if (formRequestWithTask) {
+        taskInstance = await prisma.taskInstance.findFirst({
+          where: { id: formRequestWithTask.taskInstanceId, deletedAt: null },
+        })
+        // Backfill the formDefinitionId for future lookups
+        if (taskInstance) {
+          await prisma.taskInstance.update({
+            where: { id: taskInstance.id },
+            data: { formDefinitionId: formDef.id },
+          })
+        }
+      }
+    }
 
     if (!taskInstance) {
       console.error(

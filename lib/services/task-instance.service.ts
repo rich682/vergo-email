@@ -136,6 +136,8 @@ export interface TaskInstanceWithStats {
   // Report configuration (for REPORTS type)
   reportDefinitionId?: string | null
   reportFilterBindings?: Record<string, string[]> | null
+  // Form configuration
+  formDefinitionId?: string | null
   // Reconciliation configuration
   reconciliationConfigId?: string | null
   createdAt: Date
@@ -162,6 +164,7 @@ export interface TaskInstanceWithStats {
 export type TaskInstanceAction =
   | 'view'
   | 'edit'
+  | 'delete'
   | 'update_status'
   | 'add_request'
   | 'execute_request'

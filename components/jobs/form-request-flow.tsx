@@ -25,6 +25,7 @@ import {
   Send,
   AlertCircle,
   CheckCircle,
+  Mail,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -71,6 +72,10 @@ export function FormRequestFlow({
   const [step, setStep] = useState<FlowStep>("select_form")
   const [error, setError] = useState<string | null>(null)
 
+  // Email account check
+  const [hasEmailAccount, setHasEmailAccount] = useState<boolean | null>(null)
+  const [checkingAccounts, setCheckingAccounts] = useState(false)
+
   // Form selection
   const [forms, setForms] = useState<FormDefinitionOption[]>([])
   const [loadingForms, setLoadingForms] = useState(true)
@@ -89,6 +94,28 @@ export function FormRequestFlow({
   // Scheduling
   const [sendTiming, setSendTiming] = useState<"immediate" | "scheduled">("immediate")
   const [scheduleOffsetDays, setScheduleOffsetDays] = useState(5)
+
+  // Check if org has connected email accounts
+  useEffect(() => {
+    const checkEmailAccounts = async () => {
+      setCheckingAccounts(true)
+      try {
+        const response = await fetch("/api/email-accounts", { credentials: "include" })
+        if (response.ok) {
+          const accounts = await response.json()
+          const hasActive = Array.isArray(accounts) && accounts.some((a: any) => a.isActive)
+          setHasEmailAccount(hasActive)
+        } else {
+          setHasEmailAccount(false)
+        }
+      } catch {
+        setHasEmailAccount(false)
+      } finally {
+        setCheckingAccounts(false)
+      }
+    }
+    checkEmailAccounts()
+  }, [])
 
   // Load forms on mount
   useEffect(() => {
@@ -267,6 +294,43 @@ export function FormRequestFlow({
         >
           Try Again
         </Button>
+      </div>
+    )
+  }
+
+  // Loading email account check
+  if (checkingAccounts || hasEmailAccount === null) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
+        <p className="mt-3 text-sm text-gray-500">Checking email connection...</p>
+      </div>
+    )
+  }
+
+  // No email account connected
+  if (hasEmailAccount === false) {
+    return (
+      <div className="py-8">
+        <div className="flex flex-col items-center text-center">
+          <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mb-4">
+            <Mail className="w-8 h-8 text-amber-600" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            Connect an email account first
+          </h3>
+          <p className="text-sm text-gray-500 max-w-md mb-6">
+            To send form requests, you need to connect your Gmail or Microsoft email account.
+            Form request emails will be sent from your connected account.
+          </p>
+          <Button
+            onClick={() => window.location.href = "/dashboard/settings/email"}
+            className="bg-orange-500 hover:bg-orange-600 text-white"
+          >
+            <Mail className="w-4 h-4 mr-2" />
+            Connect Email Account
+          </Button>
+        </div>
       </div>
     )
   }
