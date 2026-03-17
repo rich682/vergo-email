@@ -89,7 +89,34 @@ export async function GET(
       }
     }
 
-    return NextResponse.json({ formRequests: filteredFormRequests, progress, viewerRestricted })
+    // Collect all user IDs referenced in "users" type fields in responseData
+    // so the frontend can display names instead of raw IDs
+    const allUserIds = new Set<string>()
+    for (const fr of filteredFormRequests as any[]) {
+      if (!fr.responseData || !fr.formDefinition?.fields) continue
+      const fields = typeof fr.formDefinition.fields === "string"
+        ? JSON.parse(fr.formDefinition.fields)
+        : fr.formDefinition.fields
+      for (const field of fields) {
+        if (field.type === "users" && fr.responseData[field.key]) {
+          const val = fr.responseData[field.key]
+          if (typeof val === "string") allUserIds.add(val)
+          else if (Array.isArray(val)) val.forEach((id: string) => allUserIds.add(id))
+        }
+      }
+    }
+
+    // Resolve user IDs to names
+    let userMap: Record<string, string> = {}
+    if (allUserIds.size > 0) {
+      const users = await prisma.user.findMany({
+        where: { id: { in: [...allUserIds] } },
+        select: { id: true, name: true, email: true },
+      })
+      userMap = Object.fromEntries(users.map(u => [u.id, u.name || u.email]))
+    }
+
+    return NextResponse.json({ formRequests: filteredFormRequests, progress, viewerRestricted, userMap })
   } catch (error: any) {
     console.error("Error fetching form requests:", error)
     return NextResponse.json(

@@ -66,14 +66,37 @@ interface FormSubmissionsTableProps {
   onSendReminder: (requestId: string) => void
   onCustomStatusChange?: (requestId: string, status: string) => void
   sendingReminder: string | null
+  userMap?: Record<string, string>
 }
 
-function getRecipientName(req: FormRequestItem): string {
+function getRecipientName(req: FormRequestItem, fields?: FormField[], userMap?: Record<string, string>): string {
   if (req.recipientUser?.name) return req.recipientUser.name
   if (req.recipientEntity) {
     return `${req.recipientEntity.firstName}${req.recipientEntity.lastName ? ` ${req.recipientEntity.lastName}` : ""}`
   }
-  // Universal link submissions have no recipient
+  // Universal link submissions: try to extract submitter name from responseData
+  if (!req.recipientUser && !req.recipientEntity && req.responseData && fields) {
+    // Look for a "users" type field and resolve the name
+    for (const field of fields) {
+      if (field.type === "users" && req.responseData[field.key]) {
+        const userId = req.responseData[field.key]
+        if (typeof userId === "string" && userMap?.[userId]) {
+          return userMap[userId]
+        }
+      }
+    }
+    // Fallback: look for text fields with name-like keys
+    for (const field of fields) {
+      if (field.type === "text" || (field.type as string) === "short_text") {
+        const key = field.key.toLowerCase()
+        if (key.includes("name") || key.includes("submitter") || key.includes("subcontractor")) {
+          const val = req.responseData[field.key]
+          if (typeof val === "string" && val.trim()) return val.trim()
+        }
+      }
+    }
+    return "Via Link"
+  }
   if (!req.recipientUser && !req.recipientEntity) return "Via Link"
   return "Unknown"
 }
@@ -91,6 +114,7 @@ export function FormSubmissionsTable({
   onSendReminder,
   onCustomStatusChange,
   sendingReminder,
+  userMap,
 }: FormSubmissionsTableProps) {
   const sortedFields = [...fields].sort((a, b) => (a.order || 0) - (b.order || 0))
 
@@ -117,12 +141,12 @@ export function FormSubmissionsTable({
 
     for (const req of sortedRequests) {
       const row = [
-        getRecipientName(req),
+        getRecipientName(req, sortedFields, userMap),
         getRecipientEmail(req) || "",
         getDisplayStatus(req),
         ...sortedFields.map(f =>
           req.status === "SUBMITTED" && req.responseData
-            ? formatResponseValue(req.responseData[f.key], f.type)
+            ? formatResponseValue(req.responseData[f.key], f.type, userMap)
             : ""
         ),
         req.submittedAt ? format(new Date(req.submittedAt), "MMM d, yyyy") : "",
@@ -241,7 +265,7 @@ export function FormSubmissionsTable({
           </thead>
           <tbody className="divide-y divide-gray-100">
             {sortedRequests.map(req => {
-              const name = getRecipientName(req)
+              const name = getRecipientName(req, sortedFields, userMap)
               const email = getRecipientEmail(req)
               const isSubmitted = req.status === "SUBMITTED"
 
@@ -291,7 +315,7 @@ export function FormSubmissionsTable({
                       className="px-4 py-2.5 border-l border-gray-100 text-sm text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis"
                       title={
                         isSubmitted && req.responseData
-                          ? formatResponseValue(req.responseData[field.key], field.type)
+                          ? formatResponseValue(req.responseData[field.key], field.type, userMap)
                           : undefined
                       }
                     >
@@ -318,7 +342,7 @@ export function FormSubmissionsTable({
                             )}
                           </div>
                         ) : (
-                          formatResponseValue(req.responseData[field.key], field.type)
+                          formatResponseValue(req.responseData[field.key], field.type, userMap)
                         )
                       ) : (
                         <span className="text-gray-400">—</span>

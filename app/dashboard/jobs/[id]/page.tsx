@@ -382,9 +382,13 @@ export default function JobDetailPage() {
   const visibleTabs = useMemo(() => {
     const tabs = new Set<string>(["overview"])
     const typeTabs = TASK_TYPE_TAB_MAP[job?.taskType || ""] || []
-    typeTabs.forEach(t => tabs.add(t))
+    typeTabs.forEach(t => {
+      // Agent tab requires module access
+      if (t === "agent" && !hasModuleAccess(sessionRole, "agents", orgActionPermissions)) return
+      tabs.add(t)
+    })
     return tabs
-  }, [job?.taskType])
+  }, [job?.taskType, sessionRole, orgActionPermissions])
 
   // ============================================
   // Data Fetching
@@ -843,7 +847,7 @@ export default function JobDetailPage() {
           </button>
 
           {/* Requests tab */}
-          {visibleTabs.has("requests") && hasModuleAccess(sessionRole, "requests", orgActionPermissions) && (
+          {visibleTabs.has("requests") && (
             <button
               onClick={() => setActiveTab("requests")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === "requests" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -853,7 +857,7 @@ export default function JobDetailPage() {
           )}
 
           {/* Forms tab */}
-          {visibleTabs.has("forms") && hasModuleAccess(sessionRole, "forms", orgActionPermissions) && (
+          {visibleTabs.has("forms") && (
             <button
               onClick={() => setActiveTab("forms")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 ${activeTab === "forms" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -863,7 +867,7 @@ export default function JobDetailPage() {
           )}
 
           {/* Documents tab */}
-          {visibleTabs.has("collection") && hasModuleAccess(sessionRole, "collection", orgActionPermissions) && (
+          {visibleTabs.has("collection") && (
             <button
               onClick={() => setActiveTab("collection")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "collection" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -873,7 +877,7 @@ export default function JobDetailPage() {
           )}
 
           {/* Report tab */}
-          {visibleTabs.has("report") && hasModuleAccess(sessionRole, "reports", orgActionPermissions) && (
+          {visibleTabs.has("report") && (
             <button
               onClick={() => setActiveTab("report")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "report" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -883,7 +887,7 @@ export default function JobDetailPage() {
           )}
 
           {/* Reconciliation tab */}
-          {visibleTabs.has("reconciliation") && hasModuleAccess(sessionRole, "reconciliations", orgActionPermissions) && (
+          {visibleTabs.has("reconciliation") && (
             <button
               onClick={() => setActiveTab("reconciliation")}
               className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "reconciliation" ? "border-orange-500 text-orange-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
@@ -1350,7 +1354,7 @@ export default function JobDetailPage() {
               </>
             )}
 
-            {activeTab === "requests" && hasModuleAccess(sessionRole, "requests", orgActionPermissions) && (
+            {activeTab === "requests" && (
               <div className="space-y-4">
                 <SectionHeader title="Requests" count={requests.reduce((sum: number, r: any) => sum + (r.recipients?.length || 0), 0)} icon={<Mail className="w-4 h-4 text-blue-500" />} action={permissions?.canEdit && !!canPerformAction(sessionRole, "requests:manage", orgActionPermissions) ? <Button size="sm" variant="outline" onClick={() => setIsSendRequestOpen(true)}><Plus className="w-3 h-3 mr-1" /> New</Button> : undefined} />
                 {requests.length === 0 ? (
@@ -1435,7 +1439,7 @@ export default function JobDetailPage() {
               </div>
             )}
 
-            {activeTab === "forms" && hasModuleAccess(sessionRole, "forms", orgActionPermissions) && (
+            {activeTab === "forms" && (
               <div className="space-y-4">
                 <SectionHeader
                   title="Forms"
@@ -1449,14 +1453,14 @@ export default function JobDetailPage() {
               </div>
             )}
 
-            {activeTab === "collection" && hasModuleAccess(sessionRole, "collection", orgActionPermissions) && (
+            {activeTab === "collection" && (
               <div className="space-y-4">
                 <SectionHeader title="Documents" count={job.collectedItemCount} icon={<FolderOpen className="w-4 h-4 text-purple-500" />} />
                 <CollectionTab jobId={jobId} readOnly={!permissions?.canEdit || !canPerformAction(sessionRole, "collection:manage", orgActionPermissions)} />
               </div>
             )}
 
-            {activeTab === "report" && hasModuleAccess(sessionRole, "reports", orgActionPermissions) && (
+            {activeTab === "report" && (
               <div className="space-y-4">
                 <SectionHeader title="Report" icon={<FileText className="w-4 h-4 text-blue-600" />} />
                 <ReportTab
@@ -1476,7 +1480,7 @@ export default function JobDetailPage() {
               </div>
             )}
 
-            {activeTab === "reconciliation" && hasModuleAccess(sessionRole, "reconciliations", orgActionPermissions) && (
+            {activeTab === "reconciliation" && (
               <div className="space-y-4">
                 <SectionHeader title="Reconciliation" icon={<Scale className="w-4 h-4 text-orange-600" />} />
                 <ReconciliationTab jobId={jobId} taskName={job.name} readOnly={!permissions?.canEdit || !canPerformAction(sessionRole, "reconciliations:manage", orgActionPermissions)} onConfigChange={() => fetchJob()} />

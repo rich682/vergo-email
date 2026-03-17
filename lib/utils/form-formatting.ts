@@ -21,8 +21,12 @@ export function parseFields(fields: FormField[] | string | null | undefined): Fo
 /**
  * Format a form response value for display based on field type.
  */
-export function formatResponseValue(value: unknown, fieldType?: string): string {
+export function formatResponseValue(value: unknown, fieldType?: string, userMap?: Record<string, string>): string {
   if (value === null || value === undefined || value === "") return "—"
+  if (fieldType === "users" && userMap) {
+    if (typeof value === "string") return userMap[value] || value
+    if (Array.isArray(value)) return value.map(id => userMap[id] || id).join(", ")
+  }
   if (fieldType === "currency" && typeof value === "number") {
     return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
