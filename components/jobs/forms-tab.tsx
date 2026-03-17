@@ -58,6 +58,7 @@ interface FormsTabProps {
 export function FormsTab({ jobId, onFormsSent }: FormsTabProps) {
   const { can } = usePermissions()
   const canSendForms = can("forms:send")
+  const canEditStatus = can("forms:manage")
   const [loading, setLoading] = useState(true)
   const [formRequests, setFormRequests] = useState<FormRequestItem[]>([])
   const [userMap, setUserMap] = useState<Record<string, string>>({})
@@ -188,6 +189,7 @@ export function FormsTab({ jobId, onFormsSent }: FormsTabProps) {
           formRequests={group.requests}
           customStatuses={group.customStatuses}
           canSendForms={canSendForms}
+          canEditStatus={canEditStatus}
           onSendReminder={handleSendReminder}
           onCustomStatusChange={handleCustomStatusChange}
           sendingReminder={sendingReminder}

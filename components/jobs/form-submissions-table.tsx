@@ -63,6 +63,7 @@ interface FormSubmissionsTableProps {
   formRequests: FormRequestItem[]
   customStatuses: string[]
   canSendForms: boolean
+  canEditStatus?: boolean
   onSendReminder: (requestId: string) => void
   onCustomStatusChange?: (requestId: string, status: string) => void
   sendingReminder: string | null
@@ -111,6 +112,7 @@ export function FormSubmissionsTable({
   formRequests,
   customStatuses,
   canSendForms,
+  canEditStatus = true,
   onSendReminder,
   onCustomStatusChange,
   sendingReminder,
@@ -286,7 +288,7 @@ export function FormSubmissionsTable({
                   </td>
                   {/* Custom status */}
                   <td className="px-4 py-2.5 border-l border-gray-100">
-                    {isSubmitted && customStatuses.length > 0 ? (
+                    {isSubmitted && customStatuses.length > 0 && canEditStatus ? (
                       <Select
                         value={getDisplayStatus(req)}
                         onValueChange={(value) => onCustomStatusChange?.(req.id, value)}
