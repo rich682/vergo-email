@@ -46,6 +46,7 @@ export type ActivityEventType =
   // Forms
   | "form.request_sent"
   | "form.submitted"
+  | "form.status_changed"
   // Labels
   | "label.created"
   | "label.deleted"

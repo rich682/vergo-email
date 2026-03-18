@@ -1930,6 +1930,10 @@ model ActivityEvent {
   targetId   String? // ID of affected sub-entity (commentId, attachmentId, etc.)
   targetType String? // "comment" | "attachment" | "collaborator" | "label" | etc.
 
+  // Review hub tracking — set when the event is dismissed from the review hub
+  reviewedAt   DateTime?
+  reviewedById String?
+
   createdAt DateTime @default(now())
 
   // Relations
@@ -1949,6 +1953,8 @@ model ActivityEvent {
   @@index([boardId, createdAt])
   // Per-form-request tracking
   @@index([formRequestId, createdAt])
+  // Review hub: unreviewed status-change events per org
+  @@index([organizationId, eventType, reviewedAt, createdAt])
 }
 
 // ─── Request Templates ─────────────────────────────────────────────────────

@@ -20,7 +20,7 @@ import { canPerformAction } from "@/lib/permissions"
 export const dynamic = "force-dynamic"
 
 interface ActionRequest {
-  type: "agent_output" | "email_reply" | "form_submission" | "evidence"
+  type: "agent_output" | "email_reply" | "form_submission" | "status_change" | "evidence"
   id: string
   action: "mark_reviewed" | "needs_follow_up" | "approve" | "reject"
   notes?: string
@@ -149,6 +149,30 @@ export async function POST(request: NextRequest) {
         })
 
         return NextResponse.json({ success: true, message: "Form submission marked as reviewed" })
+      }
+
+      // ── Status Change: mark ActivityEvent as reviewed ────────────────────
+      case "status_change": {
+        if (!canPerformAction(session.user.role, "forms:view_submissions", permissions)) {
+          return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+        }
+        if (action !== "mark_reviewed") {
+          return NextResponse.json({ error: "Invalid action for status_change. Use: mark_reviewed" }, { status: 400 })
+        }
+
+        const event = await prisma.activityEvent.findFirst({
+          where: { id, organizationId, reviewedAt: null },
+        })
+        if (!event) {
+          return NextResponse.json({ error: "Status change event not found" }, { status: 404 })
+        }
+
+        await prisma.activityEvent.update({
+          where: { id },
+          data: { reviewedAt: new Date(), reviewedById: userId },
+        })
+
+        return NextResponse.json({ success: true, message: "Status change marked as reviewed" })
       }
 
       // ── Evidence: mark reviewed, approve, or reject CollectedItem ────────

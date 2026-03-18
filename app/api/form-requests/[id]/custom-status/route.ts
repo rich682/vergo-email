@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma"
 import type { FormSettings } from "@/lib/types/form"
 import { NotificationService } from "@/lib/services/notification.service"
 import { FormNotificationService } from "@/lib/services/form-notification.service"
+import { ActivityEventService } from "@/lib/activity-events/activity-event.service"
 
 export async function PATCH(
   request: NextRequest,
@@ -89,9 +90,31 @@ export async function PATCH(
       data: { customStatus },
     })
 
-    // Send notifications (non-blocking)
     const formName = formRequest.formDefinition.name
     const taskName = formRequest.taskInstance?.name || "a task"
+
+    // Log activity event for review hub (non-blocking)
+    ActivityEventService.log({
+      organizationId: session.user.organizationId,
+      taskInstanceId: formRequest.taskInstanceId,
+      formRequestId: id,
+      eventType: "form.status_changed",
+      actorId: session.user.id,
+      actorType: "user",
+      summary: `Status changed from "${oldStatus}" to "${customStatus}"`,
+      metadata: {
+        oldStatus,
+        newStatus: customStatus,
+        formName,
+        contactName: formRequest.recipientUser?.name
+          || (formRequest.recipientEntity
+            ? `${formRequest.recipientEntity.firstName}${formRequest.recipientEntity.lastName ? ` ${formRequest.recipientEntity.lastName}` : ""}`.trim()
+            : null),
+        taskName,
+      },
+    }).catch(err => console.error("Activity event log failed:", err))
+
+    // Send notifications (non-blocking)
 
     // In-app notification for internal user recipients (skip if self)
     if (formRequest.recipientUser && formRequest.recipientUser.id !== session.user.id) {

@@ -10,7 +10,7 @@ type IconType = "reply" | "form" | "reconciliation" | "report" | "analysis"
 
 interface ReviewItem {
   id: string
-  type: "agent_output" | "email_reply" | "form_submission"
+  type: "agent_output" | "email_reply" | "form_submission" | "status_change"
   iconType: IconType
   isAgent: boolean
   title: string
@@ -243,6 +243,50 @@ const TASK_TYPE_LABELS: Record<string, string> = {
   analysis: "Analysis",
 }
 
+function getActionDescription(item: ReviewItem): { primary: string; secondary: string } {
+  switch (item.type) {
+    case "form_submission": {
+      const parts = [item.metadata.formName, item.metadata.contactName].filter(Boolean)
+      return {
+        primary: "New form submission",
+        secondary: parts.join(" · "),
+      }
+    }
+    case "status_change": {
+      const { oldStatus, newStatus, formName, contactName } = item.metadata
+      const primary = oldStatus && newStatus
+        ? `Status changed from "${oldStatus}" to "${newStatus}"`
+        : newStatus
+          ? `Status updated to "${newStatus}"`
+          : "Form status updated"
+      const secondary = [formName, contactName].filter(Boolean).join(" · ")
+      return { primary, secondary }
+    }
+    case "email_reply":
+      return {
+        primary: "New email reply received",
+        secondary: item.metadata.contactName || "",
+      }
+    case "agent_output": {
+      const taskType = item.metadata.taskType || item.taskType || ""
+      const n = item.metadata.stepCount ?? 0
+      const primaryMap: Record<string, string> = {
+        request: `${n} request${n !== 1 ? "s" : ""} sent`,
+        form: `${n} form${n !== 1 ? "s" : ""} sent`,
+        reconciliation: "Reconciliation run completed",
+        report: "Report generated",
+        analysis: "Analysis completed",
+      }
+      return {
+        primary: primaryMap[taskType] || "Agent work completed",
+        secondary: item.metadata.automationName || "",
+      }
+    }
+    default:
+      return { primary: item.title, secondary: "" }
+  }
+}
+
 function ReviewItemTableRow({
   item,
   isLast,
@@ -256,6 +300,8 @@ function ReviewItemTableRow({
   onNavigate: () => void
   onMarkReviewed: () => void
 }) {
+  const { primary, secondary } = getActionDescription(item)
+
   return (
     <tr
       className={`hover:bg-gray-50/60 transition-colors cursor-pointer ${!isLast ? "border-b border-gray-100" : ""}`}
@@ -267,13 +313,20 @@ function ReviewItemTableRow({
           <div className={`flex items-center justify-center w-6 h-6 rounded-md border flex-shrink-0 ${ICON_STYLES[item.iconType]}`}>
             {ICON_MAP[item.iconType]}
           </div>
-          <span className="font-medium text-gray-900 truncate">{item.title}</span>
-          {item.isAgent && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-600 border border-purple-200 flex-shrink-0">
-              <Bot className="w-3 h-3" />
-              Agent
-            </span>
-          )}
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="font-medium text-gray-900 truncate">{primary}</span>
+              {item.isAgent && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-600 border border-purple-200 flex-shrink-0">
+                  <Bot className="w-3 h-3" />
+                  Agent
+                </span>
+              )}
+            </div>
+            {secondary && (
+              <p className="text-xs text-gray-400 truncate mt-0.5">{secondary}</p>
+            )}
+          </div>
         </div>
       </td>
 

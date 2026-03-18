@@ -26,7 +26,7 @@ export type IconType = "reply" | "form" | "reconciliation" | "report" | "analysi
 
 export interface ReviewItem {
   id: string
-  type: "agent_output" | "email_reply" | "form_submission"
+  type: "agent_output" | "email_reply" | "form_submission" | "status_change"
   iconType: IconType
   isAgent: boolean
   title: string
@@ -310,6 +310,57 @@ export async function GET(request: NextRequest) {
                 formName,
                 contactName: recipient,
                 taskName,
+              },
+            })
+          }
+        })
+      )
+    }
+
+    // ── Pillar 3: Form Status Changes ──────────────────────────────────────
+    // Surface form.status_changed ActivityEvents that haven't been reviewed yet.
+    if (!isMember && canPerformAction(session.user.role, "forms:view_submissions", permissions)) {
+      queries.push(
+        prisma.activityEvent.findMany({
+          where: {
+            organizationId,
+            eventType: "form.status_changed",
+            reviewedAt: null,
+            ...(cursorDate && { createdAt: { lt: cursorDate } }),
+            ...(boardId && { taskInstance: { board: { id: boardId } } }),
+          },
+          include: {
+            taskInstance: {
+              select: {
+                id: true,
+                name: true,
+                board: { select: { name: true } },
+              },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+        }).then(events => {
+          for (const event of events) {
+            const meta = (event.metadata as Record<string, any>) || {}
+            items.push({
+              id: event.id,
+              type: "status_change",
+              iconType: "form",
+              isAgent: event.actorType === "agent" || event.actorType === "workflow",
+              title: meta.formName ? `${meta.formName} status updated` : "Form status updated",
+              subtitle: event.summary,
+              sourceUrl: event.taskInstanceId ? `/dashboard/jobs/${event.taskInstanceId}` : "/dashboard/review-hub",
+              createdAt: event.createdAt.toISOString(),
+              boardName: event.taskInstance?.board?.name,
+              taskName: event.taskInstance?.name,
+              taskType: "form",
+              metadata: {
+                oldStatus: meta.oldStatus,
+                newStatus: meta.newStatus,
+                formName: meta.formName,
+                contactName: meta.contactName,
+                taskName: meta.taskName,
               },
             })
           }
