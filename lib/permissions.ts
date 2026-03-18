@@ -23,7 +23,7 @@
  * via the Role Permissions settings page. MEMBER permissions are fixed (all false).
  */
 
-import { UserRole, Prisma } from "@prisma/client"
+import { UserRole } from "@prisma/client"
 
 // ─── Module Types ─────────────────────────────────────────────────────────────
 
@@ -472,7 +472,7 @@ export const MODULE_ACTION_KEYS: Record<ModuleKey, ActionKey[]> = {
  * even with zero action permissions. Actual data scoping happens at the
  * service layer (getJobAccessFilter, getBoardAccessFilter, viewer checks).
  */
-const MEMBER_IMPLICIT_MODULES: ModuleKey[] = ["boards"]
+const MEMBER_IMPLICIT_MODULES: ModuleKey[] = ["boards", "review"]
 
 /**
  * Additional API route prefixes that MEMBER can access without module permissions.
@@ -658,49 +658,6 @@ export function canAccessRoute(
   return true
 }
 
-// ─── Job/Board Access Filters ─────────────────────────────────────────────────
-
-/**
- * Get Prisma where clause to filter jobs by user access.
- *
- * Uses action permissions to determine if user can see all items or only their own.
- * Pass the appropriate view_all action key for the module context:
- * - "tasks:view_all" for task listings
- * - "inbox:view_all" for inbox/requests
- * - "collection:view_all" for collection
- *
- * When viewAllAction is granted → null (no filter, sees everything)
- * Otherwise → only owned, task-collaborated, or board-collaborated jobs
- */
-export function getJobAccessFilter(
-  userId: string,
-  role: UserRole | string | undefined,
-  viewAllAction?: ActionKey,
-  orgActionPermissions?: OrgActionPermissions
-): Prisma.TaskInstanceWhereInput | null {
-  // If a viewAllAction is specified, use the action permission system
-  if (viewAllAction) {
-    if (canPerformAction(role, viewAllAction, orgActionPermissions)) {
-      return null
-    }
-  } else {
-    // Legacy fallback: ADMIN and MANAGER see all jobs
-    const normalizedRole = role?.toUpperCase() as UserRole | undefined
-    if (normalizedRole === UserRole.ADMIN || normalizedRole === UserRole.MANAGER) {
-      return null
-    }
-  }
-
-  // Filter to owned, task-collaborated, or board-collaborated jobs
-  return {
-    OR: [
-      { ownerId: userId },
-      { collaborators: { some: { userId } } },
-      { board: { collaborators: { some: { userId } } } }
-    ]
-  }
-}
-
 /**
  * @deprecated Use canPerformAction() instead with specific action keys.
  * No roles are read-only anymore — this always returns false.
@@ -745,30 +702,4 @@ export function isAdmin(role: UserRole | string | undefined): boolean {
 export function isAdminOrManager(role: UserRole | string | undefined): boolean {
   const normalizedRole = role?.toUpperCase() as UserRole | undefined
   return normalizedRole === UserRole.ADMIN || normalizedRole === UserRole.MANAGER
-}
-
-/**
- * Get Prisma where clause to filter boards by user access
- *
- * ADMIN/MANAGER: No filter (sees all org boards)
- * MEMBER: Only boards where user is owner or collaborator
- */
-export function getBoardAccessFilter(
-  userId: string,
-  role: UserRole | string | undefined
-): Prisma.BoardWhereInput | null {
-  const normalizedRole = role?.toUpperCase() as UserRole | undefined
-
-  // ADMIN and MANAGER see all boards
-  if (normalizedRole === UserRole.ADMIN || normalizedRole === UserRole.MANAGER) {
-    return null
-  }
-
-  // MEMBER: filter to owned or collaborated boards
-  return {
-    OR: [
-      { ownerId: userId },
-      { collaborators: { some: { userId } } }
-    ]
-  }
 }

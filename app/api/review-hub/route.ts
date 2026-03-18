@@ -34,6 +34,8 @@ export interface ReviewItem {
   sourceUrl: string
   createdAt: string
   boardName?: string
+  taskName?: string
+  taskType?: string
   metadata: Record<string, any>
 }
 
@@ -46,8 +48,11 @@ export async function GET(request: NextRequest) {
 
     const { organizationId } = session.user
     const permissions = session.user.orgActionPermissions
+    const isMember = session.user.role === "MEMBER"
 
-    if (!canPerformAction(session.user.role, "review:view", permissions)) {
+    // MEMBERs can access the review hub but only see their own form submissions.
+    // Non-MEMBERs require the review:view action permission.
+    if (!isMember && !canPerformAction(session.user.role, "review:view", permissions)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -171,6 +176,8 @@ export async function GET(request: NextRequest) {
               sourceUrl,
               createdAt: (run.completedAt || run.createdAt).toISOString(),
               boardName,
+              taskName: ruleName,
+              taskType,
               metadata: {
                 automationName: ruleName,
                 taskType,
@@ -240,6 +247,8 @@ export async function GET(request: NextRequest) {
               sourceUrl: `/dashboard/review/${msg.id}`,
               createdAt: msg.createdAt.toISOString(),
               boardName: msg.request?.taskInstance?.board?.name,
+              taskName: msg.request?.taskInstance?.name,
+              taskType: "request",
               metadata: {
                 contactName,
                 campaignName,
@@ -251,7 +260,8 @@ export async function GET(request: NextRequest) {
     }
 
     // ── Pillar 2b: Form Submissions ────────────────────────────────────────
-    if (canPerformAction(session.user.role, "forms:view_submissions", permissions)) {
+    // MEMBERs see only their own submissions; privileged roles see all.
+    if (isMember || canPerformAction(session.user.role, "forms:view_submissions", permissions)) {
       queries.push(
         prisma.formRequest.findMany({
           where: {
@@ -260,6 +270,7 @@ export async function GET(request: NextRequest) {
             reviewedAt: null,
             ...(cursorDate && { submittedAt: { lt: cursorDate } }),
             ...(boardId && { taskInstance: { boardId } }),
+            ...(isMember && { recipientUserId: session.user.id }),
           },
           include: {
             formDefinition: { select: { name: true } },
@@ -293,6 +304,8 @@ export async function GET(request: NextRequest) {
               sourceUrl: `/dashboard/jobs/${fr.taskInstanceId}`,
               createdAt: (fr.submittedAt || fr.createdAt).toISOString(),
               boardName: fr.taskInstance?.board?.name,
+              taskName: fr.taskInstance?.name,
+              taskType: "form",
               metadata: {
                 formName,
                 contactName: recipient,
