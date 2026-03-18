@@ -260,8 +260,10 @@ export async function GET(request: NextRequest) {
     }
 
     // ── Pillar 2b: Form Submissions ────────────────────────────────────────
-    // MEMBERs see only their own submissions; privileged roles see all.
-    if (isMember || canPerformAction(session.user.role, "forms:view_submissions", permissions)) {
+    // Managers/Admins review incoming form submissions from contacts or employees.
+    // MEMBERs do not see raw submissions — they see status updates on their own
+    // forms in Pillar 3 instead.
+    if (!isMember && canPerformAction(session.user.role, "forms:view_submissions", permissions)) {
       queries.push(
         prisma.formRequest.findMany({
           where: {
@@ -270,7 +272,6 @@ export async function GET(request: NextRequest) {
             reviewedAt: null,
             ...(cursorDate && { submittedAt: { lt: cursorDate } }),
             ...(boardId && { taskInstance: { boardId } }),
-            ...(isMember && { recipientUserId: session.user.id }),
           },
           include: {
             formDefinition: { select: { name: true } },
@@ -318,17 +319,30 @@ export async function GET(request: NextRequest) {
     }
 
     // ── Pillar 3: Form Status Changes ──────────────────────────────────────
-    // Surface form.status_changed ActivityEvents that haven't been reviewed yet.
-    if (!isMember && canPerformAction(session.user.role, "forms:view_submissions", permissions)) {
-      queries.push(
-        prisma.activityEvent.findMany({
-          where: {
-            organizationId,
-            eventType: "form.status_changed",
-            reviewedAt: null,
-            ...(cursorDate && { createdAt: { lt: cursorDate } }),
-            ...(boardId && { taskInstance: { board: { id: boardId } } }),
-          },
+    // Managers/Admins see all unreviewed form.status_changed events.
+    // MEMBERs see status changes only on forms they were sent as a recipient,
+    // so they're notified when a manager updates the status of their submission.
+    if (isMember || canPerformAction(session.user.role, "forms:view_submissions", permissions)) {
+      // For MEMBERs, scope to form requests where they are the recipient.
+      const memberFormRequestIds = isMember
+        ? await prisma.formRequest.findMany({
+            where: { organizationId, recipientUserId: session.user.id },
+            select: { id: true },
+          }).then(rows => rows.map(r => r.id))
+        : undefined
+
+      // Skip query entirely if MEMBER has no form requests
+      if (!isMember || (memberFormRequestIds && memberFormRequestIds.length > 0)) {
+        queries.push(
+          prisma.activityEvent.findMany({
+            where: {
+              organizationId,
+              eventType: "form.status_changed",
+              reviewedAt: null,
+              ...(cursorDate && { createdAt: { lt: cursorDate } }),
+              ...(boardId && { taskInstance: { board: { id: boardId } } }),
+              ...(memberFormRequestIds && { formRequestId: { in: memberFormRequestIds } }),
+            },
           include: {
             taskInstance: {
               select: {
@@ -365,7 +379,8 @@ export async function GET(request: NextRequest) {
             })
           }
         })
-      )
+        )
+      }
     }
 
     await Promise.all(queries)
