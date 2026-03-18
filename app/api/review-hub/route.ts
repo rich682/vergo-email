@@ -339,6 +339,7 @@ export async function GET(request: NextRequest) {
               organizationId,
               eventType: "form.status_changed",
               reviewedAt: null,
+              actorId: { not: session.user.id }, // exclude events the current user triggered
               ...(cursorDate && { createdAt: { lt: cursorDate } }),
               ...(boardId && { taskInstance: { board: { id: boardId } } }),
               ...(memberFormRequestIds && { formRequestId: { in: memberFormRequestIds } }),
