@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { canPerformAction } from "@/lib/permissions"
+import { canPerformAction, isAdmin } from "@/lib/permissions"
 import { AgentDefinitionService } from "@/lib/agents/agent-definition.service"
 
 interface RouteParams {
@@ -77,8 +77,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canPerformAction(session.user.role, "agents:manage", session.user.orgActionPermissions)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    if (!isAdmin(session.user.role)) {
+      return NextResponse.json({ error: "Only admins can delete" }, { status: 403 })
     }
 
     const deleted = await AgentDefinitionService.delete(params.agentId, session.user.organizationId, session.user.id)

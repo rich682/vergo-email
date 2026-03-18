@@ -88,7 +88,7 @@ const STATUS_STYLES: Record<string, { icon: React.ReactNode; label: string; colo
 
 export default function ReconciliationsPage() {
   const router = useRouter()
-  const { can } = usePermissions()
+  const { can, isAdmin } = usePermissions()
   const canManageReconciliations = can("reconciliations:manage")
   const canViewAllRecons = can("reconciliations:view_all_configs")
 
@@ -377,13 +377,15 @@ export default function ReconciliationsPage() {
                                 <Pencil className="w-4 h-4 mr-2" />
                                 Rename
                               </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handleDeleteConfig(config.id, config.name)}
-                                className="text-red-600 focus:text-red-600"
-                              >
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
+                              {isAdmin && (
+                                <DropdownMenuItem
+                                  onClick={() => handleDeleteConfig(config.id, config.name)}
+                                  className="text-red-600 focus:text-red-600"
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </td>

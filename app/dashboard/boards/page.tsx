@@ -241,7 +241,7 @@ function getSimplifiedStatusBadge(status: BoardStatus, isCurrent: boolean, isFut
 
 export default function BoardsPage() {
   const router = useRouter()
-  const { can } = usePermissions()
+  const { can, isAdmin } = usePermissions()
   const canManageBoards = can("boards:manage")
   const canEditColumns = can("boards:edit_columns")
   const [boards, setBoards] = useState<Board[]>([])
@@ -482,7 +482,7 @@ export default function BoardsPage() {
   const confirmDeleteBoard = async () => {
     if (!deleteConfirm.boardId) return
     try {
-      const response = await fetch(`/api/boards/${deleteConfirm.boardId}?hard=true`, {
+      const response = await fetch(`/api/boards/${deleteConfirm.boardId}`, {
         method: "DELETE"
       })
       if (response.ok) {
@@ -533,7 +533,7 @@ export default function BoardsPage() {
   }
 
   const canDeleteBoard = (board: Board): boolean => {
-    return (board.taskInstanceCount || 0) === 0
+    return isAdmin && (board.taskInstanceCount || 0) === 0
   }
 
   const handleBoardUpdate = (updatedBoard: Board) => {

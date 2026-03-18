@@ -8,12 +8,15 @@ interface PermissionsContextValue {
   orgActionPermissions: OrgActionPermissions
   /** Shorthand: checks canPerformAction(role, actionKey, orgActionPermissions) */
   can: (actionKey: ActionKey) => boolean
+  /** True only when the current user has the ADMIN role */
+  isAdmin: boolean
 }
 
 const PermissionsContext = createContext<PermissionsContextValue>({
   role: undefined,
   orgActionPermissions: null,
   can: () => false,
+  isAdmin: false,
 })
 
 interface PermissionsProviderProps {
@@ -32,8 +35,10 @@ export function PermissionsProvider({
     [role, orgActionPermissions]
   )
 
+  const isAdmin = role?.toUpperCase() === "ADMIN"
+
   return (
-    <PermissionsContext.Provider value={{ role, orgActionPermissions, can }}>
+    <PermissionsContext.Provider value={{ role, orgActionPermissions, can, isAdmin }}>
       {children}
     </PermissionsContext.Provider>
   )

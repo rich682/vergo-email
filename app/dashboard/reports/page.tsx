@@ -110,7 +110,7 @@ const CADENCE_LABELS: Record<string, string> = {
 
 export default function ReportsPage() {
   const router = useRouter()
-  const { can } = usePermissions()
+  const { can, isAdmin } = usePermissions()
   const canManageReports = can("reports:manage")
   const canGenerateReports = can("reports:generate")
   const canViewAllReports = can("reports:view_all_definitions")
@@ -673,13 +673,15 @@ export default function ReportsPage() {
                               <Copy className="w-4 h-4 mr-2" />
                               Duplicate
                             </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleDelete(report.id, report.name)}
-                              className="text-red-600 focus:text-red-600"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
+                            {isAdmin && (
+                              <DropdownMenuItem
+                                onClick={() => handleDelete(report.id, report.name)}
+                                className="text-red-600 focus:text-red-600"
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </td>

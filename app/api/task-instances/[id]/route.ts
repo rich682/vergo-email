@@ -22,7 +22,7 @@ import { ActivityEventService } from "@/lib/activity-events"
 import { prisma } from "@/lib/prisma"
 import { JobStatus, UserRole } from "@prisma/client"
 import { periodKeyFromDate, type ReportCadence } from "@/lib/utils/period"
-import { canPerformAction } from "@/lib/permissions"
+import { canPerformAction, isAdmin as checkIsAdmin } from "@/lib/permissions"
 import { isValidTargetDateRule, computeDueDateFromRule, TargetDateRule } from "@/lib/target-date-rules"
 
 export async function GET(
@@ -495,8 +495,8 @@ export async function DELETE(
     
     const hard = searchParams.get("hard") === "true"
 
-    if (!canPerformAction(session.user.role, "tasks:delete", session.user.orgActionPermissions)) {
-      return NextResponse.json({ error: "You do not have permission to delete tasks" }, { status: 403 })
+    if (!checkIsAdmin(session.user.role)) {
+      return NextResponse.json({ error: "Only admins can delete" }, { status: 403 })
     }
 
     // SAFETY: Hard delete is restricted to ADMIN users only

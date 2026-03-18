@@ -11,7 +11,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { DatabaseService } from "@/lib/services/database.service"
-import { canPerformAction } from "@/lib/permissions"
+import { canPerformAction, isAdmin } from "@/lib/permissions"
 
 interface RouteParams {
   params: { id: string }
@@ -153,8 +153,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canPerformAction(session.user.role, "databases:manage", session.user.orgActionPermissions)) {
-      return NextResponse.json({ error: "You do not have permission to manage databases" }, { status: 403 })
+    if (!isAdmin(session.user.role)) {
+      return NextResponse.json({ error: "Only admins can delete" }, { status: 403 })
     }
 
     await DatabaseService.deleteDatabase(params.id, session.user.organizationId, session.user.id)

@@ -335,8 +335,8 @@ export async function DELETE(
     const userRole = session.user.role
     const boardId = params.id
 
-    if (!canPerformAction(session.user.role, "boards:manage", session.user.orgActionPermissions)) {
-      return NextResponse.json({ error: "You do not have permission to delete boards" }, { status: 403 })
+    if (!checkIsAdmin(session.user.role)) {
+      return NextResponse.json({ error: "Only admins can delete" }, { status: 403 })
     }
 
     // Access check: admins can delete any board, others must be owner

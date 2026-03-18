@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { canPerformAction } from "@/lib/permissions"
+import { canPerformAction, isAdmin } from "@/lib/permissions"
 import { ReportDefinitionService, ReportColumn, ReportFormulaRow, ReportLayout, CompareMode, MetricRow } from "@/lib/services/report-definition.service"
 
 interface RouteParams {
@@ -132,8 +132,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canPerformAction(session.user.role, "reports:manage", session.user.orgActionPermissions)) {
-      return NextResponse.json({ error: "You do not have permission to manage reports" }, { status: 403 })
+    if (!isAdmin(session.user.role)) {
+      return NextResponse.json({ error: "Only admins can delete" }, { status: 403 })
     }
 
     // Check for linked tasks if this is a preflight check

@@ -11,7 +11,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { FormDefinitionService } from "@/lib/services/form-definition.service"
-import { canPerformAction } from "@/lib/permissions"
+import { canPerformAction, isAdmin } from "@/lib/permissions"
 import type { UpdateFormDefinitionInput } from "@/lib/types/form"
 
 export async function GET(
@@ -138,8 +138,8 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!canPerformAction(session.user.role, "forms:manage", session.user.orgActionPermissions)) {
-      return NextResponse.json({ error: "You do not have permission to manage forms" }, { status: 403 })
+    if (!isAdmin(session.user.role)) {
+      return NextResponse.json({ error: "Only admins can delete" }, { status: 403 })
     }
 
     const { id } = await params

@@ -76,7 +76,7 @@ interface FormTaskSummary {
 
 export default function FormsPage() {
   const router = useRouter()
-  const { can } = usePermissions()
+  const { can, isAdmin } = usePermissions()
   const canManageForms = can("forms:manage")
   const canViewAllForms = can("forms:view_all_templates")
 
@@ -343,13 +343,15 @@ export default function FormsPage() {
                               <Pencil className="w-4 h-4 mr-2" />
                               Rename
                             </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleDelete(form.id, safeString(form.name))}
-                              className="text-red-600 focus:text-red-600"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
+                            {isAdmin && (
+                              <DropdownMenuItem
+                                onClick={() => handleDelete(form.id, safeString(form.name))}
+                                className="text-red-600 focus:text-red-600"
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </td>
