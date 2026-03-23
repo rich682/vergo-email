@@ -56,9 +56,10 @@ interface FormsTabProps {
 }
 
 export function FormsTab({ jobId, onFormsSent }: FormsTabProps) {
-  const { can } = usePermissions()
+  const { can, isAdmin } = usePermissions()
   const canSendForms = can("forms:send")
   const canEditStatus = can("forms:manage")
+  const canDelete = isAdmin
   const [loading, setLoading] = useState(true)
   const [formRequests, setFormRequests] = useState<FormRequestItem[]>([])
   const [userMap, setUserMap] = useState<Record<string, string>>({})
@@ -126,6 +127,24 @@ export function FormsTab({ jobId, onFormsSent }: FormsTabProps) {
     }
   }
 
+  const handleDelete = async (formRequestId: string) => {
+    try {
+      const response = await fetch(`/api/form-requests/${formRequestId}`, {
+        method: "DELETE",
+        credentials: "include",
+      })
+      if (response.ok) {
+        await fetchFormRequests()
+      } else {
+        const data = await response.json()
+        alert(data.error || "Failed to delete submission")
+      }
+    } catch (error) {
+      console.error("Error deleting form request:", error)
+      alert("Failed to delete submission")
+    }
+  }
+
   // Parse settings safely (may come as string from API)
   const parseSettings = (settings: unknown): { customStatuses?: string[] } => {
     if (!settings) return {}
@@ -190,8 +209,10 @@ export function FormsTab({ jobId, onFormsSent }: FormsTabProps) {
           customStatuses={group.customStatuses}
           canSendForms={canSendForms}
           canEditStatus={canEditStatus}
+          canDelete={canDelete}
           onSendReminder={handleSendReminder}
           onCustomStatusChange={handleCustomStatusChange}
+          onDelete={handleDelete}
           sendingReminder={sendingReminder}
           userMap={userMap}
         />

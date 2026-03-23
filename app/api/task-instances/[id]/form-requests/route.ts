@@ -73,15 +73,25 @@ export async function GET(
         select: { id: true },
       })
 
-      const isRecipientInTask = formRequests.some((fr: any) => fr.recipientUserId === session.user.id)
-
       filteredFormRequests = formRequests.filter((fr: any) => {
-        // Collaborators who are recipients: only see their own responses
-        if (isCollaborator && isRecipientInTask) {
-          return fr.recipientUserId === session.user.id
+        // Direct recipient match
+        if (fr.recipientUserId === session.user.id) return true
+        // Form definition viewer
+        if (viewableFormIds.has(fr.formDefinitionId)) return true
+        // Universal link submissions: check if user selected themselves in a "users" field
+        if (fr.responseData && fr.formDefinition?.fields) {
+          const fields = typeof fr.formDefinition.fields === "string"
+            ? JSON.parse(fr.formDefinition.fields)
+            : fr.formDefinition.fields
+          for (const field of fields) {
+            if (field.type === "users" && fr.responseData[field.key]) {
+              const val = fr.responseData[field.key]
+              if (val === session.user.id) return true
+              if (Array.isArray(val) && val.includes(session.user.id)) return true
+            }
+          }
         }
-        // Viewers / other non-admins: existing logic
-        return viewableFormIds.has(fr.formDefinitionId) || fr.recipientUserId === session.user.id
+        return false
       })
 
       if (filteredFormRequests.length < formRequests.length) {

@@ -14,6 +14,7 @@ import {
   Loader2,
   Paperclip,
   Download,
+  Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -64,8 +65,10 @@ interface FormSubmissionsTableProps {
   customStatuses: string[]
   canSendForms: boolean
   canEditStatus?: boolean
+  canDelete?: boolean
   onSendReminder: (requestId: string) => void
   onCustomStatusChange?: (requestId: string, status: string) => void
+  onDelete?: (requestId: string) => void
   sendingReminder: string | null
   userMap?: Record<string, string>
 }
@@ -113,8 +116,10 @@ export function FormSubmissionsTable({
   customStatuses,
   canSendForms,
   canEditStatus = true,
+  canDelete = false,
   onSendReminder,
   onCustomStatusChange,
+  onDelete,
   sendingReminder,
   userMap,
 }: FormSubmissionsTableProps) {
@@ -256,7 +261,7 @@ export function FormSubmissionsTable({
                 Submitted
               </th>
               {/* Actions column */}
-              {canSendForms && (
+              {(canSendForms || canDelete) && (
                 <th
                   className="px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200"
                   style={{ width: 90, minWidth: 90 }}
@@ -358,34 +363,52 @@ export function FormSubmissionsTable({
                       : "—"}
                   </td>
                   {/* Actions */}
-                  {canSendForms && (
+                  {(canSendForms || canDelete) && (
                     <td className="px-4 py-2.5 border-l border-gray-100 text-center">
-                      {req.status === "PENDING" && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => onSendReminder(req.id)}
-                          disabled={
-                            sendingReminder === req.id ||
-                            req.remindersSent >= req.remindersMaxCount
-                          }
-                          className="h-7 text-xs"
-                          title={
-                            req.remindersSent >= req.remindersMaxCount
-                              ? "Max reminders sent"
-                              : `Send reminder (${req.remindersSent}/${req.remindersMaxCount})`
-                          }
-                        >
-                          {sendingReminder === req.id ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <>
-                              <Bell className="w-3 h-3 mr-1" />
-                              Remind
-                            </>
-                          )}
-                        </Button>
-                      )}
+                      <div className="flex items-center justify-center gap-1">
+                        {canSendForms && req.status === "PENDING" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onSendReminder(req.id)}
+                            disabled={
+                              sendingReminder === req.id ||
+                              req.remindersSent >= req.remindersMaxCount
+                            }
+                            className="h-7 text-xs"
+                            title={
+                              req.remindersSent >= req.remindersMaxCount
+                                ? "Max reminders sent"
+                                : `Send reminder (${req.remindersSent}/${req.remindersMaxCount})`
+                            }
+                          >
+                            {sendingReminder === req.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <>
+                                <Bell className="w-3 h-3 mr-1" />
+                                Remind
+                              </>
+                            )}
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const recipientName = getRecipientName(req, sortedFields, userMap)
+                              if (confirm(`Delete submission from ${recipientName}? This cannot be undone.`)) {
+                                onDelete?.(req.id)
+                              }
+                            }}
+                            className="h-7 text-xs text-red-500 hover:text-red-700 hover:bg-red-50"
+                            title="Delete submission"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   )}
                 </tr>

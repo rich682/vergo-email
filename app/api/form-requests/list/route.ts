@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { getJobAccessFilter } from "@/lib/permissions"
+import { getJobAccessFilter } from "@/lib/permissions.server"
 
 export const dynamic = "force-dynamic"
 
@@ -87,6 +87,7 @@ export async function GET(request: NextRequest) {
       select: {
         id: true,
         status: true,
+        customStatus: true,
         submittedAt: true,
         deadlineDate: true,
         createdAt: true,
@@ -102,6 +103,7 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             name: true,
+            settings: true,
           },
         },
         recipientEntity: {
