@@ -3,18 +3,21 @@
 /**
  * Form Submissions Table
  *
- * Spreadsheet-style view of form submissions where:
- * - Columns = form questions (fields)
- * - Rows = recipients (all recipients, not just submitted)
- * - Cells populate with response data as submissions come in
+ * Spreadsheet-style view of form submissions grouped by status
+ * (Pending → Submitted → Expired) with collapsible sections,
+ * bulk selection, and multi-delete support.
  */
 
+import { useState, useMemo } from "react"
 import {
   Bell,
   Loader2,
   Paperclip,
   Download,
   Trash2,
+  ChevronDown,
+  ChevronRight,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -58,6 +61,20 @@ interface FormRequestItem {
   attachments?: FormAttachment[]
 }
 
+interface StatusGroup {
+  status: string
+  label: string
+  color: string
+  bgColor: string
+  borderColor: string
+}
+
+const STATUS_GROUPS: StatusGroup[] = [
+  { status: "PENDING", label: "Pending", color: "text-amber-600", bgColor: "bg-amber-50", borderColor: "border-l-amber-400" },
+  { status: "SUBMITTED", label: "Submitted", color: "text-green-600", bgColor: "bg-green-50", borderColor: "border-l-green-500" },
+  { status: "EXPIRED", label: "Expired", color: "text-red-600", bgColor: "bg-red-50", borderColor: "border-l-red-400" },
+]
+
 interface FormSubmissionsTableProps {
   formName: string
   fields: FormField[]
@@ -69,6 +86,7 @@ interface FormSubmissionsTableProps {
   onSendReminder: (requestId: string) => void
   onCustomStatusChange?: (requestId: string, status: string) => void
   onDelete?: (requestId: string) => void
+  onBulkDelete?: (requestIds: string[]) => void
   sendingReminder: string | null
   userMap?: Record<string, string>
 }
@@ -80,7 +98,6 @@ function getRecipientName(req: FormRequestItem, fields?: FormField[], userMap?: 
   }
   // Universal link submissions: try to extract submitter name from responseData
   if (!req.recipientUser && !req.recipientEntity && req.responseData && fields) {
-    // Look for a "users" type field and resolve the name
     for (const field of fields) {
       if (field.type === "users" && req.responseData[field.key]) {
         const userId = req.responseData[field.key]
@@ -89,7 +106,6 @@ function getRecipientName(req: FormRequestItem, fields?: FormField[], userMap?: 
         }
       }
     }
-    // Fallback: look for text fields with name-like keys
     for (const field of fields) {
       if (field.type === "text" || (field.type as string) === "short_text") {
         const key = field.key.toLowerCase()
@@ -120,21 +136,27 @@ export function FormSubmissionsTable({
   onSendReminder,
   onCustomStatusChange,
   onDelete,
+  onBulkDelete,
   sendingReminder,
   userMap,
 }: FormSubmissionsTableProps) {
   const sortedFields = [...fields].sort((a, b) => (a.order || 0) - (b.order || 0))
-
-  // Sort requests: submitted first, then pending, then expired
-  const statusOrder: Record<string, number> = { SUBMITTED: 0, PENDING: 1, EXPIRED: 2 }
-  const sortedRequests = [...formRequests].sort(
-    (a, b) => (statusOrder[a.status] ?? 1) - (statusOrder[b.status] ?? 1)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+    new Set(STATUS_GROUPS.map(g => g.status))
   )
 
   const submitted = formRequests.filter(r => r.status === "SUBMITTED").length
   const total = formRequests.length
 
-  // Resolve display status: use customStatus if set, else derive from system status
+  // Group by system status
+  const byStatus = useMemo(() => {
+    return STATUS_GROUPS.reduce((acc, group) => {
+      acc[group.status] = formRequests.filter(r => r.status === group.status)
+      return acc
+    }, {} as Record<string, FormRequestItem[]>)
+  }, [formRequests])
+
   const getDisplayStatus = (req: FormRequestItem): string => {
     if (req.customStatus) return req.customStatus
     if (req.status === "SUBMITTED") return "Submitted"
@@ -142,11 +164,52 @@ export function FormSubmissionsTable({
     return req.status
   }
 
+  const toggleGroup = (status: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(status)) next.delete(status)
+      else next.add(status)
+      return next
+    })
+  }
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleGroupSelection = (status: string) => {
+    const groupIds = (byStatus[status] || []).map(r => r.id)
+    const allSelected = groupIds.every(id => selectedIds.has(id))
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (allSelected) {
+        groupIds.forEach(id => next.delete(id))
+      } else {
+        groupIds.forEach(id => next.add(id))
+      }
+      return next
+    })
+  }
+
+  const handleBulkDelete = () => {
+    const count = selectedIds.size
+    if (confirm(`Delete ${count} submission${count !== 1 ? "s" : ""}? This cannot be undone.`)) {
+      onBulkDelete?.([...selectedIds])
+      setSelectedIds(new Set())
+    }
+  }
+
   const handleExportExcel = () => {
+    const allRequests = STATUS_GROUPS.flatMap(g => byStatus[g.status] || [])
     const headers = ["Recipient", "Email", "Status", ...sortedFields.map(f => f.label), "Submitted"]
     const data: (string | number | boolean | null)[][] = [headers]
 
-    for (const req of sortedRequests) {
+    for (const req of allRequests) {
       const row = [
         getRecipientName(req, sortedFields, userMap),
         getRecipientEmail(req) || "",
@@ -162,8 +225,6 @@ export function FormSubmissionsTable({
     }
 
     const ws = XLSX.utils.aoa_to_sheet(data)
-
-    // Auto-size columns
     ws["!cols"] = headers.map((header, i) => {
       let maxLen = header.length
       for (const row of data.slice(1)) {
@@ -187,6 +248,202 @@ export function FormSubmissionsTable({
     link.download = `${safeName}_submissions.xlsx`
     link.click()
     URL.revokeObjectURL(url)
+  }
+
+  const hasActions = canSendForms || canDelete
+
+  const renderRow = (req: FormRequestItem) => {
+    const name = getRecipientName(req, sortedFields, userMap)
+    const email = getRecipientEmail(req)
+    const isSubmitted = req.status === "SUBMITTED"
+
+    return (
+      <tr key={req.id} className={`hover:bg-gray-50 group ${selectedIds.has(req.id) ? "bg-orange-50" : ""}`}>
+        {/* Checkbox */}
+        {canDelete && (
+          <td className="w-10 px-3 py-2.5 text-center sticky left-0 z-10 bg-white">
+            <input
+              type="checkbox"
+              checked={selectedIds.has(req.id)}
+              onChange={() => toggleSelect(req.id)}
+              className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500 cursor-pointer"
+            />
+          </td>
+        )}
+        {/* Recipient */}
+        <td className={`px-4 py-2.5 ${canDelete ? "" : "sticky left-0 z-10"} bg-white whitespace-nowrap`}>
+          <p className="text-sm font-medium text-gray-900 truncate" title={name}>{name}</p>
+          {email && <p className="text-xs text-gray-500 truncate" title={email}>{email}</p>}
+        </td>
+        {/* Custom status */}
+        <td className="px-4 py-2.5 border-l border-gray-100">
+          {isSubmitted && customStatuses.length > 0 && canEditStatus ? (
+            <Select
+              value={getDisplayStatus(req)}
+              onValueChange={(value) => onCustomStatusChange?.(req.id, value)}
+            >
+              <SelectTrigger className="h-7 text-xs w-full border-gray-200">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {customStatuses.map((s) => (
+                  <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <span className="text-xs text-gray-500">{getDisplayStatus(req)}</span>
+          )}
+        </td>
+        {/* Field values */}
+        {sortedFields.map(field => (
+          <td
+            key={field.key}
+            className="px-4 py-2.5 border-l border-gray-100 text-sm text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis"
+            title={
+              isSubmitted && req.responseData
+                ? formatResponseValue(req.responseData[field.key], field.type, userMap)
+                : undefined
+            }
+          >
+            {isSubmitted && req.responseData ? (
+              field.type === "file" ? (
+                <div className="flex flex-wrap gap-1">
+                  {(req.attachments || [])
+                    .filter(a => a.fieldKey === field.key)
+                    .map(a => (
+                      <a
+                        key={a.id}
+                        href={a.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                      >
+                        <Paperclip className="w-3 h-3" />
+                        <span className="max-w-[100px] truncate">{a.filename}</span>
+                      </a>
+                    ))}
+                  {(req.attachments || []).filter(a => a.fieldKey === field.key).length === 0 && (
+                    <span className="text-gray-400">—</span>
+                  )}
+                </div>
+              ) : (
+                formatResponseValue(req.responseData[field.key], field.type, userMap)
+              )
+            ) : (
+              <span className="text-gray-400">—</span>
+            )}
+          </td>
+        ))}
+        {/* Submitted date */}
+        <td className="px-4 py-2.5 border-l border-gray-100 text-sm text-gray-500">
+          {req.submittedAt ? format(new Date(req.submittedAt), "MMM d, yyyy") : "—"}
+        </td>
+        {/* Actions */}
+        {hasActions && (
+          <td className="px-4 py-2.5 border-l border-gray-100 text-center">
+            <div className="flex items-center justify-center gap-1">
+              {canSendForms && req.status === "PENDING" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onSendReminder(req.id)}
+                  disabled={sendingReminder === req.id || req.remindersSent >= req.remindersMaxCount}
+                  className="h-7 text-xs"
+                  title={
+                    req.remindersSent >= req.remindersMaxCount
+                      ? "Max reminders sent"
+                      : `Send reminder (${req.remindersSent}/${req.remindersMaxCount})`
+                  }
+                >
+                  {sendingReminder === req.id ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <>
+                      <Bell className="w-3 h-3 mr-1" />
+                      Remind
+                    </>
+                  )}
+                </Button>
+              )}
+              {canDelete && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (confirm(`Delete submission from ${name}? This cannot be undone.`)) {
+                      onDelete?.(req.id)
+                    }
+                  }}
+                  className="h-7 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Delete submission"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              )}
+            </div>
+          </td>
+        )}
+      </tr>
+    )
+  }
+
+  const renderTableHeader = (groupStatus: string) => {
+    const groupRows = byStatus[groupStatus] || []
+    const allSelected = groupRows.length > 0 && groupRows.every(r => selectedIds.has(r.id))
+    const someSelected = groupRows.some(r => selectedIds.has(r.id)) && !allSelected
+
+    return (
+      <thead className="bg-gray-50 border-b border-gray-200">
+        <tr>
+          {canDelete && (
+            <th className="w-10 px-3 py-2.5 text-center">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                ref={(el) => { if (el) el.indeterminate = someSelected }}
+                onChange={() => toggleGroupSelection(groupStatus)}
+                className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500 cursor-pointer"
+              />
+            </th>
+          )}
+          <th
+            className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap"
+            style={{ width: 200, minWidth: 200 }}
+          >
+            Recipient
+          </th>
+          <th
+            className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200"
+            style={{ width: 150, minWidth: 150 }}
+          >
+            Tracking
+          </th>
+          {sortedFields.map(field => (
+            <th
+              key={field.key}
+              className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200 whitespace-nowrap overflow-hidden text-ellipsis"
+              style={{ width: 150, minWidth: 150 }}
+              title={field.label}
+            >
+              {field.label}
+            </th>
+          ))}
+          <th
+            className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200"
+            style={{ width: 120, minWidth: 120 }}
+          >
+            Submitted
+          </th>
+          {hasActions && (
+            <th
+              className="px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200"
+              style={{ width: 90, minWidth: 90 }}
+            />
+          )}
+        </tr>
+      </thead>
+    )
   }
 
   return (
@@ -223,200 +480,74 @@ export function FormSubmissionsTable({
         </div>
       </div>
 
-      {/* Table */}
-      <div className="rounded-lg border border-gray-200 overflow-auto">
-        <table className="text-sm border-collapse" style={{ tableLayout: "fixed" }}>
-          <thead className="bg-gray-100 sticky top-0 z-20">
-            <tr className="border-b border-gray-200">
-              {/* Recipient column - sticky left */}
-              <th
-                className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-0 z-30 bg-gray-100 whitespace-nowrap"
-                style={{ width: 200, minWidth: 200 }}
-              >
-                Recipient
-              </th>
-              {/* Custom status column */}
-              <th
-                className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200"
-                style={{ width: 150, minWidth: 150 }}
-              >
-                Tracking
-              </th>
-              {/* Dynamic field columns */}
-              {sortedFields.map(field => (
-                <th
-                  key={field.key}
-                  className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200 whitespace-nowrap overflow-hidden text-ellipsis"
-                  style={{ width: 150, minWidth: 150 }}
-                  title={field.label}
-                >
-                  {field.label}
-                </th>
-              ))}
-              {/* Submitted date column */}
-              <th
-                className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200"
-                style={{ width: 120, minWidth: 120 }}
-              >
-                Submitted
-              </th>
-              {/* Actions column */}
-              {(canSendForms || canDelete) && (
-                <th
-                  className="px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200"
-                  style={{ width: 90, minWidth: 90 }}
-                >
-                </th>
-              )}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {sortedRequests.map(req => {
-              const name = getRecipientName(req, sortedFields, userMap)
-              const email = getRecipientEmail(req)
-              const isSubmitted = req.status === "SUBMITTED"
+      {/* Status-grouped sections */}
+      <div className="space-y-3">
+        {STATUS_GROUPS.map(group => {
+          const groupRows = byStatus[group.status] || []
+          if (groupRows.length === 0) return null
 
-              return (
-                <tr key={req.id} className="hover:bg-gray-50">
-                  {/* Recipient - sticky left */}
-                  <td
-                    className="px-4 py-2.5 sticky left-0 z-10 bg-white whitespace-nowrap"
-                  >
-                    <p className="text-sm font-medium text-gray-900 truncate" title={name}>
-                      {name}
-                    </p>
-                    {email && (
-                      <p className="text-xs text-gray-500 truncate" title={email}>
-                        {email}
-                      </p>
-                    )}
-                  </td>
-                  {/* Custom status */}
-                  <td className="px-4 py-2.5 border-l border-gray-100">
-                    {isSubmitted && customStatuses.length > 0 && canEditStatus ? (
-                      <Select
-                        value={getDisplayStatus(req)}
-                        onValueChange={(value) => onCustomStatusChange?.(req.id, value)}
-                      >
-                        <SelectTrigger className="h-7 text-xs w-full border-gray-200">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {customStatuses.map((s) => (
-                            <SelectItem key={s} value={s} className="text-xs">
-                              {s}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <span className="text-xs text-gray-500">
-                        {getDisplayStatus(req)}
-                      </span>
-                    )}
-                  </td>
-                  {/* Field values */}
-                  {sortedFields.map(field => (
-                    <td
-                      key={field.key}
-                      className="px-4 py-2.5 border-l border-gray-100 text-sm text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis"
-                      title={
-                        isSubmitted && req.responseData
-                          ? formatResponseValue(req.responseData[field.key], field.type, userMap)
-                          : undefined
-                      }
-                    >
-                      {isSubmitted && req.responseData ? (
-                        field.type === "file" ? (
-                          // File fields: show attachment links
-                          <div className="flex flex-wrap gap-1">
-                            {(req.attachments || [])
-                              .filter(a => a.fieldKey === field.key)
-                              .map(a => (
-                                <a
-                                  key={a.id}
-                                  href={a.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                                >
-                                  <Paperclip className="w-3 h-3" />
-                                  <span className="max-w-[100px] truncate">{a.filename}</span>
-                                </a>
-                              ))}
-                            {(req.attachments || []).filter(a => a.fieldKey === field.key).length === 0 && (
-                              <span className="text-gray-400">—</span>
-                            )}
-                          </div>
-                        ) : (
-                          formatResponseValue(req.responseData[field.key], field.type, userMap)
-                        )
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </td>
-                  ))}
-                  {/* Submitted date */}
-                  <td className="px-4 py-2.5 border-l border-gray-100 text-sm text-gray-500">
-                    {req.submittedAt
-                      ? format(new Date(req.submittedAt), "MMM d, yyyy")
-                      : "—"}
-                  </td>
-                  {/* Actions */}
-                  {(canSendForms || canDelete) && (
-                    <td className="px-4 py-2.5 border-l border-gray-100 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        {canSendForms && req.status === "PENDING" && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => onSendReminder(req.id)}
-                            disabled={
-                              sendingReminder === req.id ||
-                              req.remindersSent >= req.remindersMaxCount
-                            }
-                            className="h-7 text-xs"
-                            title={
-                              req.remindersSent >= req.remindersMaxCount
-                                ? "Max reminders sent"
-                                : `Send reminder (${req.remindersSent}/${req.remindersMaxCount})`
-                            }
-                          >
-                            {sendingReminder === req.id ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <>
-                                <Bell className="w-3 h-3 mr-1" />
-                                Remind
-                              </>
-                            )}
-                          </Button>
-                        )}
-                        {canDelete && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              const recipientName = getRecipientName(req, sortedFields, userMap)
-                              if (confirm(`Delete submission from ${recipientName}? This cannot be undone.`)) {
-                                onDelete?.(req.id)
-                              }
-                            }}
-                            className="h-7 text-xs text-red-500 hover:text-red-700 hover:bg-red-50"
-                            title="Delete submission"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+          const isExpanded = expandedGroups.has(group.status)
+
+          return (
+            <div key={group.status} className={`rounded-lg overflow-hidden border-l-4 ${group.borderColor}`}>
+              {/* Group header */}
+              <button
+                onClick={() => toggleGroup(group.status)}
+                className={`w-full flex items-center gap-2 px-4 py-2.5 ${group.bgColor} hover:opacity-90 transition-opacity`}
+              >
+                {isExpanded ? (
+                  <ChevronDown className={`w-4 h-4 ${group.color}`} />
+                ) : (
+                  <ChevronRight className={`w-4 h-4 ${group.color}`} />
+                )}
+                <span className={`font-medium ${group.color}`}>{group.label}</span>
+                <span className="text-sm text-gray-500">({groupRows.length})</span>
+              </button>
+
+              {/* Group content */}
+              {isExpanded && (
+                <div className="border border-t-0 border-gray-200 bg-white overflow-auto">
+                  <table className="text-sm border-collapse w-full" style={{ tableLayout: "fixed" }}>
+                    {renderTableHeader(group.status)}
+                    <tbody className="divide-y divide-gray-100">
+                      {groupRows.map(req => renderRow(req))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
+
+      {/* Bulk actions bar */}
+      {selectedIds.size > 0 && canDelete && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+          <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 text-white rounded-xl shadow-2xl">
+            <div className="flex items-center gap-2 pr-3 border-r border-gray-700">
+              <div className="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center text-sm font-medium">
+                {selectedIds.size}
+              </div>
+              <span className="text-sm font-medium">
+                Submission{selectedIds.size !== 1 ? "s" : ""} selected
+              </span>
+            </div>
+            <button
+              onClick={handleBulkDelete}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-red-600 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span className="text-sm">Delete</span>
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="ml-2 p-1.5 rounded-lg hover:bg-gray-800 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -145,6 +145,26 @@ export function FormsTab({ jobId, onFormsSent }: FormsTabProps) {
     }
   }
 
+  const handleBulkDelete = async (ids: string[]) => {
+    try {
+      const response = await fetch("/api/form-requests/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ids }),
+      })
+      if (response.ok) {
+        await fetchFormRequests()
+      } else {
+        const data = await response.json()
+        alert(data.error || "Failed to delete submissions")
+      }
+    } catch (error) {
+      console.error("Error bulk deleting form requests:", error)
+      alert("Failed to delete submissions")
+    }
+  }
+
   // Parse settings safely (may come as string from API)
   const parseSettings = (settings: unknown): { customStatuses?: string[] } => {
     if (!settings) return {}
@@ -213,6 +233,7 @@ export function FormsTab({ jobId, onFormsSent }: FormsTabProps) {
           onSendReminder={handleSendReminder}
           onCustomStatusChange={handleCustomStatusChange}
           onDelete={handleDelete}
+          onBulkDelete={handleBulkDelete}
           sendingReminder={sendingReminder}
           userMap={userMap}
         />
