@@ -63,6 +63,7 @@ export function FormsTab({ jobId, onFormsSent }: FormsTabProps) {
   const [loading, setLoading] = useState(true)
   const [formRequests, setFormRequests] = useState<FormRequestItem[]>([])
   const [userMap, setUserMap] = useState<Record<string, string>>({})
+  const [userEmailMap, setUserEmailMap] = useState<Record<string, string>>({})
   const [sendingReminder, setSendingReminder] = useState<string | null>(null)
 
   const fetchFormRequests = useCallback(async () => {
@@ -75,6 +76,7 @@ export function FormsTab({ jobId, onFormsSent }: FormsTabProps) {
         const data = await response.json()
         setFormRequests(data.formRequests || [])
         setUserMap(data.userMap || {})
+        setUserEmailMap(data.userEmailMap || {})
       }
     } catch (error) {
       console.error("Error fetching form requests:", error)
@@ -236,6 +238,7 @@ export function FormsTab({ jobId, onFormsSent }: FormsTabProps) {
           onBulkDelete={handleBulkDelete}
           sendingReminder={sendingReminder}
           userMap={userMap}
+          userEmailMap={userEmailMap}
         />
       ))}
     </div>

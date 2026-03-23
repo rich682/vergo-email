@@ -89,6 +89,7 @@ interface FormSubmissionsTableProps {
   onBulkDelete?: (requestIds: string[]) => void
   sendingReminder: string | null
   userMap?: Record<string, string>
+  userEmailMap?: Record<string, string>
 }
 
 function getRecipientName(req: FormRequestItem, fields?: FormField[], userMap?: Record<string, string>): string {
@@ -121,8 +122,21 @@ function getRecipientName(req: FormRequestItem, fields?: FormField[], userMap?: 
   return "Unknown"
 }
 
-function getRecipientEmail(req: FormRequestItem): string | null {
-  return req.recipientUser?.email || req.recipientEntity?.email || null
+function getRecipientEmail(req: FormRequestItem, fields?: FormField[], userEmailMap?: Record<string, string>): string | null {
+  if (req.recipientUser?.email) return req.recipientUser.email
+  if (req.recipientEntity?.email) return req.recipientEntity.email
+  // Universal link submissions: resolve email from "users" field in responseData
+  if (!req.recipientUser && !req.recipientEntity && req.responseData && fields && userEmailMap) {
+    for (const field of fields) {
+      if (field.type === "users" && req.responseData[field.key]) {
+        const userId = req.responseData[field.key]
+        if (typeof userId === "string" && userEmailMap[userId]) {
+          return userEmailMap[userId]
+        }
+      }
+    }
+  }
+  return null
 }
 
 export function FormSubmissionsTable({
@@ -139,6 +153,7 @@ export function FormSubmissionsTable({
   onBulkDelete,
   sendingReminder,
   userMap,
+  userEmailMap,
 }: FormSubmissionsTableProps) {
   const sortedFields = [...fields].sort((a, b) => (a.order || 0) - (b.order || 0))
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -212,7 +227,7 @@ export function FormSubmissionsTable({
     for (const req of allRequests) {
       const row = [
         getRecipientName(req, sortedFields, userMap),
-        getRecipientEmail(req) || "",
+        getRecipientEmail(req, sortedFields, userEmailMap) || "",
         getDisplayStatus(req),
         ...sortedFields.map(f =>
           req.status === "SUBMITTED" && req.responseData
@@ -254,7 +269,7 @@ export function FormSubmissionsTable({
 
   const renderRow = (req: FormRequestItem) => {
     const name = getRecipientName(req, sortedFields, userMap)
-    const email = getRecipientEmail(req)
+    const email = getRecipientEmail(req, sortedFields, userEmailMap)
     const isSubmitted = req.status === "SUBMITTED"
 
     return (

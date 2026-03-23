@@ -116,17 +116,19 @@ export async function GET(
       }
     }
 
-    // Resolve user IDs to names
+    // Resolve user IDs to names and emails
     let userMap: Record<string, string> = {}
+    let userEmailMap: Record<string, string> = {}
     if (allUserIds.size > 0) {
       const users = await prisma.user.findMany({
         where: { id: { in: [...allUserIds] } },
         select: { id: true, name: true, email: true },
       })
       userMap = Object.fromEntries(users.map(u => [u.id, u.name || u.email]))
+      userEmailMap = Object.fromEntries(users.map(u => [u.id, u.email]))
     }
 
-    return NextResponse.json({ formRequests: filteredFormRequests, progress, viewerRestricted, userMap })
+    return NextResponse.json({ formRequests: filteredFormRequests, progress, viewerRestricted, userMap, userEmailMap })
   } catch (error: any) {
     console.error("Error fetching form requests:", error)
     return NextResponse.json(
