@@ -170,10 +170,13 @@ export class ReportExecutionService {
 
       const table = this.evaluateAccountingLayout(effectiveReport as any, currentRows)
 
+      // Still compute available periods so the Create Report dialog can offer them
+      const accountingPeriods = getPeriodsFromRows(allRows, dateColumnKey, cadence)
+
       return {
         current: null,
         compare: null,
-        availablePeriods: [],
+        availablePeriods: accountingPeriods,
         table,
         diagnostics,
       }
