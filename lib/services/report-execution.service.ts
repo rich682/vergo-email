@@ -170,8 +170,10 @@ export class ReportExecutionService {
 
       const table = this.evaluateAccountingLayout(effectiveReport as any, currentRows)
 
-      // Still compute available periods so the Create Report dialog can offer them
-      const accountingPeriods = getPeriodsFromRows(allRows, dateColumnKey, cadence)
+      // For accounting layout, periods come from the pivot column values (dates as columns)
+      // rather than row-level dateColumnKey data
+      const periodSourceKey = report.pivotColumnKey || dateColumnKey
+      const accountingPeriods = getPeriodsFromRows(allRows, periodSourceKey, cadence)
 
       return {
         current: null,
