@@ -172,6 +172,25 @@ export function FormSubmissionsTable({
     }, {} as Record<string, FormRequestItem[]>)
   }, [formRequests])
 
+  // Sub-group submitted items by custom status (in form builder order)
+  const submittedSubGroups = useMemo(() => {
+    const submitted = byStatus["SUBMITTED"] || []
+    if (submitted.length === 0 || customStatuses.length === 0) return []
+
+    const groups: { label: string; rows: FormRequestItem[] }[] = []
+    for (const status of customStatuses) {
+      const rows = submitted.filter(r => getDisplayStatus(r) === status)
+      groups.push({ label: status, rows })
+    }
+    // Catch any with a status not in the known list
+    const knownSet = new Set(customStatuses)
+    const uncategorized = submitted.filter(r => !knownSet.has(getDisplayStatus(r)))
+    if (uncategorized.length > 0) {
+      groups.push({ label: "Other", rows: uncategorized })
+    }
+    return groups
+  }, [byStatus, customStatuses])
+
   const getDisplayStatus = (req: FormRequestItem): string => {
     if (req.customStatus) return req.customStatus
     if (req.status === "SUBMITTED") return "Submitted"
@@ -197,8 +216,8 @@ export function FormSubmissionsTable({
     })
   }
 
-  const toggleGroupSelection = (status: string) => {
-    const groupIds = (byStatus[status] || []).map(r => r.id)
+  const toggleGroupSelection = (rows: FormRequestItem[]) => {
+    const groupIds = rows.map(r => r.id)
     const allSelected = groupIds.every(id => selectedIds.has(id))
     setSelectedIds(prev => {
       const next = new Set(prev)
@@ -403,10 +422,9 @@ export function FormSubmissionsTable({
     )
   }
 
-  const renderTableHeader = (groupStatus: string) => {
-    const groupRows = byStatus[groupStatus] || []
-    const allSelected = groupRows.length > 0 && groupRows.every(r => selectedIds.has(r.id))
-    const someSelected = groupRows.some(r => selectedIds.has(r.id)) && !allSelected
+  const renderTableHeader = (rows: FormRequestItem[]) => {
+    const allSelected = rows.length > 0 && rows.every(r => selectedIds.has(r.id))
+    const someSelected = rows.some(r => selectedIds.has(r.id)) && !allSelected
 
     return (
       <thead className="bg-gray-50 border-b border-gray-200">
@@ -417,7 +435,7 @@ export function FormSubmissionsTable({
                 type="checkbox"
                 checked={allSelected}
                 ref={(el) => { if (el) el.indeterminate = someSelected }}
-                onChange={() => toggleGroupSelection(groupStatus)}
+                onChange={() => toggleGroupSelection(rows)}
                 className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500 cursor-pointer"
               />
             </th>
@@ -501,6 +519,8 @@ export function FormSubmissionsTable({
           const groupRows = byStatus[group.status] || []
           if (groupRows.length === 0) return null
 
+          const isSubmitted = group.status === "SUBMITTED"
+          const hasSubGroups = isSubmitted && submittedSubGroups.length > 0
           const isExpanded = expandedGroups.has(group.status)
 
           return (
@@ -521,13 +541,54 @@ export function FormSubmissionsTable({
 
               {/* Group content */}
               {isExpanded && (
-                <div className="border border-t-0 border-gray-200 bg-white overflow-auto">
-                  <table className="text-sm border-collapse w-full" style={{ tableLayout: "fixed" }}>
-                    {renderTableHeader(group.status)}
-                    <tbody className="divide-y divide-gray-100">
-                      {groupRows.map(req => renderRow(req))}
-                    </tbody>
-                  </table>
+                <div className="border border-t-0 border-gray-200 bg-white">
+                  {hasSubGroups ? (
+                    // Sub-groups by custom tracking status
+                    <div className="divide-y divide-gray-100">
+                      {submittedSubGroups.map(sub => {
+                        if (sub.rows.length === 0) return null
+                        const subKey = `SUBMITTED::${sub.label}`
+                        const isSubExpanded = expandedGroups.has(subKey)
+
+                        return (
+                          <div key={sub.label}>
+                            <button
+                              onClick={() => toggleGroup(subKey)}
+                              className="w-full flex items-center gap-2 px-6 py-2 bg-gray-50 hover:bg-gray-100 transition-colors"
+                            >
+                              {isSubExpanded ? (
+                                <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
+                              ) : (
+                                <ChevronRight className="w-3.5 h-3.5 text-gray-500" />
+                              )}
+                              <span className="text-sm font-medium text-gray-700">{sub.label}</span>
+                              <span className="text-xs text-gray-400">({sub.rows.length})</span>
+                            </button>
+                            {isSubExpanded && (
+                              <div className="overflow-auto">
+                                <table className="text-sm border-collapse w-full" style={{ tableLayout: "fixed" }}>
+                                  {renderTableHeader(sub.rows)}
+                                  <tbody className="divide-y divide-gray-100">
+                                    {sub.rows.map(req => renderRow(req))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    // Flat table for Pending/Expired
+                    <div className="overflow-auto">
+                      <table className="text-sm border-collapse w-full" style={{ tableLayout: "fixed" }}>
+                        {renderTableHeader(groupRows)}
+                        <tbody className="divide-y divide-gray-100">
+                          {groupRows.map(req => renderRow(req))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
