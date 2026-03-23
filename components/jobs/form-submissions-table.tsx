@@ -157,13 +157,6 @@ export function FormSubmissionsTable({
 }: FormSubmissionsTableProps) {
   const sortedFields = [...fields].sort((a, b) => (a.order || 0) - (b.order || 0))
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
-    new Set([
-      ...STATUS_GROUPS.map(g => g.status),
-      ...customStatuses.map(s => `SUBMITTED::${s}`),
-    ])
-  )
-
   const submitted = formRequests.filter(r => r.status === "SUBMITTED").length
   const total = formRequests.length
 
@@ -174,32 +167,85 @@ export function FormSubmissionsTable({
     return req.status
   }
 
-  // Group by system status
-  const byStatus = useMemo(() => {
-    return STATUS_GROUPS.reduce((acc, group) => {
-      acc[group.status] = formRequests.filter(r => r.status === group.status)
-      return acc
-    }, {} as Record<string, FormRequestItem[]>)
-  }, [formRequests])
+  // Build flat list of top-level groups: Pending → [custom statuses] → Expired
+  const allGroups = useMemo(() => {
+    const pending = formRequests.filter(r => r.status === "PENDING")
+    const expired = formRequests.filter(r => r.status === "EXPIRED")
+    const submittedRows = formRequests.filter(r => r.status === "SUBMITTED")
 
-  // Sub-group submitted items by custom status (in form builder order)
-  const submittedSubGroups = useMemo(() => {
-    const submittedRows = byStatus["SUBMITTED"] || []
-    if (submittedRows.length === 0 || customStatuses.length === 0) return []
+    const groups: { key: string; label: string; color: string; bgColor: string; borderColor: string; rows: FormRequestItem[] }[] = []
 
-    const groups: { label: string; rows: FormRequestItem[] }[] = []
-    for (const status of customStatuses) {
-      const rows = submittedRows.filter(r => getDisplayStatus(r) === status)
-      groups.push({ label: status, rows })
+    // Pending first
+    if (pending.length > 0) {
+      groups.push({
+        key: "PENDING",
+        label: "Pending",
+        color: "text-amber-600",
+        bgColor: "bg-amber-50",
+        borderColor: "border-l-amber-400",
+        rows: pending,
+      })
     }
-    // Catch any with a status not in the known list
-    const knownSet = new Set(customStatuses)
-    const uncategorized = submittedRows.filter(r => !knownSet.has(getDisplayStatus(r)))
-    if (uncategorized.length > 0) {
-      groups.push({ label: "Other", rows: uncategorized })
+
+    // Custom statuses for submitted items (in form builder order)
+    if (submittedRows.length > 0 && customStatuses.length > 0) {
+      const knownSet = new Set(customStatuses)
+      for (const status of customStatuses) {
+        const rows = submittedRows.filter(r => getDisplayStatus(r) === status)
+        if (rows.length > 0) {
+          groups.push({
+            key: `CS::${status}`,
+            label: status,
+            color: "text-green-600",
+            bgColor: "bg-green-50",
+            borderColor: "border-l-green-500",
+            rows,
+          })
+        }
+      }
+      // Catch uncategorized
+      const uncategorized = submittedRows.filter(r => !knownSet.has(getDisplayStatus(r)))
+      if (uncategorized.length > 0) {
+        groups.push({
+          key: "CS::Other",
+          label: "Other",
+          color: "text-gray-600",
+          bgColor: "bg-gray-50",
+          borderColor: "border-l-gray-400",
+          rows: uncategorized,
+        })
+      }
+    } else if (submittedRows.length > 0) {
+      // No custom statuses defined — show as single Submitted group
+      groups.push({
+        key: "SUBMITTED",
+        label: "Submitted",
+        color: "text-green-600",
+        bgColor: "bg-green-50",
+        borderColor: "border-l-green-500",
+        rows: submittedRows,
+      })
     }
+
+    // Expired last
+    if (expired.length > 0) {
+      groups.push({
+        key: "EXPIRED",
+        label: "Expired",
+        color: "text-red-600",
+        bgColor: "bg-red-50",
+        borderColor: "border-l-red-400",
+        rows: expired,
+      })
+    }
+
     return groups
-  }, [byStatus, customStatuses])
+  }, [formRequests, customStatuses])
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+    new Set(allGroups.map(g => g.key))
+  )
 
   const toggleGroup = (status: string) => {
     setExpandedGroups(prev => {
@@ -242,7 +288,7 @@ export function FormSubmissionsTable({
   }
 
   const handleExportExcel = () => {
-    const allRequests = STATUS_GROUPS.flatMap(g => byStatus[g.status] || [])
+    const allRequests = allGroups.flatMap(g => g.rows)
     const headers = ["Recipient", "Email", "Status", ...sortedFields.map(f => f.label), "Submitted"]
     const data: (string | number | boolean | null)[][] = [headers]
 
@@ -518,19 +564,14 @@ export function FormSubmissionsTable({
 
       {/* Status-grouped sections */}
       <div className="space-y-3">
-        {STATUS_GROUPS.map(group => {
-          const groupRows = byStatus[group.status] || []
-          if (groupRows.length === 0) return null
-
-          const isSubmitted = group.status === "SUBMITTED"
-          const hasSubGroups = isSubmitted && submittedSubGroups.length > 0
-          const isExpanded = expandedGroups.has(group.status)
+        {allGroups.map(group => {
+          const isExpanded = expandedGroups.has(group.key)
 
           return (
-            <div key={group.status} className={`rounded-lg overflow-hidden border-l-4 ${group.borderColor}`}>
+            <div key={group.key} className={`rounded-lg overflow-hidden border-l-4 ${group.borderColor}`}>
               {/* Group header */}
               <button
-                onClick={() => toggleGroup(group.status)}
+                onClick={() => toggleGroup(group.key)}
                 className={`w-full flex items-center gap-2 px-4 py-2.5 ${group.bgColor} hover:opacity-90 transition-opacity`}
               >
                 {isExpanded ? (
@@ -539,59 +580,20 @@ export function FormSubmissionsTable({
                   <ChevronRight className={`w-4 h-4 ${group.color}`} />
                 )}
                 <span className={`font-medium ${group.color}`}>{group.label}</span>
-                <span className="text-sm text-gray-500">({groupRows.length})</span>
+                <span className="text-sm text-gray-500">({group.rows.length})</span>
               </button>
 
               {/* Group content */}
               {isExpanded && (
                 <div className="border border-t-0 border-gray-200 bg-white">
-                  {hasSubGroups ? (
-                    // Sub-groups by custom tracking status
-                    <div className="divide-y divide-gray-100">
-                      {submittedSubGroups.map(sub => {
-                        if (sub.rows.length === 0) return null
-                        const subKey = `SUBMITTED::${sub.label}`
-                        const isSubExpanded = expandedGroups.has(subKey)
-
-                        return (
-                          <div key={sub.label}>
-                            <button
-                              onClick={() => toggleGroup(subKey)}
-                              className="w-full flex items-center gap-2 px-6 py-2 bg-gray-50 hover:bg-gray-100 transition-colors"
-                            >
-                              {isSubExpanded ? (
-                                <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
-                              ) : (
-                                <ChevronRight className="w-3.5 h-3.5 text-gray-500" />
-                              )}
-                              <span className="text-sm font-medium text-gray-700">{sub.label}</span>
-                              <span className="text-xs text-gray-400">({sub.rows.length})</span>
-                            </button>
-                            {isSubExpanded && (
-                              <div className="overflow-auto">
-                                <table className="text-sm border-collapse w-full" style={{ tableLayout: "fixed" }}>
-                                  {renderTableHeader(sub.rows)}
-                                  <tbody className="divide-y divide-gray-100">
-                                    {sub.rows.map(req => renderRow(req))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ) : (
-                    // Flat table for Pending/Expired
-                    <div className="overflow-auto">
-                      <table className="text-sm border-collapse w-full" style={{ tableLayout: "fixed" }}>
-                        {renderTableHeader(groupRows)}
-                        <tbody className="divide-y divide-gray-100">
-                          {groupRows.map(req => renderRow(req))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                  <div className="overflow-auto">
+                    <table className="text-sm border-collapse w-full" style={{ tableLayout: "fixed" }}>
+                      {renderTableHeader(group.rows)}
+                      <tbody className="divide-y divide-gray-100">
+                        {group.rows.map(req => renderRow(req))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
