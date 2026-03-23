@@ -12,7 +12,6 @@ import {
   getEffectiveActionPermissions,
   canAccessRoute,
   getModuleForRoute,
-  getJobAccessFilter,
   canModifyJob,
   isAdmin,
   isAdminOrManager,
@@ -25,6 +24,7 @@ import {
   type OrgActionPermissions,
   type ModuleKey,
 } from "@/lib/permissions"
+import { getJobAccessFilter } from "@/lib/permissions.server"
 
 // ============================================
 // canPerformAction

@@ -3,7 +3,8 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { CollectedItemSource, CollectedItemStatus } from "@prisma/client"
-import { getJobAccessFilter, canPerformAction } from "@/lib/permissions"
+import { canPerformAction } from "@/lib/permissions"
+import { getJobAccessFilter } from "@/lib/permissions.server"
 
 export const dynamic = "force-dynamic"
 
