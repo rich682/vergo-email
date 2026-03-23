@@ -158,7 +158,10 @@ export function FormSubmissionsTable({
   const sortedFields = [...fields].sort((a, b) => (a.order || 0) - (b.order || 0))
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
-    new Set(STATUS_GROUPS.map(g => g.status))
+    new Set([
+      ...STATUS_GROUPS.map(g => g.status),
+      ...customStatuses.map(s => `SUBMITTED::${s}`),
+    ])
   )
 
   const submitted = formRequests.filter(r => r.status === "SUBMITTED").length
