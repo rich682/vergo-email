@@ -196,6 +196,26 @@ export async function POST(
       })
     }
 
+    // 7b. Link to user if a "users" field was filled in
+    let recipientUserId: string | null = null
+    for (const field of fields) {
+      if (field.type === "users" && responseData[field.key]) {
+        const val = responseData[field.key]
+        const userId = typeof val === "string" ? val : Array.isArray(val) ? val[0] : null
+        if (userId) {
+          // Verify user belongs to this org
+          const user = await prisma.user.findFirst({
+            where: { id: userId, organizationId: formDef.organizationId },
+            select: { id: true },
+          })
+          if (user) {
+            recipientUserId = user.id
+            break
+          }
+        }
+      }
+    }
+
     // 8. Create FormRequest with SUBMITTED status
     const formRequest = await prisma.formRequest.create({
       data: {
@@ -207,6 +227,7 @@ export async function POST(
         submittedAt: new Date(),
         responseData: responseData as any,
         databaseRowIndex,
+        ...(recipientUserId ? { recipientUserId } : {}),
         remindersEnabled: false,
         remindersSent: 0,
         remindersMaxCount: 0,
