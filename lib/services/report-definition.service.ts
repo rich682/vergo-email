@@ -247,7 +247,7 @@ export class ReportDefinitionService {
     }
 
     // Validate layout
-    const layout = input.layout || "standard"
+    const layout = input.layout || "pivot"
     const validLayouts = ["standard", "pivot", "accounting"]
     if (!validLayouts.includes(layout)) {
       throw new Error(`Invalid layout "${layout}". Must be one of: ${validLayouts.join(", ")}`)
