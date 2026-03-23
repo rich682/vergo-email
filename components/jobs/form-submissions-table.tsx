@@ -164,6 +164,13 @@ export function FormSubmissionsTable({
   const submitted = formRequests.filter(r => r.status === "SUBMITTED").length
   const total = formRequests.length
 
+  const getDisplayStatus = (req: FormRequestItem): string => {
+    if (req.customStatus) return req.customStatus
+    if (req.status === "SUBMITTED") return "Submitted"
+    if (req.status === "PENDING") return "In Progress"
+    return req.status
+  }
+
   // Group by system status
   const byStatus = useMemo(() => {
     return STATUS_GROUPS.reduce((acc, group) => {
@@ -174,29 +181,22 @@ export function FormSubmissionsTable({
 
   // Sub-group submitted items by custom status (in form builder order)
   const submittedSubGroups = useMemo(() => {
-    const submitted = byStatus["SUBMITTED"] || []
-    if (submitted.length === 0 || customStatuses.length === 0) return []
+    const submittedRows = byStatus["SUBMITTED"] || []
+    if (submittedRows.length === 0 || customStatuses.length === 0) return []
 
     const groups: { label: string; rows: FormRequestItem[] }[] = []
     for (const status of customStatuses) {
-      const rows = submitted.filter(r => getDisplayStatus(r) === status)
+      const rows = submittedRows.filter(r => getDisplayStatus(r) === status)
       groups.push({ label: status, rows })
     }
     // Catch any with a status not in the known list
     const knownSet = new Set(customStatuses)
-    const uncategorized = submitted.filter(r => !knownSet.has(getDisplayStatus(r)))
+    const uncategorized = submittedRows.filter(r => !knownSet.has(getDisplayStatus(r)))
     if (uncategorized.length > 0) {
       groups.push({ label: "Other", rows: uncategorized })
     }
     return groups
   }, [byStatus, customStatuses])
-
-  const getDisplayStatus = (req: FormRequestItem): string => {
-    if (req.customStatus) return req.customStatus
-    if (req.status === "SUBMITTED") return "Submitted"
-    if (req.status === "PENDING") return "In Progress"
-    return req.status
-  }
 
   const toggleGroup = (status: string) => {
     setExpandedGroups(prev => {
