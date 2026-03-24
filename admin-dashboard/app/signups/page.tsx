@@ -15,27 +15,41 @@ async function getSignups() {
   const monthStart = new Date(todayStart)
   monthStart.setDate(monthStart.getDate() - 30)
 
-  const [signups, totalSignups, signupsThisWeek, signupsThisMonth, unverified] = await Promise.all([
-    prisma.user.findMany({
-      where: { role: "ADMIN" },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        createdAt: true,
-        emailVerified: true,
-        lastLoginAt: true,
-        organization: { select: { name: true } },
+  // Get first user (founder) per organization — the decision maker who signed up
+  const orgs = await prisma.organization.findMany({
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      name: true,
+      createdAt: true,
+      users: {
+        orderBy: { createdAt: "asc" },
+        take: 1,
+        where: { isDebugUser: { not: true } },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          createdAt: true,
+          emailVerified: true,
+        },
       },
-    }),
-    prisma.user.count({ where: { role: "ADMIN" } }),
-    prisma.user.count({ where: { role: "ADMIN", createdAt: { gte: weekStart } } }),
-    prisma.user.count({ where: { role: "ADMIN", createdAt: { gte: monthStart } } }),
-    prisma.user.count({ where: { role: "ADMIN", emailVerified: false } }),
-  ])
+    },
+  })
 
-  return { signups, totalSignups, signupsThisWeek, signupsThisMonth, unverified }
+  const signups = orgs
+    .filter((org) => org.users.length > 0)
+    .map((org) => ({
+      ...org.users[0],
+      organization: { name: org.name },
+    }))
+
+  const total = signups.length
+  const thisWeek = signups.filter((s) => s.createdAt >= weekStart).length
+  const thisMonth = signups.filter((s) => s.createdAt >= monthStart).length
+  const unverified = signups.filter((s) => !s.emailVerified).length
+
+  return { signups, totalSignups: total, signupsThisWeek: thisWeek, signupsThisMonth: thisMonth, unverified }
 }
 
 function splitName(fullName: string | null): { firstName: string; lastName: string } {

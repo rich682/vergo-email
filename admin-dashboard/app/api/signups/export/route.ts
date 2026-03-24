@@ -11,17 +11,23 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const signups = await prisma.user.findMany({
-    where: { role: "ADMIN" },
+  // Get first user (founder) per organization
+  const orgs = await prisma.organization.findMany({
     orderBy: { createdAt: "desc" },
     select: {
       name: true,
-      email: true,
-      createdAt: true,
-      emailVerified: true,
-      organization: { select: { name: true } },
+      users: {
+        orderBy: { createdAt: "asc" },
+        take: 1,
+        where: { isDebugUser: { not: true } },
+        select: { name: true, email: true, createdAt: true, emailVerified: true },
+      },
     },
   })
+
+  const signups = orgs
+    .filter((org) => org.users.length > 0)
+    .map((org) => ({ ...org.users[0], organization: { name: org.name } }))
 
   // Build CSV with BOM for Excel compatibility
   const BOM = "\uFEFF"
