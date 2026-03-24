@@ -197,10 +197,14 @@ export default function JobsPage() {
 
   // View mode: kanban (cards) or table (columns)
   type TaskViewMode = "kanban" | "table"
-  const [taskViewMode, setTaskViewMode] = useState<TaskViewMode>(() => {
-    if (typeof window === "undefined") return "table"
-    return (localStorage.getItem("vergo-task-view-mode") as TaskViewMode) || "table"
-  })
+  const [taskViewMode, setTaskViewMode] = useState<TaskViewMode>("table")
+
+  useEffect(() => {
+    const saved = localStorage.getItem("vergo-task-view-mode") as TaskViewMode | null
+    if (saved === "kanban" || saved === "table") {
+      setTaskViewMode(saved)
+    }
+  }, [])
   const handleViewModeChange = useCallback((mode: TaskViewMode) => {
     setTaskViewMode(mode)
     localStorage.setItem("vergo-task-view-mode", mode)

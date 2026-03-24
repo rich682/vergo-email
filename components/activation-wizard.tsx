@@ -43,7 +43,9 @@ function generateId() {
   return `wizard-task-${++idCounter}`
 }
 
-const CURRENT_MONTH = new Date().toLocaleString("default", { month: "long", year: "numeric" })
+function getCurrentMonth() {
+  return new Date().toLocaleString("default", { month: "long", year: "numeric" })
+}
 
 // Replace with your actual Loom video ID
 const LOOM_VIDEO_ID = "PLACEHOLDER_VIDEO_ID"
@@ -101,8 +103,8 @@ export function ActivationWizard({ userName }: ActivationWizardProps) {
         throw new Error(data.error || "Failed to create tasks")
       }
 
-      // Move to video step
-      setStep("video")
+      // Skip video step until Loom video is ready
+      handleGoToBoard()
     } catch (err: any) {
       setError(err.message || "Something went wrong. Please try again.")
       setSubmitting(false)
@@ -117,8 +119,8 @@ export function ActivationWizard({ userName }: ActivationWizardProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "complete" }),
       })
-      // Move to video step
-      setStep("video")
+      // Skip video step until Loom video is ready
+      handleGoToBoard()
     } catch {
       setSkipping(false)
     }
@@ -308,7 +310,7 @@ export function ActivationWizard({ userName }: ActivationWizardProps) {
             <div className="px-5 py-4 border-b border-gray-100">
               <div className="flex items-center gap-2">
                 <div className="w-1 h-5 bg-orange-500 rounded-full" />
-                <span className="font-semibold text-gray-900 text-sm">{CURRENT_MONTH}</span>
+                <span className="font-semibold text-gray-900 text-sm">{getCurrentMonth()}</span>
               </div>
             </div>
 
@@ -368,7 +370,7 @@ export function ActivationWizard({ userName }: ActivationWizardProps) {
 
           {/* Subtle hint text */}
           <p className="text-xs text-gray-400 text-center mt-4">
-            Tasks will be created on your {CURRENT_MONTH} board
+            Tasks will be created on your {getCurrentMonth()} board
           </p>
         </div>
       </div>

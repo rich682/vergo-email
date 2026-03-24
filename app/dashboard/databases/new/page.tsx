@@ -868,7 +868,7 @@ export default function NewDatabasePage() {
                         {previewError}
                       </div>
                     )}
-                    {previewData && (
+                    {previewData && Array.isArray(previewData.rows) && (
                       <div className="border rounded-lg overflow-hidden">
                         <div className="overflow-x-auto max-h-80">
                           <table className="w-full text-sm">

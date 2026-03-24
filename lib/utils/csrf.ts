@@ -14,33 +14,46 @@ export function validateOrigin(request: NextRequest): boolean {
     return true
   }
 
+  // Collect all allowed origins
+  const allowedOrigins = new Set<string>()
+
+  // Primary app URL
   const appUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL
-  if (!appUrl) {
-    // If we can't determine our own URL, allow (fail-open in misconfigured envs)
-    console.warn("[CSRF] No NEXTAUTH_URL or VERCEL_URL configured — skipping origin check")
-    return true
+  if (appUrl) {
+    try {
+      const parsed = new URL(appUrl.startsWith("http") ? appUrl : `https://${appUrl}`)
+      allowedOrigins.add(parsed.origin)
+    } catch {
+      console.warn("[CSRF] Failed to parse app URL")
+    }
   }
 
-  // Normalize the app URL to just the origin (scheme + host)
-  let expectedOrigin: string
-  try {
-    const parsed = new URL(appUrl.startsWith("http") ? appUrl : `https://${appUrl}`)
-    expectedOrigin = parsed.origin
-  } catch {
-    console.warn("[CSRF] Failed to parse app URL — skipping origin check")
+  // Custom domain (e.g. app.tryvergo.com)
+  const publicUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (publicUrl) {
+    try {
+      const parsed = new URL(publicUrl.startsWith("http") ? publicUrl : `https://${publicUrl}`)
+      allowedOrigins.add(parsed.origin)
+    } catch {
+      console.warn("[CSRF] Failed to parse NEXT_PUBLIC_APP_URL")
+    }
+  }
+
+  if (allowedOrigins.size === 0) {
+    console.warn("[CSRF] No NEXTAUTH_URL, VERCEL_URL, or NEXT_PUBLIC_APP_URL configured — skipping origin check")
     return true
   }
 
   // Check Origin header first (most reliable)
   if (origin) {
-    return origin === expectedOrigin
+    return allowedOrigins.has(origin)
   }
 
   // Fallback to Referer header
   if (referer) {
     try {
       const refererOrigin = new URL(referer).origin
-      return refererOrigin === expectedOrigin
+      return allowedOrigins.has(refererOrigin)
     } catch {
       return false
     }

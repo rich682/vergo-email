@@ -1,16 +1,19 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Calendar, X } from "lucide-react"
 
 const BOOKING_URL = "https://www.tryvergo.com/book-training"
 const DISMISSED_KEY = "vergo-training-cta-dismissed"
 
 export function TrainingCallCTA() {
-  const [dismissed, setDismissed] = useState(() => {
-    if (typeof window === "undefined") return false
-    return localStorage.getItem(DISMISSED_KEY) === "true"
-  })
+  const [dismissed, setDismissed] = useState(false)
+
+  useEffect(() => {
+    if (localStorage.getItem(DISMISSED_KEY) === "true") {
+      setDismissed(true)
+    }
+  }, [])
 
   if (dismissed) return null
 

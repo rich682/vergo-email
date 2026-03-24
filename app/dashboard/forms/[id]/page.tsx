@@ -1027,6 +1027,7 @@ export default function FormBuilderPage() {
                   <div className="flex items-center gap-2">
                     <Input
                       readOnly
+                      suppressHydrationWarning
                       value={`${typeof window !== 'undefined' ? window.location.origin : ''}/forms/public/${form.universalAccessToken}`}
                       className="flex-1 text-xs h-8 bg-white"
                     />
