@@ -222,7 +222,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      return { organization, user, onboardingGroup, userEntity }
+      return { organization, user }
     })
 
     // Send verification email (use first name for friendly greeting)
