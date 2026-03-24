@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Calendar, X } from "lucide-react"
 
-const CALENDLY_URL = "https://meetings.hubspot.com/rich-kane/vergoclosemanagement?uuid=b8353232-bf3d-40f7-abc6-e779a45afcfc"
+const BOOKING_URL = "https://www.tryvergo.com/book-training"
 const DISMISSED_KEY = "vergo-training-cta-dismissed"
 
 export function TrainingCallCTA() {
@@ -27,7 +27,7 @@ export function TrainingCallCTA() {
         <X className="w-3.5 h-3.5" />
       </button>
       <button
-        onClick={() => window.open(CALENDLY_URL, "_blank", "noopener,noreferrer")}
+        onClick={() => window.open(BOOKING_URL, "_blank", "noopener,noreferrer")}
         className="
           flex items-center gap-2.5 px-5 py-3 rounded-full
           bg-orange-500 hover:bg-orange-600
