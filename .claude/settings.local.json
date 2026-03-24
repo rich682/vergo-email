@@ -16,7 +16,8 @@
       "Bash(npx prisma generate:*)",
       "Bash(npx prisma migrate deploy:*)",
       "Bash(cd:*)",
-      "Bash(npm ls:*)"
+      "Bash(npm ls:*)",
+      "mcp__Claude_Preview__preview_start"
     ]
   }
 }

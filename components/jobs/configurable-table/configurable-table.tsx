@@ -27,8 +27,8 @@ interface StatusGroup {
 }
 
 const STATUS_GROUPS: StatusGroup[] = [
-  { status: "NOT_STARTED", label: "Not Started", color: "text-gray-600", bgColor: "bg-gray-50", borderColor: "border-l-gray-400", defaultExpanded: true },
-  { status: "IN_PROGRESS", label: "In Progress", color: "text-blue-600", bgColor: "bg-blue-50", borderColor: "border-l-blue-500", defaultExpanded: true },
+  { status: "NOT_STARTED", label: "Not Started", color: "text-gray-600", bgColor: "bg-gray-50", borderColor: "border-l-gray-400", defaultExpanded: false },
+  { status: "IN_PROGRESS", label: "In Progress", color: "text-blue-600", bgColor: "bg-blue-50", borderColor: "border-l-blue-500", defaultExpanded: false },
   { status: "COMPLETE", label: "Complete", color: "text-green-600", bgColor: "bg-green-50", borderColor: "border-l-green-500", defaultExpanded: false },
   { status: "ARCHIVED", label: "Archived", color: "text-amber-600", bgColor: "bg-amber-50", borderColor: "border-l-amber-400", defaultExpanded: false },
 ]

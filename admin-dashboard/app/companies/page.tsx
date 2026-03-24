@@ -48,6 +48,7 @@ async function getCompanies() {
     slug: org.slug,
     createdAt: org.createdAt,
     timezone: org.timezone,
+    subscriptionStatus: org.subscriptionStatus,
     userCount: org._count.users,
     taskCount: org._count.taskInstances,
     boardCount: org._count.boards,
@@ -75,6 +76,7 @@ export default async function CompaniesPage() {
           <thead>
             <tr className="text-xs text-gray-500 uppercase tracking-wider border-b border-gray-800">
               <th className="text-left px-5 py-3">Company</th>
+              <th className="text-left px-5 py-3">Status</th>
               <th className="text-left px-5 py-3">Users</th>
               <th className="text-left px-5 py-3">Boards</th>
               <th className="text-left px-5 py-3">Tasks</th>
@@ -96,6 +98,23 @@ export default async function CompaniesPage() {
                   </Link>
                   <p className="text-xs text-gray-500">{company.slug}</p>
                 </td>
+                <td className="px-5 py-3">
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                      company.subscriptionStatus === "PAYING_CUSTOMER"
+                        ? "bg-green-900/30 text-green-400"
+                        : company.subscriptionStatus === "TRIAL_ENDED"
+                        ? "bg-red-900/30 text-red-400"
+                        : "bg-blue-900/30 text-blue-400"
+                    }`}
+                  >
+                    {company.subscriptionStatus === "PAYING_CUSTOMER"
+                      ? "Paying"
+                      : company.subscriptionStatus === "TRIAL_ENDED"
+                      ? "Trial Ended"
+                      : "Free Trial"}
+                  </span>
+                </td>
                 <td className="px-5 py-3 text-sm text-gray-300">{company.userCount}</td>
                 <td className="px-5 py-3 text-sm text-gray-300">{company.boardCount}</td>
                 <td className="px-5 py-3 text-sm text-gray-300">{company.taskCount}</td>
@@ -115,7 +134,7 @@ export default async function CompaniesPage() {
             ))}
             {companies.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-5 py-12 text-center text-sm text-gray-500">
+                <td colSpan={9} className="px-5 py-12 text-center text-sm text-gray-500">
                   No companies registered yet
                 </td>
               </tr>
