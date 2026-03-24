@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Calendar, X } from "lucide-react"
 
-const CALENDLY_URL = "https://calendly.com/vergo-ai/new-meeting"
+const CALENDLY_URL = "https://meetings.hubspot.com/rich-kane/vergoclosemanagement?uuid=b8353232-bf3d-40f7-abc6-e779a45afcfc"
 const DISMISSED_KEY = "vergo-training-cta-dismissed"
 
 export function TrainingCallCTA() {

@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { AuthEmailService } from "@/lib/services/auth-email.service"
+import { fireWebhook } from "@/lib/services/webhook.service"
 import { isValidEmail } from "@/lib/utils/validate-email"
 import { normalizeEmail } from "@/lib/utils/email"
 import { validateOrigin } from "@/lib/utils/csrf"
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { companyName, email, password, firstName, lastName, name, website, _t } = body
+    const { email, password, firstName, lastName, name, website, _t } = body
 
     // ── Anti-bot: honeypot check ───────────────────────────────────────
     if (website) {
@@ -85,14 +86,6 @@ export async function POST(request: NextRequest) {
           emailSent: true,
         }, { status: 201 })
       }
-    }
-
-    // Validate required fields
-    if (!companyName || typeof companyName !== "string" || companyName.trim().length < 2) {
-      return NextResponse.json(
-        { error: "Company name must be at least 2 characters" },
-        { status: 400 }
-      )
     }
 
     // Validate first and last name (required for clean data)
@@ -129,7 +122,12 @@ export async function POST(request: NextRequest) {
     const fullName = `${firstName.trim()} ${lastName.trim()}`
 
     const normalizedEmail = normalizeEmail(email) || ""
-    const trimmedCompanyName = companyName.trim()
+
+    // Derive company name from email domain (e.g. john@acme-corp.com → "Acme Corp")
+    const emailDomain = normalizedEmail.split("@")[1]?.split(".")[0] || "My Company"
+    const trimmedCompanyName = emailDomain
+      .replace(/[-_]/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase())
 
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
@@ -171,7 +169,8 @@ export async function POST(request: NextRequest) {
       const organization = await tx.organization.create({
         data: {
           name: trimmedCompanyName,
-          slug
+          slug,
+          trialStartedAt: new Date(),
         }
       })
 
@@ -240,6 +239,16 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[Signup] New organization created: ${result.organization.name} (${result.organization.id})`)
+
+    // Fire webhook for external integrations (e.g. n8n → HubSpot)
+    fireWebhook("user.signup", {
+      email: normalizedEmail,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      company: trimmedCompanyName,
+      role: "ADMIN",
+      organizationId: result.organization.id,
+    })
 
     return NextResponse.json({
       success: true,
