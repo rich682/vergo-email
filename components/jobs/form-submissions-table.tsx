@@ -156,7 +156,6 @@ export function FormSubmissionsTable({
   userEmailMap,
 }: FormSubmissionsTableProps) {
   const sortedFields = [...fields].sort((a, b) => (a.order || 0) - (b.order || 0))
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const submitted = formRequests.filter(r => r.status === "SUBMITTED").length
   const total = formRequests.length
 
