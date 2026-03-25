@@ -1,12 +1,15 @@
 "use client"
 
 import { useState } from "react"
+import { signIn } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import { validatePassword, PASSWORD_HINT } from "@/lib/utils/password-validation"
-import { Mail, User, Lock, Loader2, ArrowRight, CheckCircle, Sparkles, Eye, EyeOff } from "lucide-react"
+import { User, Lock, Loader2, ArrowRight, Eye, EyeOff, Mail } from "lucide-react"
 
 export default function SignupPage() {
+  const router = useRouter()
   const [firstName, setFirstName] = useState("")
   const [lastName, setLastName] = useState("")
   const [email, setEmail] = useState("")
@@ -15,7 +18,6 @@ export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [success, setSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Anti-bot: honeypot field (hidden from real users) + form load timestamp
   const [website, setWebsite] = useState("")
@@ -69,88 +71,22 @@ export default function SignupPage() {
         throw new Error(data.error || "Failed to create account")
       }
 
-      setSuccess(true)
+      // Auto-login and redirect to dashboard (wizard will show for new users)
+      const signInResult = await signIn("credentials", {
+        email: email.trim(),
+        password,
+        redirect: false,
+      })
+
+      if (signInResult?.error) {
+        throw new Error("Account created but auto-login failed. Please sign in manually.")
+      }
+
+      router.push("/dashboard/boards")
     } catch (err: any) {
       setError(err.message)
-    } finally {
       setLoading(false)
     }
-  }
-
-  // Success state
-  if (success) {
-    return (
-      <div className="min-h-screen flex">
-        {/* Left side - Success message */}
-        <div className="flex-1 flex flex-col justify-center px-8 sm:px-16 lg:px-24 bg-white">
-          <div className="w-full max-w-md mx-auto text-center">
-            {/* Logo */}
-            <Link href="/" className="inline-block mb-12">
-              <Image
-                src="/logo.svg"
-                alt="Vergo"
-                width={105}
-                height={32}
-                className="h-8 w-auto"
-              />
-            </Link>
-
-            {/* Success icon */}
-            <div className="w-20 h-20 mx-auto mb-8 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shadow-lg shadow-green-500/25">
-              <Mail className="w-10 h-10 text-white" />
-            </div>
-
-            <h1 className="font-semibold text-3xl text-gray-900 mb-3">
-              Check your inbox
-            </h1>
-            <p className="text-gray-500 mb-8">
-              We've sent a verification link to <span className="font-medium text-gray-700">{email}</span>
-            </p>
-
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-8 text-left">
-              <div className="flex gap-3">
-                <Sparkles className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-amber-800">
-                    Don't see the email?
-                  </p>
-                  <p className="text-sm text-amber-700 mt-1">
-                    Check your spam folder or request a new verification link.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <Link
-              href="/auth/signin"
-              className="inline-flex items-center justify-center gap-2 py-3.5 px-8 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-xl transition-all group"
-            >
-              Go to sign in
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-            </Link>
-          </div>
-        </div>
-
-        {/* Right side - Branding */}
-        <div className="hidden lg:flex flex-1 relative overflow-hidden bg-gradient-to-br from-emerald-500 via-green-500 to-teal-500">
-          <div className="absolute inset-0">
-            <div className="absolute -top-20 -right-20 w-96 h-96 rounded-full bg-white/10" />
-            <div className="absolute top-1/4 -left-32 w-64 h-64 rounded-full bg-white/5" />
-            <div className="absolute bottom-20 right-20 w-48 h-48 rounded-full bg-white/10" />
-          </div>
-          <div className="relative z-10 flex flex-col justify-center px-16 text-white">
-            <div className="max-w-lg">
-              <h2 className="font-semibold text-4xl mb-6">
-                You're almost there!
-              </h2>
-              <p className="text-xl text-white/80 leading-relaxed">
-                Verify your email to unlock all features and start sending requests to your stakeholders.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
   }
 
   return (

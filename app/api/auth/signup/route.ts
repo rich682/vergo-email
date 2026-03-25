@@ -7,7 +7,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
-import { AuthEmailService } from "@/lib/services/auth-email.service"
 import { fireWebhook } from "@/lib/services/webhook.service"
 import { isValidEmail } from "@/lib/utils/validate-email"
 import { normalizeEmail } from "@/lib/utils/email"
@@ -156,10 +155,6 @@ export async function POST(request: NextRequest) {
       slugSuffix++
     }
 
-    // Generate verification token
-    const verificationToken = AuthEmailService.generateToken()
-    const tokenExpiresAt = AuthEmailService.getTokenExpiry("verification")
-
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10)
 
@@ -182,9 +177,7 @@ export async function POST(request: NextRequest) {
           name: fullName,
           role: "ADMIN",
           organizationId: organization.id,
-          emailVerified: false,
-          verificationToken,
-          tokenExpiresAt
+          emailVerified: true,
         }
       })
 
@@ -224,19 +217,6 @@ export async function POST(request: NextRequest) {
 
       return { organization, user }
     })
-
-    // Send verification email (use first name for friendly greeting)
-    const emailResult = await AuthEmailService.sendVerificationEmail(
-      normalizedEmail,
-      verificationToken,
-      firstName.trim()
-    )
-
-    if (!emailResult.success) {
-      console.error(`[Signup] Failed to send verification email to ${normalizedEmail}:`, emailResult.error)
-    } else {
-      console.log(`[Signup] Verification email sent to ${normalizedEmail}`)
-    }
 
     console.log(`[Signup] New organization created: ${result.organization.name} (${result.organization.id})`)
 
