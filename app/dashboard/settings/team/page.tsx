@@ -24,7 +24,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { UserPlus, Shield, User, Clock, Pencil, Trash2, Plus, X, Tag, Check, ChevronDown } from "lucide-react"
+import { UserPlus, Shield, User, Clock, Pencil, Trash2, Plus, X, Tag, Check, ChevronDown, RotateCw } from "lucide-react"
 import { EmptyState } from "@/components/ui/empty-state"
 
 interface ConnectedEmail {
@@ -106,6 +106,9 @@ function TeamSettingsContent() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
   const [deletingUser, setDeletingUser] = useState<OrgUser | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  // Resend invite state
+  const [resendingUserId, setResendingUserId] = useState<string | null>(null)
 
   // Inline tag popover state
   const [inlineTagInput, setInlineTagInput] = useState("")
@@ -260,6 +263,29 @@ function TeamSettingsContent() {
       setTimeout(() => setMessage(null), 5000)
     } finally {
       setDeleting(false)
+    }
+  }
+
+  const handleResendInvite = async (user: OrgUser) => {
+    setResendingUserId(user.id)
+    try {
+      setMessage(null)
+      const response = await fetch(`/api/org/users/${user.id}/resend-invite`, {
+        method: "POST"
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to resend invite")
+      }
+
+      setMessage({ type: "success", text: `Invitation resent to ${user.email}` })
+      setTimeout(() => setMessage(null), 5000)
+    } catch (err: any) {
+      setMessage({ type: "error", text: err?.message || "Failed to resend invite" })
+      setTimeout(() => setMessage(null), 5000)
+    } finally {
+      setResendingUserId(null)
     }
   }
 
@@ -611,6 +637,16 @@ function TeamSettingsContent() {
                     <div className="col-span-2 flex items-center justify-end gap-1">
                       {isAdmin && (
                         <>
+                          {user.status === "pending" && (
+                            <button
+                              onClick={() => handleResendInvite(user)}
+                              disabled={resendingUserId === user.id}
+                              className="p-2 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded transition-colors disabled:opacity-50"
+                              title="Resend invite"
+                            >
+                              <RotateCw className={`w-4 h-4 ${resendingUserId === user.id ? "animate-spin" : ""}`} />
+                            </button>
+                          )}
                           <button
                             onClick={() => openEditModal(user)}
                             className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
@@ -621,7 +657,7 @@ function TeamSettingsContent() {
                           <button
                             onClick={() => openDeleteModal(user)}
                             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                            title="Remove user"
+                            title={user.status === "pending" ? "Revoke invite" : "Remove user"}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -778,15 +814,21 @@ function TeamSettingsContent() {
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remove Team Member</DialogTitle>
+            <DialogTitle>{deletingUser?.status === "pending" ? "Revoke Invitation" : "Remove Team Member"}</DialogTitle>
           </DialogHeader>
           {deletingUser && (
             <div className="space-y-4 pt-4">
               <p className="text-gray-600">
-                Are you sure you want to remove <strong>{deletingUser.name || deletingUser.email}</strong> from your organization?
+                {deletingUser.status === "pending"
+                  ? <>Are you sure you want to revoke the invitation for <strong>{deletingUser.name || deletingUser.email}</strong>?</>
+                  : <>Are you sure you want to remove <strong>{deletingUser.name || deletingUser.email}</strong> from your organization?</>
+                }
               </p>
               <p className="text-sm text-gray-500">
-                This action cannot be undone. The user will lose access to all organization data.
+                {deletingUser.status === "pending"
+                  ? "The pending invitation will be cancelled and the user will no longer be able to join."
+                  : "This action cannot be undone. The user will lose access to all organization data."
+                }
               </p>
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => setIsDeleteOpen(false)}>
@@ -803,7 +845,7 @@ function TeamSettingsContent() {
                     transition-colors
                   "
                 >
-                  {deleting ? "Removing..." : "Remove User"}
+                  {deleting ? "Removing..." : deletingUser.status === "pending" ? "Revoke Invite" : "Remove User"}
                 </button>
               </div>
             </div>
