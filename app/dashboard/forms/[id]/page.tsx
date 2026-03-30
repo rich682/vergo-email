@@ -1003,7 +1003,7 @@ export default function FormBuilderPage() {
           <DialogHeader>
             <DialogTitle>Form Settings</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
             {/* Universal Link */}
             <div className="pt-4 border-t">
               <div className="flex items-center justify-between">
