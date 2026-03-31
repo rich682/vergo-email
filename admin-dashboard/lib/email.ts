@@ -30,6 +30,8 @@ async function sendEmail(to: string, subject: string, html: string, text: string
   const resend = getResend()
   const from = getFromEmail()
 
+  console.log(`[AdminEmail] Sending email to ${to}, from: ${from}, resend configured: ${!!resend}`)
+
   if (!resend) {
     console.log("[AdminEmail] No RESEND_API_KEY — logging email:")
     console.log(`  To: ${to}, Subject: ${subject}`)

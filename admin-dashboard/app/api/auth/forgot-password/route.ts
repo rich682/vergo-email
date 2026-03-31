@@ -13,6 +13,8 @@ export async function POST(request: NextRequest) {
 
   // Always return success to avoid leaking which emails exist
   const user = await prisma.adminUser.findUnique({ where: { email: email.toLowerCase() } })
+  console.log(`[forgot-password] Lookup for ${email.toLowerCase()}: ${user ? `found (verified=${user.emailVerified})` : "not found"}`)
+
   if (user && user.emailVerified) {
     const token = generateToken()
     const tokenHash = await bcrypt.hash(token, 10)
@@ -25,7 +27,8 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    await sendPasswordResetEmail(user.email, token, user.name || undefined)
+    const result = await sendPasswordResetEmail(user.email, token, user.name || undefined)
+    console.log(`[forgot-password] Email send result:`, JSON.stringify(result))
   }
 
   return NextResponse.json({ success: true })
