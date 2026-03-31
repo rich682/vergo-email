@@ -1,19 +1,29 @@
 import { NextRequest, NextResponse } from "next/server"
-import { verifyPassword } from "@/lib/auth"
+import { verifyPassword, signToken, ADMIN_COOKIE } from "@/lib/auth"
+import { seedFirstAdmin } from "@/lib/seed-admin"
 
 export async function POST(request: NextRequest) {
-  const { password } = await request.json()
+  // Auto-seed first admin on first login attempt
+  await seedFirstAdmin()
 
-  if (!verifyPassword(password)) {
-    return NextResponse.json({ error: "Invalid password" }, { status: 401 })
+  const { email, password } = await request.json()
+
+  if (!email || !password) {
+    return NextResponse.json({ error: "Email and password required" }, { status: 400 })
   }
 
+  const admin = await verifyPassword(email, password)
+  if (!admin) {
+    return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+  }
+
+  const token = signToken(admin)
   const response = NextResponse.json({ success: true })
-  response.cookies.set("vergo_admin_auth", "authenticated", {
+  response.cookies.set(ADMIN_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 24 * 7,
     path: "/",
   })
 
