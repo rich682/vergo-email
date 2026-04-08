@@ -186,6 +186,8 @@ export default function NewReportPage() {
 
       if (layout === "accounting") {
         // Accounting layout: row column, period column, value column
+        // Auto-detect group column if one exists
+        const groupCol = dbColumns.find((c: DatabaseColumn) => c.dataType === "group")
         const response = await fetch("/api/reports", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -200,6 +202,7 @@ export default function NewReportPage() {
             pivotColumnKey,
             rowColumnKey,
             valueColumnKey,
+            ...(groupCol ? { groupByColumnKey: groupCol.key } : {}),
           }),
         })
 

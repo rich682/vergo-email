@@ -43,7 +43,7 @@ import type { SyncFilter } from "@/components/databases/sync-filter-editor"
 interface SchemaColumn {
   key: string
   label: string
-  dataType: "text" | "number" | "date" | "boolean" | "currency" | "dropdown"
+  dataType: "text" | "number" | "date" | "boolean" | "currency" | "dropdown" | "group"
   required: boolean
   order: number
   dropdownOptions?: string[]
@@ -79,6 +79,7 @@ const DATA_TYPE_OPTIONS = [
   { value: "currency", label: "Currency" },
   { value: "dropdown", label: "Dropdown" },
   { value: "file", label: "File Attachment" },
+  { value: "group", label: "Group" },
 ]
 
 const MAX_SAMPLE_ROWS = 20

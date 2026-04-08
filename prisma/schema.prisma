@@ -1402,9 +1402,19 @@ model ReportDefinition {
   // Accounting layout: whether to show the auto-generated variance column
   showVarianceColumn Boolean @default(true)
 
-  // Accounting layout: row configuration (ordering, sections, formulas)
-  // Array of: { key, label, type: "source"|"section"|"formula", sourceRowId?, expression?, format?, order, isBold?, separatorAbove? }
-  accountingRows Json @default("[]")
+  // Accounting layout: group-by column key (column with dataType "group")
+  groupByColumnKey String?
+
+  // Accounting layout: whether to show subtotal rows per group
+  showGroupSubtotals Boolean @default(true)
+
+  // Accounting layout: ordered array of group names for custom display order
+  // string[] e.g. ["REVENUE", "DIRECT JOB COSTS", "EQUIPMENT COSTS"]
+  groupOrder Json @default("[]")
+
+  // Accounting layout: cross-group formula rows
+  // Array of: { key, label, expression, order, isBold?, separatorAbove? }
+  accountingFormulaRows Json @default("[]")
 
   // Metadata
   createdAt   DateTime @default(now())

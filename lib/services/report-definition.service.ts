@@ -68,14 +68,11 @@ export interface PivotFormulaColumn {
   order: number                  // Position after auto-generated pivot columns
 }
 
-// Accounting layout row configuration
-export interface AccountingRow {
-  key: string
-  label: string
-  type: "source" | "section" | "formula"
-  sourceRowId?: string       // For "source": matches the unique value from rowColumnKey
-  expression?: string        // For "formula": references other row keys e.g. [row1] + [row2]
-  format?: "text" | "currency"
+// Cross-group formula row for accounting layout
+export interface AccountingFormulaRow {
+  key: string                    // Unique key
+  label: string                  // Display label (e.g., "GROSS PROFIT")
+  expression: string             // References group totals: [TOTAL REVENUE] - [TOTAL DIRECT JOB COSTS]
   order: number
   isBold?: boolean
   separatorAbove?: boolean
@@ -109,7 +106,10 @@ export interface CreateReportDefinitionInput {
   rowColumnKey?: string
   valueColumnKey?: string
   showVarianceColumn?: boolean
-  accountingRows?: AccountingRow[]
+  groupByColumnKey?: string
+  showGroupSubtotals?: boolean
+  groupOrder?: string[]
+  accountingFormulaRows?: AccountingFormulaRow[]
   // Pivot/accounting column header format
   pivotColumnHeaderFormat?: string
   organizationId: string
@@ -133,7 +133,10 @@ export interface UpdateReportDefinitionInput {
   rowColumnKey?: string
   valueColumnKey?: string
   showVarianceColumn?: boolean
-  accountingRows?: AccountingRow[]
+  groupByColumnKey?: string | null
+  showGroupSubtotals?: boolean
+  groupOrder?: string[]
+  accountingFormulaRows?: AccountingFormulaRow[]
   // Filter configuration - which database columns to expose as filters
   filterColumnKeys?: string[]
   // Baked-in filter values: { "location": ["Bixby, OK"], "pm": ["Caleb"] }
@@ -317,7 +320,10 @@ export class ReportDefinitionService {
         valueColumnKey: input.valueColumnKey,
         pivotColumnHeaderFormat: input.pivotColumnHeaderFormat,
         showVarianceColumn: input.showVarianceColumn ?? true,
-        accountingRows: (input.accountingRows || []) as any,
+        groupByColumnKey: input.groupByColumnKey,
+        showGroupSubtotals: input.showGroupSubtotals ?? true,
+        groupOrder: (input.groupOrder || []) as any,
+        accountingFormulaRows: (input.accountingFormulaRows || []) as any,
         metricRows: (input.metricRows || []) as any,
         pivotFormulaColumns: (input.pivotFormulaColumns || []) as any,
         createdById: input.createdById,
@@ -392,7 +398,10 @@ export class ReportDefinitionService {
         ...(input.pivotSortConfig !== undefined && { pivotSortConfig: input.pivotSortConfig as any }),
         // Accounting layout options
         ...(input.showVarianceColumn !== undefined && { showVarianceColumn: input.showVarianceColumn }),
-        ...(input.accountingRows !== undefined && { accountingRows: input.accountingRows as any }),
+        ...(input.groupByColumnKey !== undefined && { groupByColumnKey: input.groupByColumnKey }),
+        ...(input.showGroupSubtotals !== undefined && { showGroupSubtotals: input.showGroupSubtotals }),
+        ...(input.groupOrder !== undefined && { groupOrder: input.groupOrder as any }),
+        ...(input.accountingFormulaRows !== undefined && { accountingFormulaRows: input.accountingFormulaRows as any }),
         // Pivot/accounting column header format
         ...(input.pivotColumnHeaderFormat !== undefined && { pivotColumnHeaderFormat: input.pivotColumnHeaderFormat }),
         // Configuration fields
@@ -467,7 +476,10 @@ export class ReportDefinitionService {
         pivotSortConfig: existing.pivotSortConfig as any,
         pivotColumnHeaderFormat: existing.pivotColumnHeaderFormat,
         showVarianceColumn: existing.showVarianceColumn,
-        accountingRows: existing.accountingRows as any,
+        groupByColumnKey: existing.groupByColumnKey,
+        showGroupSubtotals: existing.showGroupSubtotals,
+        groupOrder: existing.groupOrder as any,
+        accountingFormulaRows: existing.accountingFormulaRows as any,
         createdById,
       },
       include: {

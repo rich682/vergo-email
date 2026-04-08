@@ -66,7 +66,7 @@ import { ViewerManagement, type Viewer } from "@/components/shared/viewer-manage
 interface SchemaColumn {
   key: string
   label: string
-  dataType: "text" | "number" | "date" | "boolean" | "currency" | "dropdown"
+  dataType: "text" | "number" | "date" | "boolean" | "currency" | "dropdown" | "group"
   required: boolean
   order: number
   dropdownOptions?: string[]
@@ -1631,6 +1631,7 @@ export default function DatabaseDetailPage() {
                               <option value="boolean">Boolean</option>
                               <option value="dropdown">Dropdown</option>
                               <option value="file">File Attachment</option>
+                              <option value="group">Group</option>
                             </select>
                             {column.dataType === "dropdown" && (
                               <button

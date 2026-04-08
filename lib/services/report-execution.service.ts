@@ -29,7 +29,7 @@ import type {
   ReportFormulaRow,
   MetricRow,
   PivotFormulaColumn,
-  AccountingRow,
+  AccountingFormulaRow,
 } from "./report-definition.service"
 
 // ============================================
@@ -50,7 +50,10 @@ export interface ExecutePreviewInput {
     pivotSortConfig?: { type: string; direction: string; rowKey?: string } | null
     pivotColumnHeaderFormat?: string | null
     showVarianceColumn?: boolean
-    accountingRows?: AccountingRow[]
+    groupByColumnKey?: string | null
+    showGroupSubtotals?: boolean
+    groupOrder?: string[]
+    accountingFormulaRows?: AccountingFormulaRow[]
   }
   filters?: Record<string, string[]>  // Optional - column-value filters
 }
@@ -110,7 +113,10 @@ interface ReportWithConfig {
   pivotSortConfig?: { type: string; direction: string; rowKey?: string } | null
   pivotColumnHeaderFormat?: string | null
   showVarianceColumn?: boolean
-  accountingRows?: AccountingRow[]
+  groupByColumnKey?: string | null
+  showGroupSubtotals?: boolean
+  groupOrder?: string[]
+  accountingFormulaRows?: AccountingFormulaRow[]
 }
 
 // ============================================
@@ -155,7 +161,10 @@ export class ReportExecutionService {
       pivotSortConfig: liveConfig.pivotSortConfig !== undefined ? liveConfig.pivotSortConfig : (report as any).pivotSortConfig,
       pivotColumnHeaderFormat: liveConfig.pivotColumnHeaderFormat !== undefined ? liveConfig.pivotColumnHeaderFormat : (report as any).pivotColumnHeaderFormat,
       showVarianceColumn: liveConfig.showVarianceColumn !== undefined ? liveConfig.showVarianceColumn : (report as any).showVarianceColumn,
-      accountingRows: liveConfig.accountingRows !== undefined ? liveConfig.accountingRows : (report as any).accountingRows,
+      groupByColumnKey: liveConfig.groupByColumnKey !== undefined ? liveConfig.groupByColumnKey : (report as any).groupByColumnKey,
+      showGroupSubtotals: liveConfig.showGroupSubtotals !== undefined ? liveConfig.showGroupSubtotals : (report as any).showGroupSubtotals,
+      groupOrder: liveConfig.groupOrder !== undefined ? liveConfig.groupOrder : (report as any).groupOrder,
+      accountingFormulaRows: liveConfig.accountingFormulaRows !== undefined ? liveConfig.accountingFormulaRows : (report as any).accountingFormulaRows,
     } : report
 
     const cadence = report.cadence as ReportCadence
@@ -767,137 +776,187 @@ export class ReportExecutionService {
       columns.push({ key: "_variance", label: "Variance", dataType: "currency", type: "formula" })
     }
 
-    // Check if we have custom accountingRows configuration
-    const accountingRows = ((report as any).accountingRows || []) as AccountingRow[]
-    const hasCustomRows = accountingRows.length > 0
+    // Helper: build a data row from lookup
+    const buildSourceRow = (rowId: string, bold = false, separatorAbove = false): Record<string, unknown> => {
+      const row: Record<string, unknown> = {
+        _label: rowId,
+        _format: "currency",
+        _bold: bold,
+        _separatorAbove: separatorAbove,
+      }
+      for (const pv of pivotValues) {
+        row[pv] = lookup[rowId]?.[pv] ?? null
+      }
+      if (showVariance) {
+        const firstVal = lookup[rowId]?.[pivotValues[0]]
+        const lastVal = lookup[rowId]?.[pivotValues[pivotValues.length - 1]]
+        if (firstVal != null && lastVal != null) {
+          row["_variance"] = Math.round((lastVal - firstVal) * 100) / 100
+        } else {
+          row["_variance"] = null
+        }
+      }
+      return row
+    }
 
-    // Build data rows
+    // Check if group-by is configured
+    const groupByColumnKey = (report as any).groupByColumnKey as string | null
+    const showSubtotals = (report as any).showGroupSubtotals !== false
+    const groupOrder = ((report as any).groupOrder || []) as string[]
+    const accountingFormulaRows = ((report as any).accountingFormulaRows || []) as AccountingFormulaRow[]
+
     let dataRows: Array<Record<string, unknown>>
 
-    if (hasCustomRows) {
-      // Custom row configuration: use accountingRows for ordering, sections, formulas
-      const sortedAccountingRows = [...accountingRows].sort((a, b) => a.order - b.order)
+    // Track group subtotal values for cross-group formula rows
+    const groupSubtotalValues: Record<string, Record<string, number | null>> = {}
 
-      // First pass: build source row data and collect computed values for formula references
-      const computedRowValues: Record<string, Record<string, number | null>> = {}
+    if (groupByColumnKey) {
+      // Group-based rendering: organize rows by group column
+      // Build group → rowIds mapping (preserving data appearance order within each group)
+      const groupRowIds: Record<string, string[]> = {}
+      const groupAppearanceOrder: string[] = []
+      const groupSet = new Set<string>()
+
+      for (const row of allRows) {
+        const groupName = String(row[groupByColumnKey] ?? "")
+        const rowId = String(row[rowColumnKey] ?? "")
+        if (!groupName || !rowId) continue
+
+        if (!groupSet.has(groupName)) {
+          groupSet.add(groupName)
+          groupAppearanceOrder.push(groupName)
+          groupRowIds[groupName] = []
+        }
+        if (!groupRowIds[groupName].includes(rowId)) {
+          groupRowIds[groupName].push(rowId)
+        }
+      }
+
+      // Determine group display order: use custom groupOrder if provided, else data appearance order
+      let orderedGroups: string[]
+      if (groupOrder.length > 0) {
+        // Start with custom order, then append any groups not in the custom order
+        orderedGroups = [...groupOrder.filter(g => groupSet.has(g))]
+        for (const g of groupAppearanceOrder) {
+          if (!orderedGroups.includes(g)) orderedGroups.push(g)
+        }
+      } else {
+        orderedGroups = groupAppearanceOrder
+      }
 
       dataRows = []
 
-      for (const acctRow of sortedAccountingRows) {
-        if (acctRow.type === "section") {
-          // Section header: display-only row with no data values
-          const row: Record<string, unknown> = {
-            _label: acctRow.label,
-            _format: "text",
-            _type: "section",
-            _bold: acctRow.isBold !== false, // sections are bold by default
-            _separatorAbove: acctRow.separatorAbove || false,
-          }
-          for (const pv of pivotValues) {
-            row[pv] = null
-          }
-          if (showVariance) row["_variance"] = null
-          dataRows.push(row)
-        } else if (acctRow.type === "source") {
-          // Source row: maps to a data row via sourceRowId
-          const sourceId = acctRow.sourceRowId || ""
-          const row: Record<string, unknown> = {
-            _label: acctRow.label || sourceId,
-            _format: acctRow.format || "currency",
-            _bold: acctRow.isBold || false,
-            _separatorAbove: acctRow.separatorAbove || false,
+      for (const groupName of orderedGroups) {
+        const rowIds = groupRowIds[groupName] || []
+
+        // Section header row
+        const headerRow: Record<string, unknown> = {
+          _label: `${groupName}:`,
+          _format: "text",
+          _type: "section",
+          _bold: true,
+          _separatorAbove: false,
+        }
+        for (const pv of pivotValues) headerRow[pv] = null
+        if (showVariance) headerRow["_variance"] = null
+        dataRows.push(headerRow)
+
+        // Source rows within this group
+        for (const rowId of rowIds) {
+          dataRows.push(buildSourceRow(rowId))
+        }
+
+        // Subtotal row
+        if (showSubtotals && rowIds.length > 0) {
+          const subtotalRow: Record<string, unknown> = {
+            _label: `TOTAL ${groupName}`,
+            _format: "currency",
+            _type: "formula",
+            _bold: true,
+            _separatorAbove: true,
           }
 
-          const rowValues: Record<string, number | null> = {}
+          const subtotalValues: Record<string, number | null> = {}
           for (const pv of pivotValues) {
-            const val = lookup[sourceId]?.[pv] ?? null
-            row[pv] = val
-            rowValues[pv] = val
+            let sum = 0
+            let hasValue = false
+            for (const rowId of rowIds) {
+              const val = lookup[rowId]?.[pv]
+              if (val != null) { sum += val; hasValue = true }
+            }
+            subtotalRow[pv] = hasValue ? Math.round(sum * 100) / 100 : null
+            subtotalValues[pv] = hasValue ? Math.round(sum * 100) / 100 : null
           }
 
-          // Variance
           if (showVariance) {
-            const firstVal = lookup[sourceId]?.[pivotValues[0]]
-            const lastVal = lookup[sourceId]?.[pivotValues[pivotValues.length - 1]]
+            const firstVal = subtotalValues[pivotValues[0]]
+            const lastVal = subtotalValues[pivotValues[pivotValues.length - 1]]
             if (firstVal != null && lastVal != null) {
-              row["_variance"] = Math.round((lastVal - firstVal) * 100) / 100
+              subtotalRow["_variance"] = Math.round((lastVal - firstVal) * 100) / 100
             } else {
-              row["_variance"] = null
+              subtotalRow["_variance"] = null
             }
           }
 
-          computedRowValues[acctRow.key] = rowValues
-          dataRows.push(row)
-        } else if (acctRow.type === "formula") {
-          // Formula row: compute expression referencing other row keys
-          const row: Record<string, unknown> = {
-            _label: acctRow.label,
-            _format: acctRow.format || "currency",
+          // Store subtotal for cross-group formulas — key is the subtotal label
+          groupSubtotalValues[`TOTAL ${groupName}`] = subtotalValues
+          dataRows.push(subtotalRow)
+        }
+      }
+
+      // Cross-group formula rows (e.g., GROSS PROFIT)
+      if (accountingFormulaRows.length > 0) {
+        const sortedFormulas = [...accountingFormulaRows].sort((a, b) => a.order - b.order)
+
+        for (const fr of sortedFormulas) {
+          const formulaRow: Record<string, unknown> = {
+            _label: fr.label,
+            _format: "currency",
             _type: "formula",
-            _bold: acctRow.isBold !== false, // formulas are bold by default
-            _separatorAbove: acctRow.separatorAbove || false,
+            _bold: fr.isBold !== false,
+            _separatorAbove: fr.separatorAbove !== false,
           }
 
           const rowValues: Record<string, number | null> = {}
           for (const pv of pivotValues) {
-            // Build context from previously computed row values for this pivot column
             const context: Record<string, number> = {}
-            for (const [key, vals] of Object.entries(computedRowValues)) {
-              if (vals[pv] != null) {
-                context[key] = vals[pv]!
-              }
+            for (const [key, vals] of Object.entries(groupSubtotalValues)) {
+              if (vals[pv] != null) context[key] = vals[pv]!
+            }
+            // Also include previously computed formula row values
+            for (const [key, vals] of Object.entries(groupSubtotalValues)) {
+              if (vals[pv] != null) context[key] = vals[pv]!
             }
 
             try {
-              const result = evaluateSafeExpression(acctRow.expression || "0", context)
+              const result = evaluateSafeExpression(fr.expression || "0", context)
               const num = typeof result === "number" && !isNaN(result) ? Math.round(result * 100) / 100 : null
-              row[pv] = num
+              formulaRow[pv] = num
               rowValues[pv] = num
             } catch {
-              row[pv] = null
+              formulaRow[pv] = null
               rowValues[pv] = null
             }
           }
 
-          // Variance for formula rows
           if (showVariance) {
             const firstVal = rowValues[pivotValues[0]]
             const lastVal = rowValues[pivotValues[pivotValues.length - 1]]
             if (firstVal != null && lastVal != null) {
-              row["_variance"] = Math.round((lastVal - firstVal) * 100) / 100
+              formulaRow["_variance"] = Math.round((lastVal - firstVal) * 100) / 100
             } else {
-              row["_variance"] = null
+              formulaRow["_variance"] = null
             }
           }
 
-          computedRowValues[acctRow.key] = rowValues
-          dataRows.push(row)
+          // Make this formula row available for subsequent formulas
+          groupSubtotalValues[fr.label] = rowValues
+          dataRows.push(formulaRow)
         }
       }
     } else {
-      // Default behavior: auto-discover rows from data
-      dataRows = rowIdOrder.map(rowId => {
-        const row: Record<string, unknown> = {
-          _label: rowId,
-          _format: "currency",
-        }
-
-        for (const pv of pivotValues) {
-          row[pv] = lookup[rowId][pv] ?? null
-        }
-
-        if (showVariance) {
-          const firstVal = lookup[rowId][pivotValues[0]]
-          const lastVal = lookup[rowId][pivotValues[pivotValues.length - 1]]
-          if (firstVal != null && lastVal != null) {
-            row["_variance"] = Math.round((lastVal - firstVal) * 100) / 100
-          } else {
-            row["_variance"] = null
-          }
-        }
-
-        return row
-      })
+      // No grouping: auto-discover rows from data (flat list)
+      dataRows = rowIdOrder.map(rowId => buildSourceRow(rowId))
     }
 
     // Apply pivotFormulaColumns if any (reuse existing evaluatePivotFormulaColumn)

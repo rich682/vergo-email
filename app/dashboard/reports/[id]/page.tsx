@@ -102,14 +102,11 @@ interface PivotFormulaColumn {
   order: number
 }
 
-// Accounting row for accounting layout
-interface AccountingRow {
+// Cross-group formula row for accounting layout
+interface AccountingFormulaRow {
   key: string
   label: string
-  type: "source" | "section" | "formula"
-  sourceRowId?: string
-  expression?: string
-  format?: "text" | "currency"
+  expression: string
   order: number
   isBold?: boolean
   separatorAbove?: boolean
@@ -143,7 +140,10 @@ interface ReportDefinition {
   rowColumnKey: string | null
   valueColumnKey: string | null
   showVarianceColumn: boolean
-  accountingRows: AccountingRow[]
+  groupByColumnKey: string | null
+  showGroupSubtotals: boolean
+  groupOrder: string[]
+  accountingFormulaRows: AccountingFormulaRow[]
   // Pivot/accounting column header format
   pivotColumnHeaderFormat: string | null
   // Filter configuration
@@ -246,9 +246,12 @@ export default function ReportBuilderPage() {
 
   // Editing state - Accounting layout
   const [showVarianceColumn, setShowVarianceColumn] = useState(true)
-  const [accountingRows, setAccountingRows] = useState<AccountingRow[]>([])
-  const [accountingRowModalOpen, setAccountingRowModalOpen] = useState(false)
-  const [editingAccountingRow, setEditingAccountingRow] = useState<AccountingRow | null>(null)
+  const [groupByColumnKey, setGroupByColumnKey] = useState<string | null>(null)
+  const [showGroupSubtotals, setShowGroupSubtotals] = useState(true)
+  const [groupOrder, setGroupOrder] = useState<string[]>([])
+  const [accountingFormulaRows, setAccountingFormulaRows] = useState<AccountingFormulaRow[]>([])
+  const [formulaRowModalOpen, setFormulaRowModalOpen] = useState(false)
+  const [editingFormulaRow, setEditingFormulaRow] = useState<AccountingFormulaRow | null>(null)
 
   // Filter configuration - baked-in filter values
   const [filterBindings, setFilterBindings] = useState<FilterBindings>({})
@@ -300,7 +303,10 @@ export default function ReportBuilderPage() {
       setPivotColumnHeaderFormat(data.report.pivotColumnHeaderFormat || null)
       // Accounting layout state
       setShowVarianceColumn(data.report.showVarianceColumn !== false)
-      setAccountingRows(data.report.accountingRows || [])
+      setGroupByColumnKey(data.report.groupByColumnKey || null)
+      setShowGroupSubtotals(data.report.showGroupSubtotals !== false)
+      setGroupOrder(data.report.groupOrder || [])
+      setAccountingFormulaRows(data.report.accountingFormulaRows || [])
       // Variance state
       setCompareMode(data.report.compareMode || "none")
       // Filter configuration
@@ -403,7 +409,10 @@ export default function ReportBuilderPage() {
             pivotSortConfig,
             pivotColumnHeaderFormat,
             showVarianceColumn,
-            accountingRows,
+            groupByColumnKey,
+            showGroupSubtotals,
+            groupOrder,
+            accountingFormulaRows,
           },
           // Apply active filters to preview (only include keys with non-empty value arrays)
           filters: (() => {
@@ -430,7 +439,7 @@ export default function ReportBuilderPage() {
     } finally {
       setPreviewLoading(false)
     }
-  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, accountingRows, filterBindings])
+  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, groupByColumnKey, showGroupSubtotals, groupOrder, accountingFormulaRows, filterBindings])
 
   // Fetch preview when report loads or period/mode changes
   useEffect(() => {
@@ -490,7 +499,10 @@ export default function ReportBuilderPage() {
           pivotSortConfig,
           pivotColumnHeaderFormat,
           showVarianceColumn,
-          accountingRows,
+          groupByColumnKey,
+          showGroupSubtotals,
+          groupOrder,
+          accountingFormulaRows,
           // Variance settings - use effectiveCompareMode to ensure comparison rows work
           compareMode: effectiveCompareMode,
           // Filter configuration — derive filterColumnKeys from filterBindings
@@ -513,7 +525,7 @@ export default function ReportBuilderPage() {
     } finally {
       setSaving(false)
     }
-  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, accountingRows, effectiveCompareMode, filterBindings])
+  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, groupByColumnKey, showGroupSubtotals, groupOrder, accountingFormulaRows, effectiveCompareMode, filterBindings])
 
   // Auto-save effect: debounce 1 second after changes
   useEffect(() => {
@@ -542,7 +554,7 @@ export default function ReportBuilderPage() {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, accountingRows, effectiveCompareMode, filterBindings, handleSave, report])
+  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, groupByColumnKey, showGroupSubtotals, groupOrder, accountingFormulaRows, effectiveCompareMode, filterBindings, handleSave, report])
 
   // Toggle source column
   const toggleSourceColumn = (dbColumn: { key: string; label: string; dataType: string }) => {
@@ -943,150 +955,192 @@ export default function ReportBuilderPage() {
               </div>
             )}
 
-            {/* === ACCOUNTING ROWS (accounting layout only) === */}
-            {report.layout === "accounting" && (
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="px-3 py-2.5 bg-gray-50 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <ListOrdered className="w-4 h-4 text-gray-500" />
-                    <span className="font-medium text-sm text-gray-700">Accounting Rows</span>
-                    {accountingRows.length > 0 && (
-                      <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
-                        {accountingRows.length}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {accountingRows.length === 0 && (
-                      <button
-                        onClick={() => {
-                          // Initialize from data: extract unique row values from database rows
-                          const rows = report.database.rows || []
-                          const rowKey = report.rowColumnKey
-                          if (!rowKey) return
-                          const uniqueIds: string[] = []
-                          const seen = new Set<string>()
-                          for (const row of rows) {
-                            const id = String(row[rowKey] ?? "")
-                            if (id && !seen.has(id)) {
-                              seen.add(id)
-                              uniqueIds.push(id)
-                            }
-                          }
-                          const initialized: AccountingRow[] = uniqueIds.map((rowId, index) => ({
-                            key: `acct_${index}`,
-                            label: rowId,
-                            type: "source" as const,
-                            sourceRowId: rowId,
-                            format: "currency" as const,
-                            order: index,
-                          }))
-                          setAccountingRows(initialized)
-                          setHasUnsavedChanges(true)
-                        }}
-                        className="text-xs px-2 py-1 text-blue-600 hover:bg-blue-50 rounded"
-                        title="Initialize rows from database data"
-                      >
-                        Initialize from Data
-                      </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        setEditingAccountingRow(null)
-                        setAccountingRowModalOpen(true)
-                      }}
-                      className="p-1 hover:bg-gray-200 rounded"
-                      title="Add row"
-                    >
-                      <Plus className="w-3.5 h-3.5 text-gray-500" />
-                    </button>
-                  </div>
-                </div>
+            {/* === ROW GROUPING (accounting layout only) === */}
+            {report.layout === "accounting" && (() => {
+              const groupColumns = databaseColumns.filter(c => c.dataType === "group")
+              if (groupColumns.length === 0) return null
 
-                {accountingRows.length === 0 ? (
-                  <div className="p-3">
-                    <p className="text-xs text-gray-400 italic">
-                      No custom row configuration. Rows are auto-discovered from data. Click &quot;Initialize from Data&quot; to customize row ordering, sections, and formulas.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="p-2 space-y-0.5 max-h-[400px] overflow-y-auto">
-                    {[...accountingRows].sort((a, b) => a.order - b.order).map((acctRow) => (
-                      <div
-                        key={acctRow.key}
-                        draggable
-                        onDragStart={(e) => e.dataTransfer.setData("text/plain", acctRow.key)}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => {
-                          e.preventDefault()
-                          const draggedKey = e.dataTransfer.getData("text/plain")
-                          if (draggedKey === acctRow.key) return
-                          const sorted = [...accountingRows].sort((a, b) => a.order - b.order)
-                          const draggedIndex = sorted.findIndex(r => r.key === draggedKey)
-                          const targetIndex = sorted.findIndex(r => r.key === acctRow.key)
-                          if (draggedIndex === -1 || targetIndex === -1) return
-                          const [draggedItem] = sorted.splice(draggedIndex, 1)
-                          sorted.splice(targetIndex, 0, draggedItem)
-                          const reordered = sorted.map((r, i) => ({ ...r, order: i }))
-                          setAccountingRows(reordered)
-                          setHasUnsavedChanges(true)
-                        }}
-                        className="flex items-center gap-1.5 px-2 py-1.5 rounded hover:bg-gray-50 group cursor-grab active:cursor-grabbing"
-                      >
-                        <GripVertical className="w-3 h-3 text-gray-300 flex-shrink-0" />
-                        {acctRow.type === "source" && <Database className="w-3 h-3 text-gray-400 flex-shrink-0" />}
-                        {acctRow.type === "section" && <Type className="w-3 h-3 text-purple-400 flex-shrink-0" />}
-                        {acctRow.type === "formula" && <FunctionSquare className="w-3 h-3 text-blue-400 flex-shrink-0" />}
-                        <span className={`text-xs truncate flex-1 ${acctRow.type === "section" ? "font-bold text-purple-700" : "text-gray-700"}`}>
-                          {acctRow.label}
-                        </span>
-                        <span className={`text-[10px] px-1 py-0.5 rounded flex-shrink-0 ${
-                          acctRow.type === "source" ? "bg-green-50 text-green-600" :
-                          acctRow.type === "section" ? "bg-purple-50 text-purple-600" :
-                          "bg-blue-50 text-blue-600"
-                        }`}>
-                          {acctRow.type === "source" ? "Source" : acctRow.type === "section" ? "Section" : "Formula"}
-                        </span>
-                        {acctRow.separatorAbove && <span className="text-[10px] text-gray-400">---</span>}
-                        {acctRow.isBold && <span className="text-[10px] font-bold text-gray-400">B</span>}
-                        <button
-                          onClick={() => {
-                            setEditingAccountingRow(acctRow)
-                            setAccountingRowModalOpen(true)
-                          }}
-                          className="p-0.5 hover:bg-gray-200 rounded opacity-0 group-hover:opacity-100"
-                        >
-                          <Pencil className="w-3 h-3 text-gray-400" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setAccountingRows(prev => prev.filter(r => r.key !== acctRow.key).map((r, i) => ({ ...r, order: i })))
+              // Extract unique group values from data for the selected group column
+              const groupValues: string[] = []
+              if (groupByColumnKey) {
+                const seen = new Set<string>()
+                for (const row of (report.database.rows || [])) {
+                  const g = String(row[groupByColumnKey] ?? "")
+                  if (g && !seen.has(g)) { seen.add(g); groupValues.push(g) }
+                }
+              }
+
+              // Apply custom order: start with groupOrder entries that exist, then append new ones
+              const orderedGroupValues = groupByColumnKey ? (() => {
+                const ordered = groupOrder.filter(g => groupValues.includes(g))
+                for (const g of groupValues) {
+                  if (!ordered.includes(g)) ordered.push(g)
+                }
+                return ordered
+              })() : []
+
+              return (
+                <>
+                  {/* Group By Column Selection */}
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="px-3 py-2.5 bg-gray-50 flex items-center gap-2">
+                      <ListOrdered className="w-4 h-4 text-gray-500" />
+                      <span className="font-medium text-sm text-gray-700">Row Grouping</span>
+                    </div>
+                    <div className="p-3 space-y-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-gray-500">Group By Column</Label>
+                        <Select
+                          value={groupByColumnKey || "none"}
+                          onValueChange={(value) => {
+                            setGroupByColumnKey(value === "none" ? null : value)
+                            setGroupOrder([])
                             setHasUnsavedChanges(true)
                           }}
-                          className="p-0.5 hover:bg-red-100 rounded opacity-0 group-hover:opacity-100"
                         >
-                          <Trash2 className="w-3 h-3 text-red-400" />
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {groupColumns.map(col => (
+                              <SelectItem key={col.key} value={col.key}>{col.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {groupByColumnKey && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-500 text-xs">Show Subtotals</span>
+                          <button
+                            className={`px-2 py-0.5 rounded text-xs font-medium ${showGroupSubtotals ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}
+                            onClick={() => {
+                              setShowGroupSubtotals(!showGroupSubtotals)
+                              setHasUnsavedChanges(true)
+                            }}
+                          >
+                            {showGroupSubtotals ? "On" : "Off"}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Draggable group order */}
+                      {groupByColumnKey && orderedGroupValues.length > 0 && (
+                        <div className="space-y-1">
+                          <Label className="text-xs text-gray-500">Group Order</Label>
+                          <div className="space-y-0.5">
+                            {orderedGroupValues.map((groupName) => (
+                              <div
+                                key={groupName}
+                                draggable
+                                onDragStart={(e) => e.dataTransfer.setData("text/plain", groupName)}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={(e) => {
+                                  e.preventDefault()
+                                  const draggedName = e.dataTransfer.getData("text/plain")
+                                  if (draggedName === groupName) return
+                                  const newOrder = [...orderedGroupValues]
+                                  const draggedIdx = newOrder.indexOf(draggedName)
+                                  const targetIdx = newOrder.indexOf(groupName)
+                                  if (draggedIdx === -1 || targetIdx === -1) return
+                                  newOrder.splice(draggedIdx, 1)
+                                  newOrder.splice(targetIdx, 0, draggedName)
+                                  setGroupOrder(newOrder)
+                                  setHasUnsavedChanges(true)
+                                }}
+                                className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-grab active:cursor-grabbing"
+                              >
+                                <GripVertical className="w-3 h-3 text-gray-300 flex-shrink-0" />
+                                <span className="text-xs text-gray-700 font-medium">{groupName}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Formula Rows (cross-group calculations) */}
+                  {groupByColumnKey && showGroupSubtotals && (
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="px-3 py-2.5 bg-gray-50 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <FunctionSquare className="w-4 h-4 text-gray-500" />
+                          <span className="font-medium text-sm text-gray-700">Formula Rows</span>
+                          {accountingFormulaRows.length > 0 && (
+                            <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
+                              {accountingFormulaRows.length}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => {
+                            setEditingFormulaRow(null)
+                            setFormulaRowModalOpen(true)
+                          }}
+                          className="p-1 hover:bg-gray-200 rounded"
+                          title="Add formula row"
+                        >
+                          <Plus className="w-3.5 h-3.5 text-gray-500" />
                         </button>
                       </div>
-                    ))}
-                  </div>
-                )}
-
-                {accountingRows.length > 0 && (
-                  <div className="px-3 py-2 border-t border-gray-100">
-                    <button
-                      onClick={() => {
-                        setAccountingRows([])
-                        setHasUnsavedChanges(true)
-                      }}
-                      className="text-xs text-red-500 hover:text-red-700"
-                    >
-                      Clear all rows (revert to auto-discover)
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+                      {accountingFormulaRows.length === 0 ? (
+                        <div className="p-3">
+                          <p className="text-xs text-gray-400 italic">
+                            Add formula rows for cross-group calculations (e.g., GROSS PROFIT = [TOTAL REVENUE] - [TOTAL DIRECT JOB COSTS])
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="p-2 space-y-0.5">
+                          {[...accountingFormulaRows].sort((a, b) => a.order - b.order).map((fr) => (
+                            <div
+                              key={fr.key}
+                              draggable
+                              onDragStart={(e) => e.dataTransfer.setData("text/plain", fr.key)}
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={(e) => {
+                                e.preventDefault()
+                                const draggedKey = e.dataTransfer.getData("text/plain")
+                                if (draggedKey === fr.key) return
+                                const sorted = [...accountingFormulaRows].sort((a, b) => a.order - b.order)
+                                const di = sorted.findIndex(r => r.key === draggedKey)
+                                const ti = sorted.findIndex(r => r.key === fr.key)
+                                if (di === -1 || ti === -1) return
+                                const [item] = sorted.splice(di, 1)
+                                sorted.splice(ti, 0, item)
+                                setAccountingFormulaRows(sorted.map((r, i) => ({ ...r, order: i })))
+                                setHasUnsavedChanges(true)
+                              }}
+                              className="flex items-center gap-1.5 px-2 py-1.5 rounded hover:bg-gray-50 group cursor-grab active:cursor-grabbing"
+                            >
+                              <GripVertical className="w-3 h-3 text-gray-300 flex-shrink-0" />
+                              <FunctionSquare className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                              <span className="text-xs text-gray-700 font-medium truncate flex-1">{fr.label}</span>
+                              <button
+                                onClick={() => { setEditingFormulaRow(fr); setFormulaRowModalOpen(true) }}
+                                className="p-0.5 hover:bg-gray-200 rounded opacity-0 group-hover:opacity-100"
+                              >
+                                <Pencil className="w-3 h-3 text-gray-400" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setAccountingFormulaRows(prev => prev.filter(r => r.key !== fr.key).map((r, i) => ({ ...r, order: i })))
+                                  setHasUnsavedChanges(true)
+                                }}
+                                className="p-0.5 hover:bg-red-100 rounded opacity-0 group-hover:opacity-100"
+                              >
+                                <Trash2 className="w-3 h-3 text-red-400" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )
+            })()}
 
             {/* === VIEWERS CONFIGURATION === */}
             <ViewerManagement
@@ -1829,38 +1883,34 @@ export default function ReportBuilderPage() {
         }}
       />
 
-      {/* Accounting Row Modal */}
-      <AccountingRowModal
-        open={accountingRowModalOpen}
-        editing={editingAccountingRow}
-        accountingRows={accountingRows}
-        availableSourceRows={(() => {
-          if (!report?.rowColumnKey) return []
-          const rows = report.database.rows || []
-          const uniqueIds: string[] = []
+      {/* Formula Row Modal (for cross-group calculations) */}
+      <FormulaRowModal
+        open={formulaRowModalOpen}
+        editing={editingFormulaRow}
+        existingRows={accountingFormulaRows}
+        groupNames={(() => {
+          if (!groupByColumnKey || !report) return []
           const seen = new Set<string>()
-          for (const row of rows) {
-            const id = String(row[report.rowColumnKey] ?? "")
-            if (id && !seen.has(id)) {
-              seen.add(id)
-              uniqueIds.push(id)
-            }
+          const names: string[] = []
+          for (const row of (report.database.rows || [])) {
+            const g = String(row[groupByColumnKey] ?? "")
+            if (g && !seen.has(g)) { seen.add(g); names.push(g) }
           }
-          return uniqueIds
+          return names
         })()}
         onClose={() => {
-          setAccountingRowModalOpen(false)
-          setEditingAccountingRow(null)
+          setFormulaRowModalOpen(false)
+          setEditingFormulaRow(null)
         }}
         onSave={(row) => {
-          if (editingAccountingRow) {
-            setAccountingRows(prev => prev.map(r => r.key === editingAccountingRow.key ? row : r))
+          if (editingFormulaRow) {
+            setAccountingFormulaRows(prev => prev.map(r => r.key === editingFormulaRow.key ? row : r))
           } else {
-            setAccountingRows(prev => [...prev, row])
+            setAccountingFormulaRows(prev => [...prev, row])
           }
           setHasUnsavedChanges(true)
-          setAccountingRowModalOpen(false)
-          setEditingAccountingRow(null)
+          setFormulaRowModalOpen(false)
+          setEditingFormulaRow(null)
         }}
       />
 
@@ -2572,252 +2622,135 @@ function FormulaRowModal({
 }
 
 // ============================================
-// Accounting Row Modal Component (for Accounting Layout)
+// Formula Row Modal Component (for Accounting Layout cross-group formulas)
 // ============================================
-interface AccountingRowModalProps {
+interface FormulaRowModalProps {
   open: boolean
-  editing: AccountingRow | null
-  accountingRows: AccountingRow[]
-  availableSourceRows: string[]  // Unique row identifiers from database
+  editing: AccountingFormulaRow | null
+  existingRows: AccountingFormulaRow[]
+  groupNames: string[]  // Available group names for subtotal references
   onClose: () => void
-  onSave: (row: AccountingRow) => void
+  onSave: (row: AccountingFormulaRow) => void
 }
 
-function AccountingRowModal({
+function FormulaRowModal({
   open,
   editing,
-  accountingRows,
-  availableSourceRows,
+  existingRows,
+  groupNames,
   onClose,
   onSave,
-}: AccountingRowModalProps) {
-  const [rowType, setRowType] = useState<"source" | "section" | "formula">("source")
+}: FormulaRowModalProps) {
   const [label, setLabel] = useState("")
-  const [sourceRowId, setSourceRowId] = useState("")
   const [expression, setExpression] = useState("")
-  const [isBold, setIsBold] = useState(false)
-  const [separatorAbove, setSeparatorAbove] = useState(false)
+  const [isBold, setIsBold] = useState(true)
+  const [separatorAbove, setSeparatorAbove] = useState(true)
 
-  // Reset form when modal opens
   useEffect(() => {
     if (open) {
       if (editing) {
-        setRowType(editing.type)
         setLabel(editing.label)
-        setSourceRowId(editing.sourceRowId || "")
-        setExpression(editing.expression || "")
-        setIsBold(editing.isBold || false)
-        setSeparatorAbove(editing.separatorAbove || false)
+        setExpression(editing.expression)
+        setIsBold(editing.isBold !== false)
+        setSeparatorAbove(editing.separatorAbove !== false)
       } else {
-        setRowType("source")
         setLabel("")
-        setSourceRowId("")
         setExpression("")
-        setIsBold(false)
-        setSeparatorAbove(false)
+        setIsBold(true)
+        setSeparatorAbove(true)
       }
     }
   }, [open, editing])
 
-  // Auto-fill label when source row is selected
-  useEffect(() => {
-    if (rowType === "source" && sourceRowId && !editing) {
-      setLabel(sourceRowId)
-    }
-  }, [sourceRowId, rowType, editing])
-
   const handleSave = () => {
-    if (!label.trim()) return
-    if (rowType === "source" && !sourceRowId) return
-    if (rowType === "formula" && !expression.trim()) return
-
-    const key = editing?.key || `acct_${Date.now()}`
-    const maxOrder = accountingRows.length > 0
-      ? Math.max(...accountingRows.map(r => r.order))
-      : -1
-
+    if (!label.trim() || !expression.trim()) return
+    const key = editing?.key || `formula_${Date.now()}`
+    const maxOrder = existingRows.length > 0 ? Math.max(...existingRows.map(r => r.order)) : -1
     onSave({
       key,
       label: label.trim(),
-      type: rowType,
-      sourceRowId: rowType === "source" ? sourceRowId : undefined,
-      expression: rowType === "formula" ? expression.trim() : undefined,
-      format: rowType === "section" ? "text" : "currency",
+      expression: expression.trim(),
       order: editing ? editing.order : maxOrder + 1,
-      isBold: rowType === "section" ? true : isBold,
+      isBold,
       separatorAbove,
     })
     onClose()
   }
 
-  // Convert expression between display format ([Label]) and internal format ([key])
-  const displayExpression = useMemo(() => {
-    if (!expression) return ""
-    let display = expression
-    for (const row of accountingRows) {
-      display = display.replaceAll(`[${row.key}]`, `[${row.label}]`)
-    }
-    return display
-  }, [expression, accountingRows])
-
-  const setExpressionFromDisplay = (display: string) => {
-    let internal = display
-    for (const row of accountingRows) {
-      internal = internal.replaceAll(`[${row.label}]`, `[${row.key}]`)
-    }
-    setExpression(internal)
-  }
-
-  // Source rows not yet used by other accounting rows (except the one being edited)
-  const usedSourceIds = new Set(
-    accountingRows
-      .filter(r => r.type === "source" && r.key !== editing?.key)
-      .map(r => r.sourceRowId)
-  )
-  const availableSources = availableSourceRows.filter(id => !usedSourceIds.has(id))
-
-  const isValid = label.trim() &&
-    (rowType !== "source" || sourceRowId) &&
-    (rowType !== "formula" || expression.trim())
+  // Build available references: group subtotals + other formula rows
+  const availableRefs = [
+    ...groupNames.map(g => `TOTAL ${g}`),
+    ...existingRows.filter(r => r.key !== editing?.key).map(r => r.label),
+  ]
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{editing ? "Edit Row" : "Add Accounting Row"}</DialogTitle>
+          <DialogTitle>{editing ? "Edit Formula Row" : "Add Formula Row"}</DialogTitle>
           <DialogDescription>
-            {editing ? "Update this row configuration." : "Add a source row, section header, or formula row."}
+            Create a cross-group calculation (e.g., GROSS PROFIT = [TOTAL REVENUE] - [TOTAL DIRECT JOB COSTS])
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* Row Type Selection */}
-          {!editing && (
-            <div className="space-y-2">
-              <Label>Row Type</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {(["source", "section", "formula"] as const).map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => setRowType(type)}
-                    className={`p-2 rounded-lg border-2 text-center transition-colors ${
-                      rowType === type
-                        ? "border-orange-500 bg-orange-50"
-                        : "border-gray-200 hover:border-gray-300"
-                    }`}
-                  >
-                    <div className="flex flex-col items-center gap-1">
-                      {type === "source" && <Database className="w-4 h-4 text-gray-500" />}
-                      {type === "section" && <Type className="w-4 h-4 text-purple-500" />}
-                      {type === "formula" && <FunctionSquare className="w-4 h-4 text-blue-500" />}
-                      <span className="text-xs font-medium capitalize">{type}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Source Row Selection */}
-          {rowType === "source" && (
-            <div className="space-y-2">
-              <Label>Data Row</Label>
-              <Select value={sourceRowId} onValueChange={setSourceRowId}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Select a row from data..." />
-                </SelectTrigger>
-                <SelectContent className="max-h-[200px]">
-                  {(editing ? [editing.sourceRowId || "", ...availableSources].filter(Boolean) : availableSources).map((id) => (
-                    <SelectItem key={id} value={id!}>
-                      <span className="text-xs">{id}</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {/* Label */}
           <div className="space-y-2">
             <Label>Label</Label>
             <Input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder={rowType === "section" ? "e.g., REVENUE:" : rowType === "formula" ? "e.g., TOTAL REVENUE" : "Display label"}
+              placeholder="e.g., GROSS PROFIT"
               className="h-8 text-sm"
             />
           </div>
 
-          {/* Formula Expression */}
-          {rowType === "formula" && (
-            <div className="space-y-2">
-              <Label>Expression</Label>
-              <p className="text-xs text-gray-500">
-                Reference other rows using [Row Label]. E.g., [Revenue] - [Costs]
-              </p>
-              <Textarea
-                value={displayExpression}
-                onChange={(e) => setExpressionFromDisplay(e.target.value)}
-                placeholder="[Row A] + [Row B]"
-                rows={2}
-                className="text-sm font-mono"
-              />
-              {accountingRows.filter(r => r.type !== "section" && r.key !== editing?.key).length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {accountingRows
-                    .filter(r => r.type !== "section" && r.key !== editing?.key)
-                    .sort((a, b) => a.order - b.order)
-                    .slice(0, 10)
-                    .map(r => (
-                      <button
-                        key={r.key}
-                        type="button"
-                        className="text-[10px] px-1.5 py-0.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-600"
-                        onClick={() => setExpressionFromDisplay(displayExpression + `[${r.label}]`)}
-                      >
-                        {r.label}
-                      </button>
-                    ))}
-                </div>
-              )}
-            </div>
-          )}
+          <div className="space-y-2">
+            <Label>Expression</Label>
+            <p className="text-xs text-gray-500">
+              Reference group totals using [TOTAL GROUP NAME]. E.g., [TOTAL REVENUE] - [TOTAL DIRECT JOB COSTS]
+            </p>
+            <Textarea
+              value={expression}
+              onChange={(e) => setExpression(e.target.value)}
+              placeholder="[TOTAL REVENUE] - [TOTAL DIRECT JOB COSTS]"
+              rows={2}
+              className="text-sm font-mono"
+            />
+            {availableRefs.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {availableRefs.slice(0, 12).map(ref => (
+                  <button
+                    key={ref}
+                    type="button"
+                    className="text-[10px] px-1.5 py-0.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-600"
+                    onClick={() => setExpression(prev => prev + `[${ref}]`)}
+                  >
+                    {ref}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
-          {/* Formatting */}
           <div className="space-y-3 pt-2 border-t border-gray-100">
             <Label className="text-xs text-gray-500">Formatting</Label>
             <div className="flex items-center gap-2">
-              <Checkbox
-                id="acct-bold"
-                checked={isBold || rowType === "section"}
-                disabled={rowType === "section"}
-                onCheckedChange={(checked) => setIsBold(checked === true)}
-              />
-              <label htmlFor="acct-bold" className="text-sm text-gray-700 cursor-pointer">
-                Bold row
-              </label>
+              <Checkbox id="fr-bold" checked={isBold} onCheckedChange={(c) => setIsBold(c === true)} />
+              <label htmlFor="fr-bold" className="text-sm text-gray-700 cursor-pointer">Bold row</label>
             </div>
             <div className="flex items-center gap-2">
-              <Checkbox
-                id="acct-separator"
-                checked={separatorAbove}
-                onCheckedChange={(checked) => setSeparatorAbove(checked === true)}
-              />
-              <label htmlFor="acct-separator" className="text-sm text-gray-700 cursor-pointer">
-                Separator line above
-              </label>
+              <Checkbox id="fr-sep" checked={separatorAbove} onCheckedChange={(c) => setSeparatorAbove(c === true)} />
+              <label htmlFor="fr-sep" className="text-sm text-gray-700 cursor-pointer">Separator line above</label>
             </div>
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose}>
-            Cancel
-          </Button>
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           <Button
             size="sm"
             onClick={handleSave}
-            disabled={!isValid}
+            disabled={!label.trim() || !expression.trim()}
             className="bg-orange-500 hover:bg-orange-600 text-white"
           >
             {editing ? "Update" : "Add"} Row
