@@ -138,7 +138,7 @@ ${senderName || "The Team"}`
       console.log(`[FormNotification] Sending form request email to ${recipientEmail}`)
       console.log(`[FormNotification] Subject: ${subject}`)
       
-      // Send email using the organization's connected email account
+      // Send email via system email (noreply@tryvergo.com) so it doesn't come from user's personal inbox
       await EmailSendingService.sendEmail({
         organizationId,
         to: recipientEmail,
@@ -150,6 +150,9 @@ ${senderName || "The Team"}`
         campaignType: "form_request",
         requestType: "form",  // Mark as form request
         deadlineDate: deadlineDate || undefined,
+        useSystemEmail: true,
+        senderName: senderName || undefined,
+        replyTo: senderEmail || undefined,
       })
 
       return true
@@ -288,6 +291,9 @@ ${senderName || "The Team"}`
         campaignType: "form_reminder",
         requestType: "form",  // Mark as form request
         skipRateLimit: true, // Reminders bypass rate limit
+        useSystemEmail: true,
+        senderName: senderName || undefined,
+        replyTo: data.senderEmail || undefined,
       })
       
       return true
@@ -419,6 +425,7 @@ Vergo`
         htmlBody,
         campaignName: formName,
         campaignType: "form_submission_notification",
+        useSystemEmail: true,
       })
 
       return true
@@ -623,6 +630,8 @@ Vergo`
         htmlBody,
         campaignName: formName,
         campaignType: "form_status_change",
+        useSystemEmail: true,
+        senderName: changerName || undefined,
       })
 
       return true

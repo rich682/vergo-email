@@ -290,6 +290,9 @@ export class EmailSendingService {
       approved: boolean
     }
     attachments?: Array<{ filename: string; content: string; contentType: string }>
+    useSystemEmail?: boolean  // Send via Resend (noreply@tryvergo.com) instead of connected account
+    senderName?: string       // Display name for system email "Name via Vergo" from header
+    replyTo?: string          // Reply-to address (used with useSystemEmail)
   }): Promise<{
     taskId: string
     threadId: string
@@ -348,6 +351,140 @@ export class EmailSendingService {
           taskId: `queued:${queueId}`,
           threadId: `queued:${queueId}`,
           messageId: `queued:${queueId}`
+        }
+      }
+    }
+
+    // System email path: send via Resend (noreply@tryvergo.com) instead of connected account
+    if (data.useSystemEmail) {
+      if (!ResendProvider.isAvailable()) {
+        log.warn("useSystemEmail requested but Resend not configured, falling back to connected account", {
+          to: data.to,
+        }, { organizationId: data.organizationId, operation: "sendEmail" })
+      } else {
+        // Validate recipient email
+        try {
+          const validation = await validateEmailForSend(data.to)
+          if (!validation.valid) {
+            throw new Error(validation.reason || `Invalid recipient email: ${data.to}`)
+          }
+        } catch (validationError: any) {
+          if (validationError.message?.includes("does not exist") ||
+              validationError.message?.includes("no mail server") ||
+              validationError.message?.includes("Invalid email format") ||
+              validationError.message?.includes("did you mean")) {
+            throw validationError
+          }
+          log.warn("Email validation check failed, proceeding with send", {
+            to: data.to,
+            error: validationError.message
+          }, { organizationId: data.organizationId, operation: "sendEmail" })
+        }
+
+        const threadId = this.generateThreadId()
+        const resendFromEmail = process.env.RESEND_FROM_EMAIL || "noreply@tryvergo.com"
+        const replyTo = data.replyTo || resendFromEmail
+
+        // Tracking pixel
+        const trackingToken = TrackingPixelService.generateTrackingToken()
+        const trackingUrl = TrackingPixelService.generateTrackingUrl(trackingToken)
+        let htmlBodyWithTracking = data.htmlBody
+        if (data.htmlBody) {
+          htmlBodyWithTracking = TrackingPixelService.injectTrackingPixel(data.htmlBody, trackingUrl)
+        }
+
+        log.info("Sending email via system email (Resend)", {
+          to: data.to,
+          subject: data.subject.substring(0, 50),
+          senderName: data.senderName,
+        }, { organizationId: data.organizationId, operation: "sendEmail" })
+
+        const resendResult = await ResendProvider.sendEmail({
+          to: data.to,
+          subject: data.subject,
+          body: data.body,
+          htmlBody: htmlBodyWithTracking,
+          replyTo,
+          senderName: data.senderName,
+        })
+
+        if (!resendResult) {
+          throw new Error("Resend send returned null unexpectedly")
+        }
+
+        const sendResult = resendResult
+
+        // Create request + log outbound message
+        const task = await prisma.$transaction(async (tx) => {
+          const task = await RequestCreationService.createRequestFromEmail({
+            organizationId: data.organizationId,
+            taskInstanceId: data.jobId || null,
+            entityEmail: data.to,
+            entityName: data.toName,
+            campaignName: data.campaignName,
+            campaignType: data.campaignType,
+            requestType: data.requestType,
+            threadId,
+            replyToEmail: replyTo,
+            subject: data.subject,
+            deadlineDate: data.deadlineDate || null,
+            remindersConfig: data.remindersConfig
+          }, tx)
+
+          await RequestCreationService.logOutboundMessage({
+            requestId: task.id,
+            entityId: task.entityId!,
+            subject: data.subject,
+            body: data.body,
+            htmlBody: htmlBodyWithTracking,
+            fromAddress: resendFromEmail,
+            toAddress: data.to,
+            providerId: sendResult.messageId,
+            providerData: sendResult.providerData,
+            trackingToken
+          }, tx)
+
+          return task
+        })
+
+        // Audit log
+        await logEmailSendAudit({
+          organizationId: data.organizationId,
+          jobId: data.jobId,
+          taskId: task.id,
+          fromEmail: resendFromEmail,
+          toEmail: data.to,
+          subject: data.subject,
+          result: "SUCCESS",
+          provider: null,
+          providerId: sendResult.messageId,
+          metadata: {
+            campaignName: data.campaignName,
+            campaignType: data.campaignType,
+            hasReminders: data.remindersConfig?.enabled || false,
+            useSystemEmail: true
+          }
+        })
+
+        // Log activity event
+        try {
+          const { ActivityEventService } = await import("@/lib/activity-events")
+          ActivityEventService.logEmailSent({
+            organizationId: data.organizationId,
+            taskInstanceId: data.jobId || undefined,
+            requestId: task.id,
+            actorId: data.userId || undefined,
+            subject: data.subject,
+            recipientName: data.toName,
+            recipientEmail: data.to,
+            requestName: data.campaignName,
+          })
+        } catch { /* ignore import failures */ }
+
+        return {
+          taskId: task.id,
+          threadId,
+          messageId: sendResult.messageId
         }
       }
     }
