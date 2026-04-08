@@ -106,6 +106,7 @@ export interface CreateReportDefinitionInput {
   rowColumnKey?: string
   valueColumnKey?: string
   showVarianceColumn?: boolean
+  rowInfoColumnKeys?: string[]
   groupByColumnKey?: string
   showGroupSubtotals?: boolean
   groupOrder?: string[]
@@ -133,6 +134,7 @@ export interface UpdateReportDefinitionInput {
   rowColumnKey?: string
   valueColumnKey?: string
   showVarianceColumn?: boolean
+  rowInfoColumnKeys?: string[]
   groupByColumnKey?: string | null
   showGroupSubtotals?: boolean
   groupOrder?: string[]
@@ -320,6 +322,7 @@ export class ReportDefinitionService {
         valueColumnKey: input.valueColumnKey,
         pivotColumnHeaderFormat: input.pivotColumnHeaderFormat,
         showVarianceColumn: input.showVarianceColumn ?? true,
+        rowInfoColumnKeys: (input.rowInfoColumnKeys || []) as any,
         groupByColumnKey: input.groupByColumnKey,
         showGroupSubtotals: input.showGroupSubtotals ?? true,
         groupOrder: (input.groupOrder || []) as any,
@@ -398,6 +401,7 @@ export class ReportDefinitionService {
         ...(input.pivotSortConfig !== undefined && { pivotSortConfig: input.pivotSortConfig as any }),
         // Accounting layout options
         ...(input.showVarianceColumn !== undefined && { showVarianceColumn: input.showVarianceColumn }),
+        ...(input.rowInfoColumnKeys !== undefined && { rowInfoColumnKeys: input.rowInfoColumnKeys as any }),
         ...(input.groupByColumnKey !== undefined && { groupByColumnKey: input.groupByColumnKey }),
         ...(input.showGroupSubtotals !== undefined && { showGroupSubtotals: input.showGroupSubtotals }),
         ...(input.groupOrder !== undefined && { groupOrder: input.groupOrder as any }),
@@ -476,6 +480,7 @@ export class ReportDefinitionService {
         pivotSortConfig: existing.pivotSortConfig as any,
         pivotColumnHeaderFormat: existing.pivotColumnHeaderFormat,
         showVarianceColumn: existing.showVarianceColumn,
+        rowInfoColumnKeys: existing.rowInfoColumnKeys as any,
         groupByColumnKey: existing.groupByColumnKey,
         showGroupSubtotals: existing.showGroupSubtotals,
         groupOrder: existing.groupOrder as any,

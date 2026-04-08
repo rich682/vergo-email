@@ -1402,6 +1402,10 @@ model ReportDefinition {
   // Accounting layout: whether to show the auto-generated variance column
   showVarianceColumn Boolean @default(true)
 
+  // Accounting layout: additional info columns shown alongside the row label (e.g., GL Account #)
+  // Array of database column keys
+  rowInfoColumnKeys Json @default("[]")
+
   // Accounting layout: group-by column key (column with dataType "group")
   groupByColumnKey String?
 

@@ -47,6 +47,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         pivotSortConfig?: any
         pivotColumnHeaderFormat?: string | null
         showVarianceColumn?: boolean
+        rowInfoColumnKeys?: string[]
         groupByColumnKey?: string | null
         showGroupSubtotals?: boolean
         groupOrder?: string[]

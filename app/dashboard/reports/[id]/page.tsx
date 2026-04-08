@@ -140,6 +140,7 @@ interface ReportDefinition {
   rowColumnKey: string | null
   valueColumnKey: string | null
   showVarianceColumn: boolean
+  rowInfoColumnKeys: string[]
   groupByColumnKey: string | null
   showGroupSubtotals: boolean
   groupOrder: string[]
@@ -246,6 +247,7 @@ export default function ReportBuilderPage() {
 
   // Editing state - Accounting layout
   const [showVarianceColumn, setShowVarianceColumn] = useState(true)
+  const [rowInfoColumnKeys, setRowInfoColumnKeys] = useState<string[]>([])
   const [groupByColumnKey, setGroupByColumnKey] = useState<string | null>(null)
   const [showGroupSubtotals, setShowGroupSubtotals] = useState(true)
   const [groupOrder, setGroupOrder] = useState<string[]>([])
@@ -303,6 +305,7 @@ export default function ReportBuilderPage() {
       setPivotColumnHeaderFormat(data.report.pivotColumnHeaderFormat || null)
       // Accounting layout state
       setShowVarianceColumn(data.report.showVarianceColumn !== false)
+      setRowInfoColumnKeys(data.report.rowInfoColumnKeys || [])
       setGroupByColumnKey(data.report.groupByColumnKey || null)
       setShowGroupSubtotals(data.report.showGroupSubtotals !== false)
       setGroupOrder(data.report.groupOrder || [])
@@ -409,6 +412,7 @@ export default function ReportBuilderPage() {
             pivotSortConfig,
             pivotColumnHeaderFormat,
             showVarianceColumn,
+            rowInfoColumnKeys,
             groupByColumnKey,
             showGroupSubtotals,
             groupOrder,
@@ -439,7 +443,7 @@ export default function ReportBuilderPage() {
     } finally {
       setPreviewLoading(false)
     }
-  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, groupByColumnKey, showGroupSubtotals, groupOrder, accountingFormulaRows, filterBindings])
+  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, rowInfoColumnKeys, groupByColumnKey, showGroupSubtotals, groupOrder, accountingFormulaRows, filterBindings])
 
   // Fetch preview when report loads or period/mode changes
   useEffect(() => {
@@ -499,6 +503,7 @@ export default function ReportBuilderPage() {
           pivotSortConfig,
           pivotColumnHeaderFormat,
           showVarianceColumn,
+          rowInfoColumnKeys,
           groupByColumnKey,
           showGroupSubtotals,
           groupOrder,
@@ -525,7 +530,7 @@ export default function ReportBuilderPage() {
     } finally {
       setSaving(false)
     }
-  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, groupByColumnKey, showGroupSubtotals, groupOrder, accountingFormulaRows, effectiveCompareMode, filterBindings])
+  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, rowInfoColumnKeys, groupByColumnKey, showGroupSubtotals, groupOrder, accountingFormulaRows, effectiveCompareMode, filterBindings])
 
   // Auto-save effect: debounce 1 second after changes
   useEffect(() => {
@@ -554,7 +559,7 @@ export default function ReportBuilderPage() {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, groupByColumnKey, showGroupSubtotals, groupOrder, accountingFormulaRows, effectiveCompareMode, filterBindings, handleSave, report])
+  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, rowInfoColumnKeys, groupByColumnKey, showGroupSubtotals, groupOrder, accountingFormulaRows, effectiveCompareMode, filterBindings, handleSave, report])
 
   // Toggle source column
   const toggleSourceColumn = (dbColumn: { key: string; label: string; dataType: string }) => {
@@ -728,6 +733,37 @@ export default function ReportBuilderPage() {
                       {databaseColumns.find(c => c.key === report.valueColumnKey)?.label || report.valueColumnKey || "—"}
                     </span>
                   </div>
+                  {/* Info Columns */}
+                  <div className="mt-2 pt-2 border-t border-gray-100 space-y-2">
+                    <span className="text-gray-500 text-sm">Info Columns</span>
+                    <p className="text-xs text-gray-400">
+                      Additional columns shown next to the row label (e.g., GL Account #)
+                    </p>
+                    <div className="space-y-1">
+                      {databaseColumns
+                        .filter(c => c.key !== report.rowColumnKey && c.key !== report.pivotColumnKey && c.key !== report.valueColumnKey && c.dataType !== "group")
+                        .map(col => {
+                          const isSelected = rowInfoColumnKeys.includes(col.key)
+                          return (
+                            <label key={col.key} className="flex items-center gap-2 text-xs cursor-pointer">
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={(checked) => {
+                                  if (checked) {
+                                    setRowInfoColumnKeys(prev => [...prev, col.key])
+                                  } else {
+                                    setRowInfoColumnKeys(prev => prev.filter(k => k !== col.key))
+                                  }
+                                  setHasUnsavedChanges(true)
+                                }}
+                              />
+                              <span className="text-gray-700">{col.label}</span>
+                            </label>
+                          )
+                        })}
+                    </div>
+                  </div>
+
                   <div className="flex items-center justify-between text-sm mt-2 pt-2 border-t border-gray-100">
                     <span className="text-gray-500">Variance Column</span>
                     <button
@@ -1615,7 +1651,7 @@ export default function ReportBuilderPage() {
             {/* Accounting layout info */}
             {report.layout === "accounting" && previewData && (
               <div className="text-xs text-gray-500">
-                All periods shown as columns with auto-generated variance
+                All periods shown as columns{showVarianceColumn ? " with auto-generated variance" : ""}
                 {previewData.diagnostics && (
                   <span> • {previewData.diagnostics.totalDatabaseRows.toLocaleString()} total rows</span>
                 )}
@@ -1708,6 +1744,16 @@ export default function ReportBuilderPage() {
                       const rowType = row._type as string | undefined
                       const rowBold = row._bold as boolean | undefined
                       const rowSeparator = row._separatorAbove as boolean | undefined
+
+                      // Spacer row: empty row for visual separation between groups
+                      if (rowType === "spacer") {
+                        return (
+                          <tr key={`spacer-${rowIndex}`} className="h-6">
+                            <td colSpan={previewData.table.columns.length} className="border-b border-gray-100"></td>
+                          </tr>
+                        )
+                      }
+
                       return (
                         <tr
                           key={`row-${row._label || rowIndex}`}

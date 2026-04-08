@@ -50,6 +50,7 @@ export interface ExecutePreviewInput {
     pivotSortConfig?: { type: string; direction: string; rowKey?: string } | null
     pivotColumnHeaderFormat?: string | null
     showVarianceColumn?: boolean
+    rowInfoColumnKeys?: string[]
     groupByColumnKey?: string | null
     showGroupSubtotals?: boolean
     groupOrder?: string[]
@@ -113,6 +114,7 @@ interface ReportWithConfig {
   pivotSortConfig?: { type: string; direction: string; rowKey?: string } | null
   pivotColumnHeaderFormat?: string | null
   showVarianceColumn?: boolean
+  rowInfoColumnKeys?: string[]
   groupByColumnKey?: string | null
   showGroupSubtotals?: boolean
   groupOrder?: string[]
@@ -161,6 +163,7 @@ export class ReportExecutionService {
       pivotSortConfig: liveConfig.pivotSortConfig !== undefined ? liveConfig.pivotSortConfig : (report as any).pivotSortConfig,
       pivotColumnHeaderFormat: liveConfig.pivotColumnHeaderFormat !== undefined ? liveConfig.pivotColumnHeaderFormat : (report as any).pivotColumnHeaderFormat,
       showVarianceColumn: liveConfig.showVarianceColumn !== undefined ? liveConfig.showVarianceColumn : (report as any).showVarianceColumn,
+      rowInfoColumnKeys: liveConfig.rowInfoColumnKeys !== undefined ? liveConfig.rowInfoColumnKeys : (report as any).rowInfoColumnKeys,
       groupByColumnKey: liveConfig.groupByColumnKey !== undefined ? liveConfig.groupByColumnKey : (report as any).groupByColumnKey,
       showGroupSubtotals: liveConfig.showGroupSubtotals !== undefined ? liveConfig.showGroupSubtotals : (report as any).showGroupSubtotals,
       groupOrder: liveConfig.groupOrder !== undefined ? liveConfig.groupOrder : (report as any).groupOrder,
@@ -759,11 +762,40 @@ export class ReportExecutionService {
       }
     }
 
+    // Row info columns (additional columns alongside the label, e.g., GL Account #)
+    const rowInfoColumnKeys = ((report as any).rowInfoColumnKeys || []) as string[]
+    // Build info lookup: { rowId: { colKey: value } } — take first occurrence
+    const rowInfoLookup: Record<string, Record<string, unknown>> = {}
+    if (rowInfoColumnKeys.length > 0) {
+      for (const row of allRows) {
+        const rowId = String(row[rowColumnKey] ?? "")
+        if (!rowId || rowInfoLookup[rowId]) continue
+        const info: Record<string, unknown> = {}
+        for (const ck of rowInfoColumnKeys) {
+          info[`_info_${ck}`] = row[ck] ?? null
+        }
+        rowInfoLookup[rowId] = info
+      }
+    }
+
+    // Get database schema for column labels
+    const dbSchema = ((report as any).database?.schema?.columns || []) as Array<{ key: string; label: string; dataType: string }>
+
     // Build table columns
     const showVariance = report.showVarianceColumn !== false
     const headerFormat = report.pivotColumnHeaderFormat
     const columns: TableColumn[] = [
       { key: "_label", label: "", dataType: "text", type: "source" },
+      // Info columns (after label, before pivot values)
+      ...rowInfoColumnKeys.map(ck => {
+        const colDef = dbSchema.find(c => c.key === ck)
+        return {
+          key: `_info_${ck}`,
+          label: colDef?.label || ck,
+          dataType: (colDef?.dataType || "text") as string,
+          type: "source" as const,
+        }
+      }),
       ...pivotValues.map(pv => ({
         key: pv,
         label: formatPivotColumnHeader(pv, headerFormat as any),
@@ -783,6 +815,8 @@ export class ReportExecutionService {
         _format: "currency",
         _bold: bold,
         _separatorAbove: separatorAbove,
+        // Add info column values
+        ...(rowInfoLookup[rowId] || {}),
       }
       for (const pv of pivotValues) {
         row[pv] = lookup[rowId]?.[pv] ?? null
@@ -846,8 +880,22 @@ export class ReportExecutionService {
 
       dataRows = []
 
+      let isFirstGroup = true
       for (const groupName of orderedGroups) {
         const rowIds = groupRowIds[groupName] || []
+
+        // Spacer row between groups (not before the first one)
+        if (!isFirstGroup) {
+          const spacerRow: Record<string, unknown> = {
+            _label: "",
+            _format: "text",
+            _type: "spacer",
+          }
+          for (const pv of pivotValues) spacerRow[pv] = null
+          if (showVariance) spacerRow["_variance"] = null
+          dataRows.push(spacerRow)
+        }
+        isFirstGroup = false
 
         // Section header row
         const headerRow: Record<string, unknown> = {
