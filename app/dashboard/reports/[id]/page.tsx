@@ -127,6 +127,8 @@ interface ReportDefinition {
   // Accounting layout fields
   rowColumnKey: string | null
   valueColumnKey: string | null
+  // Pivot/accounting column header format
+  pivotColumnHeaderFormat: string | null
   // Filter configuration
   filterColumnKeys: string[]
   filterBindings: Record<string, string[]> | null
@@ -223,6 +225,7 @@ export default function ReportBuilderPage() {
   const [metricRows, setMetricRows] = useState<MetricRow[]>([])
   const [pivotFormulaColumns, setPivotFormulaColumns] = useState<PivotFormulaColumn[]>([])
   const [pivotSortConfig, setPivotSortConfig] = useState<{ type: string; direction: string; rowKey?: string } | null>(null)
+  const [pivotColumnHeaderFormat, setPivotColumnHeaderFormat] = useState<string | null>(null)
 
   // Filter configuration - baked-in filter values
   const [filterBindings, setFilterBindings] = useState<FilterBindings>({})
@@ -271,6 +274,7 @@ export default function ReportBuilderPage() {
       setMetricRows(data.report.metricRows || [])
       setPivotFormulaColumns(data.report.pivotFormulaColumns || [])
       setPivotSortConfig(data.report.pivotSortConfig || null)
+      setPivotColumnHeaderFormat(data.report.pivotColumnHeaderFormat || null)
       // Variance state
       setCompareMode(data.report.compareMode || "none")
       // Filter configuration
@@ -371,6 +375,7 @@ export default function ReportBuilderPage() {
             metricRows,
             pivotFormulaColumns,
             pivotSortConfig,
+            pivotColumnHeaderFormat,
           },
           // Apply active filters to preview (only include keys with non-empty value arrays)
           filters: (() => {
@@ -397,7 +402,7 @@ export default function ReportBuilderPage() {
     } finally {
       setPreviewLoading(false)
     }
-  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, filterBindings])
+  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, filterBindings])
 
   // Fetch preview when report loads or period/mode changes
   useEffect(() => {
@@ -455,6 +460,7 @@ export default function ReportBuilderPage() {
           metricRows,
           pivotFormulaColumns,
           pivotSortConfig,
+          pivotColumnHeaderFormat,
           // Variance settings - use effectiveCompareMode to ensure comparison rows work
           compareMode: effectiveCompareMode,
           // Filter configuration — derive filterColumnKeys from filterBindings
@@ -477,7 +483,7 @@ export default function ReportBuilderPage() {
     } finally {
       setSaving(false)
     }
-  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, effectiveCompareMode, filterBindings])
+  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, effectiveCompareMode, filterBindings])
 
   // Auto-save effect: debounce 1 second after changes
   useEffect(() => {
@@ -506,7 +512,7 @@ export default function ReportBuilderPage() {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, effectiveCompareMode, filterBindings, handleSave, report])
+  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, effectiveCompareMode, filterBindings, handleSave, report])
 
   // Toggle source column
   const toggleSourceColumn = (dbColumn: { key: string; label: string; dataType: string }) => {
@@ -862,6 +868,38 @@ export default function ReportBuilderPage() {
                       </Select>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* === COLUMN HEADER FORMAT (pivot + accounting only) === */}
+            {(report.layout === "pivot" || report.layout === "accounting") && (
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="px-3 py-2.5 bg-gray-50 flex items-center gap-2">
+                  <span className="font-medium text-sm text-gray-700">Column Header Format</span>
+                </div>
+                <div className="p-3 space-y-1">
+                  <p className="text-xs text-gray-400 mb-2">
+                    Format date values in column headers (e.g., show &quot;Jan-26&quot; instead of &quot;2026-01-31&quot;)
+                  </p>
+                  <Select
+                    value={pivotColumnHeaderFormat || "raw"}
+                    onValueChange={(value) => {
+                      setPivotColumnHeaderFormat(value === "raw" ? null : value)
+                      setHasUnsavedChanges(true)
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="raw">Raw (as-is)</SelectItem>
+                      <SelectItem value="month-year">January 2026</SelectItem>
+                      <SelectItem value="mon-yy">Jan-26</SelectItem>
+                      <SelectItem value="mon-yyyy">Jan-2026</SelectItem>
+                      <SelectItem value="yyyy-mm">2026-01</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             )}

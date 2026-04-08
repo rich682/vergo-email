@@ -13,6 +13,7 @@ import {
   labelForPeriodKey,
   resolveComparePeriod,
   getPeriodsFromRows,
+  formatPivotColumnHeader,
 } from "@/lib/utils/period"
 import {
   evaluateSafeExpression,
@@ -46,6 +47,7 @@ export interface ExecutePreviewInput {
     metricRows?: MetricRow[]
     pivotFormulaColumns?: PivotFormulaColumn[]  // Formula columns for pivot layout
     pivotSortConfig?: { type: string; direction: string; rowKey?: string } | null
+    pivotColumnHeaderFormat?: string | null
   }
   filters?: Record<string, string[]>  // Optional - column-value filters
 }
@@ -103,6 +105,7 @@ interface ReportWithConfig {
   layout: "standard" | "pivot" | "accounting"
   compareMode?: "none" | "mom" | "yoy"
   pivotSortConfig?: { type: string; direction: string; rowKey?: string } | null
+  pivotColumnHeaderFormat?: string | null
 }
 
 // ============================================
@@ -145,6 +148,7 @@ export class ReportExecutionService {
       metricRows: liveConfig.metricRows ?? report.metricRows,
       pivotFormulaColumns: liveConfig.pivotFormulaColumns ?? report.pivotFormulaColumns,
       pivotSortConfig: liveConfig.pivotSortConfig !== undefined ? liveConfig.pivotSortConfig : (report as any).pivotSortConfig,
+      pivotColumnHeaderFormat: liveConfig.pivotColumnHeaderFormat !== undefined ? liveConfig.pivotColumnHeaderFormat : (report as any).pivotColumnHeaderFormat,
     } : report
 
     const cadence = report.cadence as ReportCadence
@@ -587,11 +591,12 @@ export class ReportExecutionService {
     pivotValues = this.sortPivotValues(pivotValues, sortConfig, metricValuesByPivot)
 
     // Build columns: first is label column, rest are sorted pivot values
+    const pivotHeaderFormat = report.pivotColumnHeaderFormat
     const columns: TableColumn[] = [
       { key: "_label", label: "", dataType: "text", type: "source" },
       ...pivotValues.map(pv => ({
         key: pv,
-        label: pivotLabelByKey[pv] || pv,
+        label: formatPivotColumnHeader(pivotLabelByKey[pv] || pv, pivotHeaderFormat as any),
         dataType: "number" as const,
         type: "source" as const,
       }))
@@ -738,11 +743,12 @@ export class ReportExecutionService {
     }
 
     // Build table columns: [_label, ...pivotValues, _variance]
+    const headerFormat = report.pivotColumnHeaderFormat
     const columns: TableColumn[] = [
       { key: "_label", label: "", dataType: "text", type: "source" },
       ...pivotValues.map(pv => ({
         key: pv,
-        label: pv,
+        label: formatPivotColumnHeader(pv, headerFormat as any),
         dataType: "currency" as const,
         type: "source" as const,
       })),

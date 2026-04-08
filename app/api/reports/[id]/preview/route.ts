@@ -45,6 +45,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         metricRows?: any[]
         pivotFormulaColumns?: any[]
         pivotSortConfig?: any
+        pivotColumnHeaderFormat?: string | null
       }
       filters?: Record<string, unknown>
       taskInstanceId?: string

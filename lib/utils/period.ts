@@ -244,6 +244,71 @@ const MONTH_NAMES = [
 ]
 
 // ============================================
+// Pivot Column Header Formatting
+// ============================================
+
+export type PivotColumnHeaderFormat = "raw" | "month-year" | "mon-yy" | "mon-yyyy" | "yyyy-mm"
+
+const SHORT_MONTH_NAMES = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+]
+
+/**
+ * Format a raw pivot column value (typically a date string) for display as a column header.
+ * Parses various date formats (ISO dates, YYYY-MM, etc.) and outputs in the chosen format.
+ * Returns the raw value if parsing fails or format is "raw".
+ */
+export function formatPivotColumnHeader(rawValue: string, format: PivotColumnHeaderFormat | null | undefined): string {
+  if (!format || format === "raw") return rawValue
+
+  // Try to extract year and month from the raw value
+  let year: number | null = null
+  let month: number | null = null
+
+  // ISO date: 2026-01-31 or 2026-01-31T...
+  const isoMatch = rawValue.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (isoMatch) {
+    year = parseInt(isoMatch[1])
+    month = parseInt(isoMatch[2])
+  }
+
+  // YYYY-MM format: 2026-01
+  if (!year) {
+    const ymMatch = rawValue.match(/^(\d{4})-(\d{2})$/)
+    if (ymMatch) {
+      year = parseInt(ymMatch[1])
+      month = parseInt(ymMatch[2])
+    }
+  }
+
+  // M/D/YY or MM/DD/YY format: 1/31/26
+  if (!year) {
+    const slashMatch = rawValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/)
+    if (slashMatch) {
+      month = parseInt(slashMatch[1])
+      const yr = parseInt(slashMatch[3])
+      year = yr < 100 ? 2000 + yr : yr
+    }
+  }
+
+  if (!year || !month || month < 1 || month > 12) return rawValue
+
+  switch (format) {
+    case "month-year":
+      return `${MONTH_NAMES[month - 1]} ${year}`
+    case "mon-yy":
+      return `${SHORT_MONTH_NAMES[month - 1]}-${String(year % 100).padStart(2, "0")}`
+    case "mon-yyyy":
+      return `${SHORT_MONTH_NAMES[month - 1]}-${year}`
+    case "yyyy-mm":
+      return `${year}-${String(month).padStart(2, "0")}`
+    default:
+      return rawValue
+  }
+}
+
+// ============================================
 // Flexible Period Parsing (User-Friendly Formats)
 // ============================================
 

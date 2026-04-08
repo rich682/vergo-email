@@ -95,6 +95,8 @@ export interface CreateReportDefinitionInput {
   // Accounting layout fields
   rowColumnKey?: string
   valueColumnKey?: string
+  // Pivot/accounting column header format
+  pivotColumnHeaderFormat?: string
   organizationId: string
   createdById: string
 }
@@ -121,6 +123,8 @@ export interface UpdateReportDefinitionInput {
   filterBindings?: Record<string, string[]> | null
   // Pivot column sorting: { type: "alphabetical"|"by_row", direction: "asc"|"desc", rowKey?: string }
   pivotSortConfig?: { type: string; direction: string; rowKey?: string } | null
+  // Pivot/accounting column header format
+  pivotColumnHeaderFormat?: string | null
   // Configuration fields (editable after creation)
   dateColumnKey?: string
   databaseId?: string
@@ -294,6 +298,7 @@ export class ReportDefinitionService {
         pivotColumnKey: input.pivotColumnKey,
         rowColumnKey: input.rowColumnKey,
         valueColumnKey: input.valueColumnKey,
+        pivotColumnHeaderFormat: input.pivotColumnHeaderFormat,
         metricRows: (input.metricRows || []) as any,
         pivotFormulaColumns: (input.pivotFormulaColumns || []) as any,
         createdById: input.createdById,
@@ -366,6 +371,8 @@ export class ReportDefinitionService {
         ...(input.filterBindings !== undefined && { filterBindings: input.filterBindings as any }),
         // Pivot column sorting
         ...(input.pivotSortConfig !== undefined && { pivotSortConfig: input.pivotSortConfig as any }),
+        // Pivot/accounting column header format
+        ...(input.pivotColumnHeaderFormat !== undefined && { pivotColumnHeaderFormat: input.pivotColumnHeaderFormat }),
         // Configuration fields
         ...(input.dateColumnKey !== undefined && { dateColumnKey: input.dateColumnKey }),
         ...(input.databaseId !== undefined && { databaseId: input.databaseId }),
@@ -436,6 +443,7 @@ export class ReportDefinitionService {
         filterColumnKeys: existing.filterColumnKeys as any,
         filterBindings: existing.filterBindings as any,
         pivotSortConfig: existing.pivotSortConfig as any,
+        pivotColumnHeaderFormat: existing.pivotColumnHeaderFormat,
         createdById,
       },
       include: {
