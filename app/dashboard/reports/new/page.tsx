@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { usePermissions } from "@/components/permissions-context"
 import Link from "next/link"
-import { ArrowLeft, Database, Loader2, Calendar } from "lucide-react"
+import { ArrowLeft, Database, Loader2, Calendar, LayoutGrid, Table2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -23,6 +23,23 @@ const CADENCE_OPTIONS = [
   { value: "monthly", label: "Monthly" },
   { value: "quarterly", label: "Quarterly" },
   { value: "annual", label: "Annual" },
+]
+
+type ReportLayout = "pivot" | "accounting"
+
+const LAYOUT_OPTIONS: Array<{ value: ReportLayout; label: string; description: string; icon: typeof LayoutGrid }> = [
+  {
+    value: "pivot",
+    label: "Pivot",
+    description: "Each data row becomes a column. Good for comparing entities side by side.",
+    icon: LayoutGrid,
+  },
+  {
+    value: "accounting",
+    label: "Accounting",
+    description: "Row labels down the left, time periods across the top. Ideal for P&L, balance sheets.",
+    icon: Table2,
+  },
 ]
 
 export default function NewReportPage() {
@@ -46,8 +63,12 @@ export default function NewReportPage() {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [cadence, setCadence] = useState("monthly")
+  const [layout, setLayout] = useState<ReportLayout>("pivot")
   const [databaseId, setDatabaseId] = useState("")
   const [pivotColumnKey, setPivotColumnKey] = useState("")
+  // Accounting layout fields
+  const [rowColumnKey, setRowColumnKey] = useState("")
+  const [valueColumnKey, setValueColumnKey] = useState("")
 
   // Database detail state (for getting columns)
   const [databaseDetail, setDatabaseDetail] = useState<DatabaseDetail | null>(null)
@@ -117,10 +138,19 @@ export default function NewReportPage() {
     if (databaseId) {
       fetchDatabaseDetail(databaseId)
       setPivotColumnKey("")
+      setRowColumnKey("")
+      setValueColumnKey("")
     } else {
       setDatabaseDetail(null)
     }
   }, [databaseId, fetchDatabaseDetail])
+
+  // Reset column selections when layout changes
+  useEffect(() => {
+    setPivotColumnKey("")
+    setRowColumnKey("")
+    setValueColumnKey("")
+  }, [layout])
 
   const handleCreate = async () => {
     if (!name.trim()) {
@@ -136,7 +166,15 @@ export default function NewReportPage() {
       return
     }
     if (!pivotColumnKey) {
-      setError("Please select a column")
+      setError(layout === "accounting" ? "Please select a period column" : "Please select a column")
+      return
+    }
+    if (layout === "accounting" && !rowColumnKey) {
+      setError("Please select a row column")
+      return
+    }
+    if (layout === "accounting" && !valueColumnKey) {
+      setError("Please select a value column")
       return
     }
 
@@ -144,47 +182,76 @@ export default function NewReportPage() {
     setError(null)
 
     try {
-      // Auto-populate metric rows from database columns
       const dbColumns = databaseDetail?.schema?.columns || []
-      const formatMap: Record<string, "text" | "number" | "currency" | "percent"> = {
-        text: "text",
-        number: "number",
-        currency: "currency",
-        date: "text",
-        boolean: "text",
-      }
-      const autoMetricRows = dbColumns.map((col: DatabaseColumn, index: number) => ({
-        key: `metric_${col.key}`,
-        label: col.label,
-        type: "source" as const,
-        sourceColumnKey: col.key,
-        format: formatMap[col.dataType] || "number",
-        order: index,
-      }))
 
-      const response = await fetch("/api/reports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim() || undefined,
-          cadence,
-          layout: "pivot",
-          databaseId,
-          dateColumnKey: pivotColumnKey, // Default date column to pivot column; user can change in settings
-          pivotColumnKey,
-          metricRows: autoMetricRows,
-        }),
-      })
+      if (layout === "accounting") {
+        // Accounting layout: row column, period column, value column
+        const response = await fetch("/api/reports", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            name: name.trim(),
+            description: description.trim() || undefined,
+            cadence,
+            layout: "accounting",
+            databaseId,
+            dateColumnKey: pivotColumnKey,
+            pivotColumnKey,
+            rowColumnKey,
+            valueColumnKey,
+          }),
+        })
 
-      if (!response.ok) {
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || "Failed to create report")
+        }
+
         const data = await response.json()
-        throw new Error(data.error || "Failed to create report")
-      }
+        router.push(`/dashboard/reports/${data.report.id}`)
+      } else {
+        // Pivot layout: auto-populate metric rows from database columns
+        const formatMap: Record<string, "text" | "number" | "currency" | "percent"> = {
+          text: "text",
+          number: "number",
+          currency: "currency",
+          date: "text",
+          boolean: "text",
+        }
+        const autoMetricRows = dbColumns.map((col: DatabaseColumn, index: number) => ({
+          key: `metric_${col.key}`,
+          label: col.label,
+          type: "source" as const,
+          sourceColumnKey: col.key,
+          format: formatMap[col.dataType] || "number",
+          order: index,
+        }))
 
-      const data = await response.json()
-      router.push(`/dashboard/reports/${data.report.id}`)
+        const response = await fetch("/api/reports", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            name: name.trim(),
+            description: description.trim() || undefined,
+            cadence,
+            layout: "pivot",
+            databaseId,
+            dateColumnKey: pivotColumnKey,
+            pivotColumnKey,
+            metricRows: autoMetricRows,
+          }),
+        })
+
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || "Failed to create report")
+        }
+
+        const data = await response.json()
+        router.push(`/dashboard/reports/${data.report.id}`)
+      }
     } catch (err: any) {
       setError(err.message || "Failed to create report")
       setCreating(false)
@@ -194,7 +261,9 @@ export default function NewReportPage() {
   const selectedDatabase = databases.find(db => db.id === databaseId)
   const databaseColumns = databaseDetail?.schema?.columns || []
 
-  const isFormValid = name.trim() && cadence && databaseId && pivotColumnKey
+  const isFormValid = layout === "accounting"
+    ? name.trim() && cadence && databaseId && pivotColumnKey && rowColumnKey && valueColumnKey
+    : name.trim() && cadence && databaseId && pivotColumnKey
 
   return (
     <div className="min-h-screen bg-white">
@@ -243,6 +312,39 @@ export default function NewReportPage() {
                 placeholder="Optional description of what this report shows..."
                 rows={3}
               />
+            </div>
+
+            {/* Layout Selection */}
+            <div className="space-y-2">
+              <Label>Report Layout *</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {LAYOUT_OPTIONS.map((option) => {
+                  const Icon = option.icon
+                  const isSelected = layout === option.value
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setLayout(option.value)}
+                      className={`p-4 rounded-lg border-2 text-left transition-colors ${
+                        isSelected
+                          ? "border-orange-500 bg-orange-50"
+                          : "border-gray-200 hover:border-gray-300 bg-white"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <Icon className={`w-4 h-4 ${isSelected ? "text-orange-600" : "text-gray-400"}`} />
+                        <span className={`text-sm font-medium ${isSelected ? "text-orange-900" : "text-gray-700"}`}>
+                          {option.label}
+                        </span>
+                      </div>
+                      <p className={`text-xs ${isSelected ? "text-orange-700" : "text-gray-500"}`}>
+                        {option.description}
+                      </p>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
             {/* Cadence Selection - only shown when Advanced Board Types is enabled */}
@@ -317,40 +419,137 @@ export default function NewReportPage() {
               )}
             </div>
 
-            {/* Column Selection */}
+            {/* Column Selection - varies by layout */}
             {databaseId && (
-              <div className="space-y-2">
-                <Label>Column *</Label>
-                <p className="text-xs text-gray-500 mb-2">
-                  Column whose unique values become column headers (e.g., Project Name, Period)
-                </p>
-                {loadingDatabaseDetail ? (
-                  <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Loading columns...
-                  </div>
-                ) : databaseColumns.length === 0 ? (
-                  <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200 text-sm text-yellow-700">
-                    No columns found in the selected database.
-                  </div>
+              <>
+                {layout === "accounting" ? (
+                  <>
+                    {/* Accounting: Row Column */}
+                    <div className="space-y-2">
+                      <Label>Row Column *</Label>
+                      <p className="text-xs text-gray-500 mb-2">
+                        Column that identifies each row (e.g., GL Account Name)
+                      </p>
+                      {loadingDatabaseDetail ? (
+                        <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Loading columns...
+                        </div>
+                      ) : (
+                        <Select value={rowColumnKey} onValueChange={setRowColumnKey}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select row column..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {databaseColumns.map((col) => (
+                              <SelectItem key={col.key} value={col.key}>
+                                <div className="flex items-center gap-2">
+                                  <span>{col.label}</span>
+                                  <span className="text-xs text-gray-400">({col.dataType})</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+
+                    {/* Accounting: Period Column */}
+                    <div className="space-y-2">
+                      <Label>Period Column *</Label>
+                      <p className="text-xs text-gray-500 mb-2">
+                        Date column whose unique values become column headers (e.g., Month)
+                      </p>
+                      {loadingDatabaseDetail ? (
+                        <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Loading columns...
+                        </div>
+                      ) : (
+                        <Select value={pivotColumnKey} onValueChange={setPivotColumnKey}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select period column..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {databaseColumns.map((col) => (
+                              <SelectItem key={col.key} value={col.key}>
+                                <div className="flex items-center gap-2">
+                                  <span>{col.label}</span>
+                                  <span className="text-xs text-gray-400">({col.dataType})</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+
+                    {/* Accounting: Value Column */}
+                    <div className="space-y-2">
+                      <Label>Value Column *</Label>
+                      <p className="text-xs text-gray-500 mb-2">
+                        Numeric column providing cell values (e.g., Amount, Balance)
+                      </p>
+                      {loadingDatabaseDetail ? (
+                        <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Loading columns...
+                        </div>
+                      ) : (
+                        <Select value={valueColumnKey} onValueChange={setValueColumnKey}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select value column..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {databaseColumns.map((col) => (
+                              <SelectItem key={col.key} value={col.key}>
+                                <div className="flex items-center gap-2">
+                                  <span>{col.label}</span>
+                                  <span className="text-xs text-gray-400">({col.dataType})</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  </>
                 ) : (
-                  <Select value={pivotColumnKey} onValueChange={setPivotColumnKey}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a column..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {databaseColumns.map((col) => (
-                        <SelectItem key={col.key} value={col.key}>
-                          <div className="flex items-center gap-2">
-                            <span>{col.label}</span>
-                            <span className="text-xs text-gray-400">({col.dataType})</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  /* Pivot: single column selection */
+                  <div className="space-y-2">
+                    <Label>Column *</Label>
+                    <p className="text-xs text-gray-500 mb-2">
+                      Column whose unique values become column headers (e.g., Project Name, Period)
+                    </p>
+                    {loadingDatabaseDetail ? (
+                      <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Loading columns...
+                      </div>
+                    ) : databaseColumns.length === 0 ? (
+                      <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200 text-sm text-yellow-700">
+                        No columns found in the selected database.
+                      </div>
+                    ) : (
+                      <Select value={pivotColumnKey} onValueChange={setPivotColumnKey}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a column..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {databaseColumns.map((col) => (
+                            <SelectItem key={col.key} value={col.key}>
+                              <div className="flex items-center gap-2">
+                                <span>{col.label}</span>
+                                <span className="text-xs text-gray-400">({col.dataType})</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
                 )}
-              </div>
+              </>
             )}
 
             {/* Summary */}
@@ -365,7 +564,14 @@ export default function NewReportPage() {
                     <p className="text-xs text-blue-700 mt-0.5">
                       {selectedDatabase.rowCount.toLocaleString()} rows
                       {cadence && ` • ${CADENCE_OPTIONS.find(o => o.value === cadence)?.label}`}
-                      {" "}• Column: {databaseColumns.find(c => c.key === pivotColumnKey)?.label || pivotColumnKey}
+                      {" "}• {LAYOUT_OPTIONS.find(o => o.value === layout)?.label} layout
+                      {layout === "accounting" && rowColumnKey && (
+                        <> • Rows: {databaseColumns.find(c => c.key === rowColumnKey)?.label || rowColumnKey}</>
+                      )}
+                      {" "}• {layout === "accounting" ? "Period" : "Column"}: {databaseColumns.find(c => c.key === pivotColumnKey)?.label || pivotColumnKey}
+                      {layout === "accounting" && valueColumnKey && (
+                        <> • Values: {databaseColumns.find(c => c.key === valueColumnKey)?.label || valueColumnKey}</>
+                      )}
                     </p>
                   </div>
                 </div>
