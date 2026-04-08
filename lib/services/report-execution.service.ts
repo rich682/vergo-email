@@ -29,6 +29,7 @@ import type {
   ReportFormulaRow,
   MetricRow,
   PivotFormulaColumn,
+  AccountingRow,
 } from "./report-definition.service"
 
 // ============================================
@@ -48,6 +49,8 @@ export interface ExecutePreviewInput {
     pivotFormulaColumns?: PivotFormulaColumn[]  // Formula columns for pivot layout
     pivotSortConfig?: { type: string; direction: string; rowKey?: string } | null
     pivotColumnHeaderFormat?: string | null
+    showVarianceColumn?: boolean
+    accountingRows?: AccountingRow[]
   }
   filters?: Record<string, string[]>  // Optional - column-value filters
 }
@@ -106,6 +109,8 @@ interface ReportWithConfig {
   compareMode?: "none" | "mom" | "yoy"
   pivotSortConfig?: { type: string; direction: string; rowKey?: string } | null
   pivotColumnHeaderFormat?: string | null
+  showVarianceColumn?: boolean
+  accountingRows?: AccountingRow[]
 }
 
 // ============================================
@@ -149,6 +154,8 @@ export class ReportExecutionService {
       pivotFormulaColumns: liveConfig.pivotFormulaColumns ?? report.pivotFormulaColumns,
       pivotSortConfig: liveConfig.pivotSortConfig !== undefined ? liveConfig.pivotSortConfig : (report as any).pivotSortConfig,
       pivotColumnHeaderFormat: liveConfig.pivotColumnHeaderFormat !== undefined ? liveConfig.pivotColumnHeaderFormat : (report as any).pivotColumnHeaderFormat,
+      showVarianceColumn: liveConfig.showVarianceColumn !== undefined ? liveConfig.showVarianceColumn : (report as any).showVarianceColumn,
+      accountingRows: liveConfig.accountingRows !== undefined ? liveConfig.accountingRows : (report as any).accountingRows,
     } : report
 
     const cadence = report.cadence as ReportCadence
@@ -672,7 +679,8 @@ export class ReportExecutionService {
    * Row column = identifies each row (e.g., Account Name)
    * Pivot column = values become column headers (e.g., as_of_date → "2026-01-31", "2026-02-28")
    * Value column = cell values (e.g., Current Balance)
-   * Auto-generated Variance column (last - first)
+   * Optional variance column (last - first)
+   * Optional accountingRows config for custom row ordering, sections, and formulas
    */
   private static evaluateAccountingLayout(
     report: ReportWithConfig,
@@ -742,7 +750,8 @@ export class ReportExecutionService {
       }
     }
 
-    // Build table columns: [_label, ...pivotValues, _variance]
+    // Build table columns
+    const showVariance = report.showVarianceColumn !== false
     const headerFormat = report.pivotColumnHeaderFormat
     const columns: TableColumn[] = [
       { key: "_label", label: "", dataType: "text", type: "source" },
@@ -752,40 +761,153 @@ export class ReportExecutionService {
         dataType: "currency" as const,
         type: "source" as const,
       })),
-      { key: "_variance", label: "Variance", dataType: "currency", type: "formula" },
     ]
 
-    // Build data rows: one per unique row identifier
-    const dataRows = rowIdOrder.map(rowId => {
-      const row: Record<string, unknown> = {
-        _label: rowId,
-        _format: "currency",
-      }
+    if (showVariance) {
+      columns.push({ key: "_variance", label: "Variance", dataType: "currency", type: "formula" })
+    }
 
-      for (const pv of pivotValues) {
-        row[pv] = lookup[rowId][pv] ?? null
-      }
+    // Check if we have custom accountingRows configuration
+    const accountingRows = ((report as any).accountingRows || []) as AccountingRow[]
+    const hasCustomRows = accountingRows.length > 0
 
-      // Variance = last pivot value - first pivot value
-      const firstVal = lookup[rowId][pivotValues[0]]
-      const lastVal = lookup[rowId][pivotValues[pivotValues.length - 1]]
-      if (firstVal !== null && firstVal !== undefined && lastVal !== null && lastVal !== undefined) {
-        row["_variance"] = Math.round((lastVal - firstVal) * 100) / 100
-      } else {
-        row["_variance"] = null
-      }
+    // Build data rows
+    let dataRows: Array<Record<string, unknown>>
 
-      return row
-    })
+    if (hasCustomRows) {
+      // Custom row configuration: use accountingRows for ordering, sections, formulas
+      const sortedAccountingRows = [...accountingRows].sort((a, b) => a.order - b.order)
+
+      // First pass: build source row data and collect computed values for formula references
+      const computedRowValues: Record<string, Record<string, number | null>> = {}
+
+      dataRows = []
+
+      for (const acctRow of sortedAccountingRows) {
+        if (acctRow.type === "section") {
+          // Section header: display-only row with no data values
+          const row: Record<string, unknown> = {
+            _label: acctRow.label,
+            _format: "text",
+            _type: "section",
+            _bold: acctRow.isBold !== false, // sections are bold by default
+            _separatorAbove: acctRow.separatorAbove || false,
+          }
+          for (const pv of pivotValues) {
+            row[pv] = null
+          }
+          if (showVariance) row["_variance"] = null
+          dataRows.push(row)
+        } else if (acctRow.type === "source") {
+          // Source row: maps to a data row via sourceRowId
+          const sourceId = acctRow.sourceRowId || ""
+          const row: Record<string, unknown> = {
+            _label: acctRow.label || sourceId,
+            _format: acctRow.format || "currency",
+            _bold: acctRow.isBold || false,
+            _separatorAbove: acctRow.separatorAbove || false,
+          }
+
+          const rowValues: Record<string, number | null> = {}
+          for (const pv of pivotValues) {
+            const val = lookup[sourceId]?.[pv] ?? null
+            row[pv] = val
+            rowValues[pv] = val
+          }
+
+          // Variance
+          if (showVariance) {
+            const firstVal = lookup[sourceId]?.[pivotValues[0]]
+            const lastVal = lookup[sourceId]?.[pivotValues[pivotValues.length - 1]]
+            if (firstVal != null && lastVal != null) {
+              row["_variance"] = Math.round((lastVal - firstVal) * 100) / 100
+            } else {
+              row["_variance"] = null
+            }
+          }
+
+          computedRowValues[acctRow.key] = rowValues
+          dataRows.push(row)
+        } else if (acctRow.type === "formula") {
+          // Formula row: compute expression referencing other row keys
+          const row: Record<string, unknown> = {
+            _label: acctRow.label,
+            _format: acctRow.format || "currency",
+            _type: "formula",
+            _bold: acctRow.isBold !== false, // formulas are bold by default
+            _separatorAbove: acctRow.separatorAbove || false,
+          }
+
+          const rowValues: Record<string, number | null> = {}
+          for (const pv of pivotValues) {
+            // Build context from previously computed row values for this pivot column
+            const context: Record<string, number> = {}
+            for (const [key, vals] of Object.entries(computedRowValues)) {
+              if (vals[pv] != null) {
+                context[key] = vals[pv]!
+              }
+            }
+
+            try {
+              const result = evaluateSafeExpression(acctRow.expression || "0", context)
+              const num = typeof result === "number" && !isNaN(result) ? Math.round(result * 100) / 100 : null
+              row[pv] = num
+              rowValues[pv] = num
+            } catch {
+              row[pv] = null
+              rowValues[pv] = null
+            }
+          }
+
+          // Variance for formula rows
+          if (showVariance) {
+            const firstVal = rowValues[pivotValues[0]]
+            const lastVal = rowValues[pivotValues[pivotValues.length - 1]]
+            if (firstVal != null && lastVal != null) {
+              row["_variance"] = Math.round((lastVal - firstVal) * 100) / 100
+            } else {
+              row["_variance"] = null
+            }
+          }
+
+          computedRowValues[acctRow.key] = rowValues
+          dataRows.push(row)
+        }
+      }
+    } else {
+      // Default behavior: auto-discover rows from data
+      dataRows = rowIdOrder.map(rowId => {
+        const row: Record<string, unknown> = {
+          _label: rowId,
+          _format: "currency",
+        }
+
+        for (const pv of pivotValues) {
+          row[pv] = lookup[rowId][pv] ?? null
+        }
+
+        if (showVariance) {
+          const firstVal = lookup[rowId][pivotValues[0]]
+          const lastVal = lookup[rowId][pivotValues[pivotValues.length - 1]]
+          if (firstVal != null && lastVal != null) {
+            row["_variance"] = Math.round((lastVal - firstVal) * 100) / 100
+          } else {
+            row["_variance"] = null
+          }
+        }
+
+        return row
+      })
+    }
 
     // Apply pivotFormulaColumns if any (reuse existing evaluatePivotFormulaColumn)
     const pivotFormulaColumns = (report.pivotFormulaColumns || []) as PivotFormulaColumn[]
     const sortedFormulaColumns = [...pivotFormulaColumns].sort((a, b) => a.order - b.order)
 
-    // Add formula columns to output columns (before variance)
+    // Add formula columns to output columns (before variance if present)
+    const insertIdx = showVariance ? columns.length - 1 : columns.length
     for (const fc of sortedFormulaColumns) {
-      // Insert before the variance column
-      columns.splice(columns.length - 1, 0, {
+      columns.splice(insertIdx, 0, {
         key: fc.key,
         label: fc.label,
         dataType: "currency",
@@ -793,8 +915,9 @@ export class ReportExecutionService {
       })
     }
 
-    // Compute formula column values for each row
+    // Compute formula column values for each data row (skip section rows)
     for (const row of dataRows) {
+      if (row._type === "section") continue
       for (const fc of sortedFormulaColumns) {
         row[fc.key] = this.evaluatePivotFormulaColumn(fc.expression, row, pivotValues)
       }

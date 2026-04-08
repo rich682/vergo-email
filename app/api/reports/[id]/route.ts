@@ -62,7 +62,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json()
-    const { name, description, cadence, layout, compareMode, columns, formulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, filterColumnKeys, filterBindings, rowColumnKey, valueColumnKey, pivotSortConfig, pivotColumnHeaderFormat, dateColumnKey, databaseId } = body
+    const { name, description, cadence, layout, compareMode, columns, formulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, filterColumnKeys, filterBindings, rowColumnKey, valueColumnKey, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, accountingRows, dateColumnKey, databaseId } = body
 
     // Check for duplicate name if name is being updated
     if (name && typeof name === "string" && name.trim()) {
@@ -103,6 +103,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         filterBindings: filterBindings as Record<string, string[]> | null | undefined,
         pivotSortConfig,
         pivotColumnHeaderFormat,
+        showVarianceColumn,
+        accountingRows,
         dateColumnKey,
         databaseId,
       }

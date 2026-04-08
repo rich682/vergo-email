@@ -68,6 +68,19 @@ export interface PivotFormulaColumn {
   order: number                  // Position after auto-generated pivot columns
 }
 
+// Accounting layout row configuration
+export interface AccountingRow {
+  key: string
+  label: string
+  type: "source" | "section" | "formula"
+  sourceRowId?: string       // For "source": matches the unique value from rowColumnKey
+  expression?: string        // For "formula": references other row keys e.g. [row1] + [row2]
+  format?: "text" | "currency"
+  order: number
+  isBold?: boolean
+  separatorAbove?: boolean
+}
+
 // Valid cadence values for reports
 export type ReportCadence = "daily" | "monthly" | "quarterly" | "annual"
 
@@ -95,6 +108,8 @@ export interface CreateReportDefinitionInput {
   // Accounting layout fields
   rowColumnKey?: string
   valueColumnKey?: string
+  showVarianceColumn?: boolean
+  accountingRows?: AccountingRow[]
   // Pivot/accounting column header format
   pivotColumnHeaderFormat?: string
   organizationId: string
@@ -117,6 +132,8 @@ export interface UpdateReportDefinitionInput {
   // Accounting layout fields
   rowColumnKey?: string
   valueColumnKey?: string
+  showVarianceColumn?: boolean
+  accountingRows?: AccountingRow[]
   // Filter configuration - which database columns to expose as filters
   filterColumnKeys?: string[]
   // Baked-in filter values: { "location": ["Bixby, OK"], "pm": ["Caleb"] }
@@ -299,6 +316,8 @@ export class ReportDefinitionService {
         rowColumnKey: input.rowColumnKey,
         valueColumnKey: input.valueColumnKey,
         pivotColumnHeaderFormat: input.pivotColumnHeaderFormat,
+        showVarianceColumn: input.showVarianceColumn ?? true,
+        accountingRows: (input.accountingRows || []) as any,
         metricRows: (input.metricRows || []) as any,
         pivotFormulaColumns: (input.pivotFormulaColumns || []) as any,
         createdById: input.createdById,
@@ -371,6 +390,9 @@ export class ReportDefinitionService {
         ...(input.filterBindings !== undefined && { filterBindings: input.filterBindings as any }),
         // Pivot column sorting
         ...(input.pivotSortConfig !== undefined && { pivotSortConfig: input.pivotSortConfig as any }),
+        // Accounting layout options
+        ...(input.showVarianceColumn !== undefined && { showVarianceColumn: input.showVarianceColumn }),
+        ...(input.accountingRows !== undefined && { accountingRows: input.accountingRows as any }),
         // Pivot/accounting column header format
         ...(input.pivotColumnHeaderFormat !== undefined && { pivotColumnHeaderFormat: input.pivotColumnHeaderFormat }),
         // Configuration fields
@@ -444,6 +466,8 @@ export class ReportDefinitionService {
         filterBindings: existing.filterBindings as any,
         pivotSortConfig: existing.pivotSortConfig as any,
         pivotColumnHeaderFormat: existing.pivotColumnHeaderFormat,
+        showVarianceColumn: existing.showVarianceColumn,
+        accountingRows: existing.accountingRows as any,
         createdById,
       },
       include: {

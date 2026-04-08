@@ -25,6 +25,8 @@ import {
   GripVertical,
   Check,
   ArrowUpDown,
+  Type,
+  ListOrdered,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -100,6 +102,19 @@ interface PivotFormulaColumn {
   order: number
 }
 
+// Accounting row for accounting layout
+interface AccountingRow {
+  key: string
+  label: string
+  type: "source" | "section" | "formula"
+  sourceRowId?: string
+  expression?: string
+  format?: "text" | "currency"
+  order: number
+  isBold?: boolean
+  separatorAbove?: boolean
+}
+
 interface DatabaseSchema {
   columns: Array<{
     key: string
@@ -127,6 +142,8 @@ interface ReportDefinition {
   // Accounting layout fields
   rowColumnKey: string | null
   valueColumnKey: string | null
+  showVarianceColumn: boolean
+  accountingRows: AccountingRow[]
   // Pivot/accounting column header format
   pivotColumnHeaderFormat: string | null
   // Filter configuration
@@ -227,6 +244,12 @@ export default function ReportBuilderPage() {
   const [pivotSortConfig, setPivotSortConfig] = useState<{ type: string; direction: string; rowKey?: string } | null>(null)
   const [pivotColumnHeaderFormat, setPivotColumnHeaderFormat] = useState<string | null>(null)
 
+  // Editing state - Accounting layout
+  const [showVarianceColumn, setShowVarianceColumn] = useState(true)
+  const [accountingRows, setAccountingRows] = useState<AccountingRow[]>([])
+  const [accountingRowModalOpen, setAccountingRowModalOpen] = useState(false)
+  const [editingAccountingRow, setEditingAccountingRow] = useState<AccountingRow | null>(null)
+
   // Filter configuration - baked-in filter values
   const [filterBindings, setFilterBindings] = useState<FilterBindings>({})
   const [filterProperties, setFilterProperties] = useState<FilterableProperty[]>([])
@@ -275,6 +298,9 @@ export default function ReportBuilderPage() {
       setPivotFormulaColumns(data.report.pivotFormulaColumns || [])
       setPivotSortConfig(data.report.pivotSortConfig || null)
       setPivotColumnHeaderFormat(data.report.pivotColumnHeaderFormat || null)
+      // Accounting layout state
+      setShowVarianceColumn(data.report.showVarianceColumn !== false)
+      setAccountingRows(data.report.accountingRows || [])
       // Variance state
       setCompareMode(data.report.compareMode || "none")
       // Filter configuration
@@ -376,6 +402,8 @@ export default function ReportBuilderPage() {
             pivotFormulaColumns,
             pivotSortConfig,
             pivotColumnHeaderFormat,
+            showVarianceColumn,
+            accountingRows,
           },
           // Apply active filters to preview (only include keys with non-empty value arrays)
           filters: (() => {
@@ -402,7 +430,7 @@ export default function ReportBuilderPage() {
     } finally {
       setPreviewLoading(false)
     }
-  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, filterBindings])
+  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, accountingRows, filterBindings])
 
   // Fetch preview when report loads or period/mode changes
   useEffect(() => {
@@ -461,6 +489,8 @@ export default function ReportBuilderPage() {
           pivotFormulaColumns,
           pivotSortConfig,
           pivotColumnHeaderFormat,
+          showVarianceColumn,
+          accountingRows,
           // Variance settings - use effectiveCompareMode to ensure comparison rows work
           compareMode: effectiveCompareMode,
           // Filter configuration — derive filterColumnKeys from filterBindings
@@ -483,7 +513,7 @@ export default function ReportBuilderPage() {
     } finally {
       setSaving(false)
     }
-  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, effectiveCompareMode, filterBindings])
+  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, accountingRows, effectiveCompareMode, filterBindings])
 
   // Auto-save effect: debounce 1 second after changes
   useEffect(() => {
@@ -512,7 +542,7 @@ export default function ReportBuilderPage() {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, effectiveCompareMode, filterBindings, handleSave, report])
+  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, accountingRows, effectiveCompareMode, filterBindings, handleSave, report])
 
   // Toggle source column
   const toggleSourceColumn = (dbColumn: { key: string; label: string; dataType: string }) => {
@@ -686,9 +716,18 @@ export default function ReportBuilderPage() {
                       {databaseColumns.find(c => c.key === report.valueColumnKey)?.label || report.valueColumnKey || "—"}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-400 mt-2 pt-2 border-t border-gray-100">
-                    Variance column is auto-generated (last period - first period)
-                  </p>
+                  <div className="flex items-center justify-between text-sm mt-2 pt-2 border-t border-gray-100">
+                    <span className="text-gray-500">Variance Column</span>
+                    <button
+                      className={`px-2 py-0.5 rounded text-xs font-medium ${showVarianceColumn ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}
+                      onClick={() => {
+                        setShowVarianceColumn(!showVarianceColumn)
+                        setHasUnsavedChanges(true)
+                      }}
+                    >
+                      {showVarianceColumn ? "On" : "Off"}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -901,6 +940,151 @@ export default function ReportBuilderPage() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+            )}
+
+            {/* === ACCOUNTING ROWS (accounting layout only) === */}
+            {report.layout === "accounting" && (
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="px-3 py-2.5 bg-gray-50 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ListOrdered className="w-4 h-4 text-gray-500" />
+                    <span className="font-medium text-sm text-gray-700">Accounting Rows</span>
+                    {accountingRows.length > 0 && (
+                      <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
+                        {accountingRows.length}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {accountingRows.length === 0 && (
+                      <button
+                        onClick={() => {
+                          // Initialize from data: extract unique row values from database rows
+                          const rows = report.database.rows || []
+                          const rowKey = report.rowColumnKey
+                          if (!rowKey) return
+                          const uniqueIds: string[] = []
+                          const seen = new Set<string>()
+                          for (const row of rows) {
+                            const id = String(row[rowKey] ?? "")
+                            if (id && !seen.has(id)) {
+                              seen.add(id)
+                              uniqueIds.push(id)
+                            }
+                          }
+                          const initialized: AccountingRow[] = uniqueIds.map((rowId, index) => ({
+                            key: `acct_${index}`,
+                            label: rowId,
+                            type: "source" as const,
+                            sourceRowId: rowId,
+                            format: "currency" as const,
+                            order: index,
+                          }))
+                          setAccountingRows(initialized)
+                          setHasUnsavedChanges(true)
+                        }}
+                        className="text-xs px-2 py-1 text-blue-600 hover:bg-blue-50 rounded"
+                        title="Initialize rows from database data"
+                      >
+                        Initialize from Data
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setEditingAccountingRow(null)
+                        setAccountingRowModalOpen(true)
+                      }}
+                      className="p-1 hover:bg-gray-200 rounded"
+                      title="Add row"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-gray-500" />
+                    </button>
+                  </div>
+                </div>
+
+                {accountingRows.length === 0 ? (
+                  <div className="p-3">
+                    <p className="text-xs text-gray-400 italic">
+                      No custom row configuration. Rows are auto-discovered from data. Click &quot;Initialize from Data&quot; to customize row ordering, sections, and formulas.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-2 space-y-0.5 max-h-[400px] overflow-y-auto">
+                    {[...accountingRows].sort((a, b) => a.order - b.order).map((acctRow) => (
+                      <div
+                        key={acctRow.key}
+                        draggable
+                        onDragStart={(e) => e.dataTransfer.setData("text/plain", acctRow.key)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          const draggedKey = e.dataTransfer.getData("text/plain")
+                          if (draggedKey === acctRow.key) return
+                          const sorted = [...accountingRows].sort((a, b) => a.order - b.order)
+                          const draggedIndex = sorted.findIndex(r => r.key === draggedKey)
+                          const targetIndex = sorted.findIndex(r => r.key === acctRow.key)
+                          if (draggedIndex === -1 || targetIndex === -1) return
+                          const [draggedItem] = sorted.splice(draggedIndex, 1)
+                          sorted.splice(targetIndex, 0, draggedItem)
+                          const reordered = sorted.map((r, i) => ({ ...r, order: i }))
+                          setAccountingRows(reordered)
+                          setHasUnsavedChanges(true)
+                        }}
+                        className="flex items-center gap-1.5 px-2 py-1.5 rounded hover:bg-gray-50 group cursor-grab active:cursor-grabbing"
+                      >
+                        <GripVertical className="w-3 h-3 text-gray-300 flex-shrink-0" />
+                        {acctRow.type === "source" && <Database className="w-3 h-3 text-gray-400 flex-shrink-0" />}
+                        {acctRow.type === "section" && <Type className="w-3 h-3 text-purple-400 flex-shrink-0" />}
+                        {acctRow.type === "formula" && <FunctionSquare className="w-3 h-3 text-blue-400 flex-shrink-0" />}
+                        <span className={`text-xs truncate flex-1 ${acctRow.type === "section" ? "font-bold text-purple-700" : "text-gray-700"}`}>
+                          {acctRow.label}
+                        </span>
+                        <span className={`text-[10px] px-1 py-0.5 rounded flex-shrink-0 ${
+                          acctRow.type === "source" ? "bg-green-50 text-green-600" :
+                          acctRow.type === "section" ? "bg-purple-50 text-purple-600" :
+                          "bg-blue-50 text-blue-600"
+                        }`}>
+                          {acctRow.type === "source" ? "Source" : acctRow.type === "section" ? "Section" : "Formula"}
+                        </span>
+                        {acctRow.separatorAbove && <span className="text-[10px] text-gray-400">---</span>}
+                        {acctRow.isBold && <span className="text-[10px] font-bold text-gray-400">B</span>}
+                        <button
+                          onClick={() => {
+                            setEditingAccountingRow(acctRow)
+                            setAccountingRowModalOpen(true)
+                          }}
+                          className="p-0.5 hover:bg-gray-200 rounded opacity-0 group-hover:opacity-100"
+                        >
+                          <Pencil className="w-3 h-3 text-gray-400" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setAccountingRows(prev => prev.filter(r => r.key !== acctRow.key).map((r, i) => ({ ...r, order: i })))
+                            setHasUnsavedChanges(true)
+                          }}
+                          className="p-0.5 hover:bg-red-100 rounded opacity-0 group-hover:opacity-100"
+                        >
+                          <Trash2 className="w-3 h-3 text-red-400" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {accountingRows.length > 0 && (
+                  <div className="px-3 py-2 border-t border-gray-100">
+                    <button
+                      onClick={() => {
+                        setAccountingRows([])
+                        setHasUnsavedChanges(true)
+                      }}
+                      className="text-xs text-red-500 hover:text-red-700"
+                    >
+                      Clear all rows (revert to auto-discover)
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1496,13 +1680,14 @@ export default function ReportBuilderPage() {
                                 }}
                               >
                                 {isLabelColumn ? (
-                                  <span className="flex items-center gap-1.5">
+                                  <span className={`flex items-center gap-1.5 ${rowType === "section" ? "font-bold text-gray-700" : ""}`}>
                                     {rowType === "formula" && <FunctionSquare className="w-3.5 h-3.5 text-purple-500" />}
                                     {rowType === "comparison" && <TrendingUp className="w-3.5 h-3.5 text-amber-500" />}
+                                    {rowType === "section" && <Type className="w-3.5 h-3.5 text-purple-500" />}
                                     {formatCellValue(row[col.key], effectiveFormat)}
                                   </span>
                                 ) : (
-                                  formatCellValue(row[col.key], effectiveFormat)
+                                  rowType === "section" ? "" : formatCellValue(row[col.key], effectiveFormat)
                                 )}
                               </td>
                             )
@@ -1641,6 +1826,41 @@ export default function ReportBuilderPage() {
           setMetricRows(prev => [...prev, newMetric])
           setHasUnsavedChanges(true)
           return newMetric.key
+        }}
+      />
+
+      {/* Accounting Row Modal */}
+      <AccountingRowModal
+        open={accountingRowModalOpen}
+        editing={editingAccountingRow}
+        accountingRows={accountingRows}
+        availableSourceRows={(() => {
+          if (!report?.rowColumnKey) return []
+          const rows = report.database.rows || []
+          const uniqueIds: string[] = []
+          const seen = new Set<string>()
+          for (const row of rows) {
+            const id = String(row[report.rowColumnKey] ?? "")
+            if (id && !seen.has(id)) {
+              seen.add(id)
+              uniqueIds.push(id)
+            }
+          }
+          return uniqueIds
+        })()}
+        onClose={() => {
+          setAccountingRowModalOpen(false)
+          setEditingAccountingRow(null)
+        }}
+        onSave={(row) => {
+          if (editingAccountingRow) {
+            setAccountingRows(prev => prev.map(r => r.key === editingAccountingRow.key ? row : r))
+          } else {
+            setAccountingRows(prev => [...prev, row])
+          }
+          setHasUnsavedChanges(true)
+          setAccountingRowModalOpen(false)
+          setEditingAccountingRow(null)
         }}
       />
 
@@ -2344,6 +2564,263 @@ function FormulaRowModal({
             className="bg-orange-500 hover:bg-orange-600 text-white"
           >
             {editingKey ? "Update" : "Add"} Row
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ============================================
+// Accounting Row Modal Component (for Accounting Layout)
+// ============================================
+interface AccountingRowModalProps {
+  open: boolean
+  editing: AccountingRow | null
+  accountingRows: AccountingRow[]
+  availableSourceRows: string[]  // Unique row identifiers from database
+  onClose: () => void
+  onSave: (row: AccountingRow) => void
+}
+
+function AccountingRowModal({
+  open,
+  editing,
+  accountingRows,
+  availableSourceRows,
+  onClose,
+  onSave,
+}: AccountingRowModalProps) {
+  const [rowType, setRowType] = useState<"source" | "section" | "formula">("source")
+  const [label, setLabel] = useState("")
+  const [sourceRowId, setSourceRowId] = useState("")
+  const [expression, setExpression] = useState("")
+  const [isBold, setIsBold] = useState(false)
+  const [separatorAbove, setSeparatorAbove] = useState(false)
+
+  // Reset form when modal opens
+  useEffect(() => {
+    if (open) {
+      if (editing) {
+        setRowType(editing.type)
+        setLabel(editing.label)
+        setSourceRowId(editing.sourceRowId || "")
+        setExpression(editing.expression || "")
+        setIsBold(editing.isBold || false)
+        setSeparatorAbove(editing.separatorAbove || false)
+      } else {
+        setRowType("source")
+        setLabel("")
+        setSourceRowId("")
+        setExpression("")
+        setIsBold(false)
+        setSeparatorAbove(false)
+      }
+    }
+  }, [open, editing])
+
+  // Auto-fill label when source row is selected
+  useEffect(() => {
+    if (rowType === "source" && sourceRowId && !editing) {
+      setLabel(sourceRowId)
+    }
+  }, [sourceRowId, rowType, editing])
+
+  const handleSave = () => {
+    if (!label.trim()) return
+    if (rowType === "source" && !sourceRowId) return
+    if (rowType === "formula" && !expression.trim()) return
+
+    const key = editing?.key || `acct_${Date.now()}`
+    const maxOrder = accountingRows.length > 0
+      ? Math.max(...accountingRows.map(r => r.order))
+      : -1
+
+    onSave({
+      key,
+      label: label.trim(),
+      type: rowType,
+      sourceRowId: rowType === "source" ? sourceRowId : undefined,
+      expression: rowType === "formula" ? expression.trim() : undefined,
+      format: rowType === "section" ? "text" : "currency",
+      order: editing ? editing.order : maxOrder + 1,
+      isBold: rowType === "section" ? true : isBold,
+      separatorAbove,
+    })
+    onClose()
+  }
+
+  // Convert expression between display format ([Label]) and internal format ([key])
+  const displayExpression = useMemo(() => {
+    if (!expression) return ""
+    let display = expression
+    for (const row of accountingRows) {
+      display = display.replaceAll(`[${row.key}]`, `[${row.label}]`)
+    }
+    return display
+  }, [expression, accountingRows])
+
+  const setExpressionFromDisplay = (display: string) => {
+    let internal = display
+    for (const row of accountingRows) {
+      internal = internal.replaceAll(`[${row.label}]`, `[${row.key}]`)
+    }
+    setExpression(internal)
+  }
+
+  // Source rows not yet used by other accounting rows (except the one being edited)
+  const usedSourceIds = new Set(
+    accountingRows
+      .filter(r => r.type === "source" && r.key !== editing?.key)
+      .map(r => r.sourceRowId)
+  )
+  const availableSources = availableSourceRows.filter(id => !usedSourceIds.has(id))
+
+  const isValid = label.trim() &&
+    (rowType !== "source" || sourceRowId) &&
+    (rowType !== "formula" || expression.trim())
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{editing ? "Edit Row" : "Add Accounting Row"}</DialogTitle>
+          <DialogDescription>
+            {editing ? "Update this row configuration." : "Add a source row, section header, or formula row."}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {/* Row Type Selection */}
+          {!editing && (
+            <div className="space-y-2">
+              <Label>Row Type</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {(["source", "section", "formula"] as const).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setRowType(type)}
+                    className={`p-2 rounded-lg border-2 text-center transition-colors ${
+                      rowType === type
+                        ? "border-orange-500 bg-orange-50"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <div className="flex flex-col items-center gap-1">
+                      {type === "source" && <Database className="w-4 h-4 text-gray-500" />}
+                      {type === "section" && <Type className="w-4 h-4 text-purple-500" />}
+                      {type === "formula" && <FunctionSquare className="w-4 h-4 text-blue-500" />}
+                      <span className="text-xs font-medium capitalize">{type}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Source Row Selection */}
+          {rowType === "source" && (
+            <div className="space-y-2">
+              <Label>Data Row</Label>
+              <Select value={sourceRowId} onValueChange={setSourceRowId}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Select a row from data..." />
+                </SelectTrigger>
+                <SelectContent className="max-h-[200px]">
+                  {(editing ? [editing.sourceRowId || "", ...availableSources].filter(Boolean) : availableSources).map((id) => (
+                    <SelectItem key={id} value={id!}>
+                      <span className="text-xs">{id}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Label */}
+          <div className="space-y-2">
+            <Label>Label</Label>
+            <Input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder={rowType === "section" ? "e.g., REVENUE:" : rowType === "formula" ? "e.g., TOTAL REVENUE" : "Display label"}
+              className="h-8 text-sm"
+            />
+          </div>
+
+          {/* Formula Expression */}
+          {rowType === "formula" && (
+            <div className="space-y-2">
+              <Label>Expression</Label>
+              <p className="text-xs text-gray-500">
+                Reference other rows using [Row Label]. E.g., [Revenue] - [Costs]
+              </p>
+              <Textarea
+                value={displayExpression}
+                onChange={(e) => setExpressionFromDisplay(e.target.value)}
+                placeholder="[Row A] + [Row B]"
+                rows={2}
+                className="text-sm font-mono"
+              />
+              {accountingRows.filter(r => r.type !== "section" && r.key !== editing?.key).length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {accountingRows
+                    .filter(r => r.type !== "section" && r.key !== editing?.key)
+                    .sort((a, b) => a.order - b.order)
+                    .slice(0, 10)
+                    .map(r => (
+                      <button
+                        key={r.key}
+                        type="button"
+                        className="text-[10px] px-1.5 py-0.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-600"
+                        onClick={() => setExpressionFromDisplay(displayExpression + `[${r.label}]`)}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Formatting */}
+          <div className="space-y-3 pt-2 border-t border-gray-100">
+            <Label className="text-xs text-gray-500">Formatting</Label>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="acct-bold"
+                checked={isBold || rowType === "section"}
+                disabled={rowType === "section"}
+                onCheckedChange={(checked) => setIsBold(checked === true)}
+              />
+              <label htmlFor="acct-bold" className="text-sm text-gray-700 cursor-pointer">
+                Bold row
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="acct-separator"
+                checked={separatorAbove}
+                onCheckedChange={(checked) => setSeparatorAbove(checked === true)}
+              />
+              <label htmlFor="acct-separator" className="text-sm text-gray-700 cursor-pointer">
+                Separator line above
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={!isValid}
+            className="bg-orange-500 hover:bg-orange-600 text-white"
+          >
+            {editing ? "Update" : "Add"} Row
           </Button>
         </DialogFooter>
       </DialogContent>

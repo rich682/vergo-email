@@ -1399,6 +1399,13 @@ model ReportDefinition {
   // "raw" | "month-year" | "mon-yy" | "mon-yyyy" | "yyyy-mm"
   pivotColumnHeaderFormat String?
 
+  // Accounting layout: whether to show the auto-generated variance column
+  showVarianceColumn Boolean @default(true)
+
+  // Accounting layout: row configuration (ordering, sections, formulas)
+  // Array of: { key, label, type: "source"|"section"|"formula", sourceRowId?, expression?, format?, order, isBold?, separatorAbove? }
+  accountingRows Json @default("[]")
+
   // Metadata
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
