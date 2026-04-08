@@ -1883,8 +1883,8 @@ export default function ReportBuilderPage() {
         }}
       />
 
-      {/* Formula Row Modal (for cross-group calculations) */}
-      <FormulaRowModal
+      {/* Accounting Formula Row Modal (for cross-group calculations) */}
+      <AccountingFormulaRowModal
         open={formulaRowModalOpen}
         editing={editingFormulaRow}
         existingRows={accountingFormulaRows}
@@ -2622,9 +2622,9 @@ function FormulaRowModal({
 }
 
 // ============================================
-// Formula Row Modal Component (for Accounting Layout cross-group formulas)
+// Accounting Formula Row Modal Component (for cross-group formulas)
 // ============================================
-interface FormulaRowModalProps {
+interface AccountingFormulaRowModalProps {
   open: boolean
   editing: AccountingFormulaRow | null
   existingRows: AccountingFormulaRow[]
@@ -2633,14 +2633,14 @@ interface FormulaRowModalProps {
   onSave: (row: AccountingFormulaRow) => void
 }
 
-function FormulaRowModal({
+function AccountingFormulaRowModal({
   open,
   editing,
   existingRows,
   groupNames,
   onClose,
   onSave,
-}: FormulaRowModalProps) {
+}: AccountingFormulaRowModalProps) {
   const [label, setLabel] = useState("")
   const [expression, setExpression] = useState("")
   const [isBold, setIsBold] = useState(true)
