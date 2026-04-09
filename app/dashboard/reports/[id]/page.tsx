@@ -1759,10 +1759,13 @@ export default function ReportBuilderPage() {
                           }`}
                         >
                           {previewData.table.columns.map((col, colIndex) => {
-                            // For pivot layouts, use row's _format if available (except for label column)
+                            // For pivot layouts, use row's _format if available (except for label and info columns)
+                            const isInfoColumn = col.key.startsWith("_info_")
                             const effectiveFormat = col.key === "_label"
                               ? "text"
-                              : ((row._format as string) || col.dataType)
+                              : isInfoColumn
+                                ? col.dataType  // Info columns always use their own schema type
+                                : ((row._format as string) || col.dataType)
                             const isLabelColumn = col.key === "_label"
                             return (
                               <td
@@ -2222,8 +2225,8 @@ function formatCellValue(value: unknown, dataType: string): string {
     const pct = numValue * 100
     return `${pct.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
   }
-  if ((format === "number" || !format) && numValue !== null) {
-    return numValue.toLocaleString()
+  if (format === "number" && numValue !== null) {
+    return String(numValue)
   }
   return String(value)
 }

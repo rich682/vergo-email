@@ -291,8 +291,8 @@ export default function ReportsPage() {
       const pct = numValue * 100
       return `${pct.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
     }
-    if ((fmt === "number" || !fmt) && numValue !== null) {
-      return numValue.toLocaleString()
+    if (fmt === "number" && numValue !== null) {
+      return String(numValue)
     }
     return String(value)
   }
@@ -1097,9 +1097,12 @@ export default function ReportsPage() {
                           }`}
                         >
                           {viewingReport.data.table!.columns.map((col, colIndex) => {
+                            const isInfoColumn = col.key.startsWith("_info_")
                             const effectiveFormat = col.key === "_label"
                               ? "text"
-                              : ((row._format as string) || col.dataType)
+                              : isInfoColumn
+                                ? col.dataType
+                                : ((row._format as string) || col.dataType)
                             const isLabelColumn = col.key === "_label"
                             return (
                               <td
