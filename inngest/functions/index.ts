@@ -12,11 +12,32 @@ import { EmailQueueService } from "@/lib/services/email-queue.service"
 import { EmailSendingService } from "@/lib/services/email-sending.service"
 import { AttachmentExtractionService } from "@/lib/services/attachment-extraction.service"
 import { CompletionDetectionService } from "@/lib/services/completion-detection.service"
+import { HealthMonitorService } from "@/lib/services/health-monitor.service"
 import { getOpenAIClient } from "@/lib/utils/openai-client"
 import { createHash } from "crypto"
 
 
 export const functions = [
+  // ── Daily Health Monitor ──────────────────────────────────────────
+  inngest.createFunction(
+    {
+      id: "health-monitor/daily",
+      name: "Daily Health Monitor",
+      throttle: { limit: 1, period: "30m" },
+    },
+    { cron: "0 6 * * *" }, // 6:00 AM UTC daily
+    async () => {
+      try {
+        console.log("[Health Monitor] Starting daily health check...")
+        const result = await HealthMonitorService.runAllChecks()
+        console.log(`[Health Monitor] ${result.summary}`)
+        return { success: true, ...result }
+      } catch (error: any) {
+        console.error("[Health Monitor] Error in daily health check:", error)
+        return { success: false, error: error.message }
+      }
+    }
+  ),
   inngest.createFunction(
     { id: "ping" },
     { event: "app/ping" },

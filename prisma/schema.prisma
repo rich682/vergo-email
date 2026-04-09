@@ -2120,3 +2120,18 @@ model AdminUser {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 }
+
+// ── Platform Health Monitoring ──────────────────────────────────────────
+
+model HealthCheckResult {
+  id         String   @id @default(cuid())
+  runAt      DateTime @default(now())
+  status     String   // "healthy" | "warning" | "critical"
+  checksRun  Int
+  issuesFound Int
+  results    Json     // CheckResult[] array
+  summary    String?
+  durationMs Int
+
+  @@index([runAt])
+}
