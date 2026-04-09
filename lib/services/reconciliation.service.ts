@@ -30,6 +30,37 @@ export interface MatchingRules {
   columnTolerances?: Record<string, { type: string; tolerance: number }>
 }
 
+export interface MatchingGuidelines {
+  guidelines: string
+  updatedAt: string
+  updatedBy: string
+}
+
+export interface LearnedPattern {
+  id: string
+  type: "value_mapping" | "column_weight" | "description_alias" | "sign_convention" | "custom_rule"
+  description: string
+  details: Record<string, any>
+  source: "auto" | "user"
+  confidence: number
+  createdFromRunId?: string
+  createdAt: string
+}
+
+export interface MatchingStats {
+  totalRuns: number
+  avgMatchRate: number
+  avgManualMatchRate: number
+  commonExceptionCategories: { category: string; count: number }[]
+  lastRunAt: string
+}
+
+export interface LearnedContext {
+  patterns: LearnedPattern[]
+  stats: MatchingStats
+  lastLearnedFromRunId?: string
+}
+
 // ── Config CRUD ────────────────────────────────────────────────────────
 
 export class ReconciliationService {
@@ -131,6 +162,7 @@ export class ReconciliationService {
     sourceAConfig: SourceConfig
     sourceBConfig: SourceConfig
     matchingRules: MatchingRules
+    matchingGuidelines?: MatchingGuidelines
     createdById?: string
   }) {
     return prisma.reconciliationConfig.create({
@@ -141,6 +173,7 @@ export class ReconciliationService {
         sourceAConfig: data.sourceAConfig as any,
         sourceBConfig: data.sourceBConfig as any,
         matchingRules: data.matchingRules as any,
+        ...(data.matchingGuidelines && { matchingGuidelines: data.matchingGuidelines as any }),
         ...(data.createdById && { createdById: data.createdById }),
       },
     })
@@ -150,7 +183,14 @@ export class ReconciliationService {
   static async updateConfig(
     configId: string,
     organizationId: string,
-    data: { name?: string; sourceAConfig?: SourceConfig; sourceBConfig?: SourceConfig; matchingRules?: MatchingRules }
+    data: {
+      name?: string
+      sourceAConfig?: SourceConfig
+      sourceBConfig?: SourceConfig
+      matchingRules?: MatchingRules
+      matchingGuidelines?: MatchingGuidelines | null
+      learnedContext?: LearnedContext | null
+    }
   ) {
     return prisma.reconciliationConfig.updateMany({
       where: { id: configId, organizationId },
@@ -159,6 +199,8 @@ export class ReconciliationService {
         ...(data.sourceAConfig && { sourceAConfig: data.sourceAConfig as any }),
         ...(data.sourceBConfig && { sourceBConfig: data.sourceBConfig as any }),
         ...(data.matchingRules && { matchingRules: data.matchingRules as any }),
+        ...(data.matchingGuidelines !== undefined && { matchingGuidelines: data.matchingGuidelines as any }),
+        ...(data.learnedContext !== undefined && { learnedContext: data.learnedContext as any }),
       },
     })
   }
@@ -306,12 +348,22 @@ export class ReconciliationService {
     const matchResults = (run.matchResults as any) || { matched: [], unmatchedA: [], unmatchedB: [] }
     const exceptions = (run.exceptions as Record<string, any>) || {}
 
-    // Add to matched list as manual match
+    // Snapshot row data for learning extraction on run completion
+    const sourceARows = run.sourceARows as Record<string, any>[] | null
+    const sourceBRows = run.sourceBRows as Record<string, any>[] | null
+
+    // Add to matched list as manual match with row context
     matchResults.matched.push({
       sourceAIdx,
       sourceBIdx,
       confidence: 100,
       method: "manual",
+      ...(sourceARows && sourceBRows && {
+        context: {
+          sourceAData: sourceARows[sourceAIdx],
+          sourceBData: sourceBRows[sourceBIdx],
+        },
+      }),
     })
 
     // Remove from unmatched lists

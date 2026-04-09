@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { ReconciliationService, type SourceConfig, type MatchingRules } from "@/lib/services/reconciliation.service"
+import { ReconciliationService, type SourceConfig, type MatchingRules, type MatchingGuidelines, type LearnedContext } from "@/lib/services/reconciliation.service"
 import { ReconciliationMatchingService } from "@/lib/services/reconciliation-matching.service"
 import { ReconciliationRunStatus } from "@prisma/client"
 import { canPerformAction } from "@/lib/permissions"
@@ -57,14 +57,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const sourceAConfig = run.config.sourceAConfig as unknown as SourceConfig
     const sourceBConfig = run.config.sourceBConfig as unknown as SourceConfig
     const matchingRules = run.config.matchingRules as unknown as MatchingRules
+    const matchingGuidelines = run.config.matchingGuidelines as unknown as MatchingGuidelines | null
+    const learnedContext = run.config.learnedContext as unknown as LearnedContext | null
 
-    // Run matching
+    // Run matching with guidelines and learned patterns from previous runs
     const result = await ReconciliationMatchingService.runMatching(
       run.sourceARows as Record<string, any>[],
       run.sourceBRows as Record<string, any>[],
       sourceAConfig,
       sourceBConfig,
-      matchingRules
+      matchingRules,
+      matchingGuidelines?.guidelines,
+      learnedContext?.patterns
     )
 
     // Convert exceptions array to a keyed object for easier UI updates

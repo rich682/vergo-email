@@ -30,6 +30,7 @@ import {
 import { ViewerManagement, type Viewer } from "@/components/shared/viewer-management"
 import { usePermissions } from "@/components/permissions-context"
 import { ReconciliationResults } from "@/components/jobs/reconciliation/reconciliation-results"
+import { ReconciliationLearningPanel } from "@/components/jobs/reconciliation/reconciliation-learning-panel"
 
 // ============================================
 // Types
@@ -93,6 +94,27 @@ interface ConfigDetail {
   sourceAConfig: SourceConfig
   sourceBConfig: SourceConfig
   matchingRules: MatchingRules
+  matchingGuidelines: { guidelines: string; updatedAt: string; updatedBy: string } | null
+  learnedContext: {
+    patterns: {
+      id: string
+      type: "value_mapping" | "column_weight" | "description_alias" | "sign_convention" | "custom_rule"
+      description: string
+      details: Record<string, any>
+      source: "auto" | "user"
+      confidence: number
+      createdFromRunId?: string
+      createdAt: string
+    }[]
+    stats: {
+      totalRuns: number
+      avgMatchRate: number
+      avgManualMatchRate: number
+      commonExceptionCategories: { category: string; count: number }[]
+      lastRunAt: string
+    }
+    lastLearnedFromRunId?: string
+  } | null
   createdAt: string
   updatedAt: string
   createdById: string | null
@@ -386,6 +408,17 @@ export default function ReconciliationDetailPage() {
               <span>
                 AI fuzzy matching: <span className="font-medium">{matchingRules.fuzzyDescription ? "Enabled" : "Disabled"}</span>
               </span>
+            </div>
+
+            {/* AI Learning & Guidelines */}
+            <div className="border-t pt-4">
+              <ReconciliationLearningPanel
+                configId={config.id}
+                matchingGuidelines={config.matchingGuidelines}
+                learnedContext={config.learnedContext}
+                canEdit={canManage}
+                onUpdate={fetchConfig}
+              />
             </div>
           </div>
         )}

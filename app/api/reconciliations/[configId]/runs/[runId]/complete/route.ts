@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { ReconciliationService } from "@/lib/services/reconciliation.service"
+import { ReconciliationLearningService } from "@/lib/services/reconciliation-learning.service"
 import { canPerformAction } from "@/lib/permissions"
 
 export const maxDuration = 60
@@ -39,6 +40,22 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     await ReconciliationService.completeRun(runId, session.user.organizationId, session.user.id)
+
+    // Extract learning patterns from this run's manual matches
+    try {
+      const fullRun = await ReconciliationService.getRun(runId, session.user.organizationId)
+      if (fullRun) {
+        await ReconciliationLearningService.extractAndSavePatterns(
+          configId,
+          session.user.organizationId,
+          fullRun,
+          fullRun.config
+        )
+      }
+    } catch (learningError) {
+      // Learning extraction is non-critical — don't fail the completion
+      console.error("[Reconciliations] Learning extraction failed:", learningError)
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

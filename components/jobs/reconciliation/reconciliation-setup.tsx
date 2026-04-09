@@ -131,6 +131,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
   // State
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState("")
+  const [matchingGuidelines, setMatchingGuidelines] = useState("")
 
   // ── Source type helpers ──────────────────────────────────────────────
 
@@ -376,6 +377,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
             dateWindowDays: 0,
             fuzzyDescription: true,
           },
+          ...(matchingGuidelines.trim() && { matchingGuidelines: matchingGuidelines.trim() }),
         }),
       })
 
@@ -917,6 +919,28 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
             </p>
           )
         })()}
+
+        {/* AI Matching Guidelines */}
+        <div className="border border-gray-200 rounded-lg p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-gray-700">
+              AI Matching Instructions
+              <span className="text-gray-400 font-normal ml-1">(optional)</span>
+            </label>
+            {matchingGuidelines.length > 0 && (
+              <span className="text-xs text-gray-400">{matchingGuidelines.length}/2000</span>
+            )}
+          </div>
+          <textarea
+            value={matchingGuidelines}
+            onChange={(e) => setMatchingGuidelines(e.target.value.slice(0, 2000))}
+            placeholder={"Guide the AI on how to match these specific sources. Examples:\n• Match on cardholder initials, amount, and date — reference numbers are unrelated\n• Credits in Source A are type 'C' with negative amounts\n• The 2-letter code at position 9-10 of the invoice number maps to cardholder initials"}
+            className="w-full h-24 text-sm border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 placeholder:text-gray-300"
+          />
+          <p className="text-xs text-gray-400">
+            These instructions persist across runs and improve matching accuracy over time.
+          </p>
+        </div>
 
         {error && (
           <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">

@@ -8,7 +8,7 @@
  * Pass 3: AI exception classification for remaining unmatched items.
  */
 import OpenAI from "openai"
-import type { SourceConfig, MatchingRules } from "./reconciliation.service"
+import type { SourceConfig, MatchingRules, LearnedPattern } from "./reconciliation.service"
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -397,7 +397,9 @@ export class ReconciliationMatchingService {
     sourceBRows: Record<string, any>[],
     sourceAConfig: SourceConfig,
     sourceBConfig: SourceConfig,
-    matchingRules: MatchingRules
+    matchingRules: MatchingRules,
+    guidelines?: string,
+    learnedPatterns?: LearnedPattern[]
   ): Promise<MatchingResult> {
     const colsA = sourceAConfig.columns || []
     const colsB = sourceBConfig.columns || []
@@ -456,7 +458,9 @@ export class ReconciliationMatchingService {
           colsA,
           colsB,
           unmatchedA,
-          unmatchedB
+          unmatchedB,
+          guidelines,
+          learnedPatterns
         )
 
         for (const aiMatch of aiMatches) {
@@ -486,7 +490,8 @@ export class ReconciliationMatchingService {
           unmatchedA,
           unmatchedB,
           sourceAConfig.label,
-          sourceBConfig.label
+          sourceBConfig.label,
+          guidelines
         )
       } catch (error) {
         console.error("[Reconciliation] AI exception classification failed:", error)
@@ -529,7 +534,9 @@ export class ReconciliationMatchingService {
     colsA: { key: string; type: string }[],
     colsB: { key: string; type: string }[],
     unmatchedA: number[],
-    unmatchedB: number[]
+    unmatchedB: number[],
+    guidelines?: string,
+    learnedPatterns?: LearnedPattern[]
   ): Promise<MatchPair[]> {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
@@ -589,7 +596,7 @@ MATCHING RULES:
   * "PAYROLL - JAN 2026" = "PR 01/2026 DIRECT DEP" (payroll description variations)
 - Reference numbers may have different prefixes but share the same core number (e.g., "INV-12345" = "12345")
 - Look for semantic matches, not just string matches
-
+${this.buildLearningContext(guidelines, learnedPatterns)}
 Respond with JSON: { "matches": [{ "sourceAIdx": number, "sourceBIdx": number, "confidence": number, "reasoning": string }] }
 Only include matches where confidence >= 70. Be conservative — false positives are worse than missing a match.`,
             },
@@ -641,7 +648,8 @@ Only include matches where confidence >= 70. Be conservative — false positives
     unmatchedA: number[],
     unmatchedB: number[],
     sourceALabel: string,
-    sourceBLabel: string
+    sourceBLabel: string,
+    guidelines?: string
   ): Promise<ExceptionClassification[]> {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
@@ -672,7 +680,7 @@ Only include matches where confidence >= 70. Be conservative — false positives
             role: "system",
             content: `You are a bank reconciliation assistant. Classify unmatched items from a reconciliation between "${sourceALabel}" and "${sourceBLabel}".
 Categories: outstanding_check, deposit_in_transit, bank_fee, interest, timing_difference, data_entry_error, duplicate, other
-Respond with JSON: { "classifications": [{ "source": "A"|"B", "idx": number, "category": string, "reason": string }] }
+${guidelines ? `\nCONTEXT FROM USER:\n${guidelines.slice(0, 1000)}\n` : ""}Respond with JSON: { "classifications": [{ "source": "A"|"B", "idx": number, "category": string, "reason": string }] }
 Provide a brief, clear reason for each classification.`,
           },
           {
@@ -709,5 +717,51 @@ Provide a brief, clear reason for each classification.`,
     }
 
     return classifications
+  }
+
+  // ── Learning Context Builder ──────────────────────────────────────
+
+  /**
+   * Build additional prompt context from user guidelines and learned patterns.
+   */
+  private static buildLearningContext(
+    guidelines?: string,
+    learnedPatterns?: LearnedPattern[]
+  ): string {
+    let context = ""
+
+    if (guidelines) {
+      context += `\nUSER-PROVIDED MATCHING GUIDELINES FOR THIS RECONCILIATION:\n${guidelines.slice(0, 2000)}\nFollow these guidelines carefully — they reflect domain knowledge about how these two sources relate.\n`
+    }
+
+    if (learnedPatterns && learnedPatterns.length > 0) {
+      context += `\nLEARNED PATTERNS FROM PREVIOUS RECONCILIATION RUNS:\n`
+      for (const p of learnedPatterns) {
+        switch (p.type) {
+          case "value_mapping":
+            if (p.details.type === "initials_mapping") {
+              context += `- Characters ${p.details.position + 1}-${p.details.position + p.details.length} of "${p.details.sourceALabel}" contain initials matching "${p.details.sourceBLabel}" (confirmed ${p.details.occurrences} times)\n`
+            } else {
+              context += `- Value mapping: "${p.details.from}" in "${p.details.sourceALabel}" = "${p.details.to}" in "${p.details.sourceBLabel}" (confirmed ${p.details.occurrences} times)\n`
+            }
+            break
+          case "column_weight":
+            context += `- Column weight: "${p.details.sourceALabel}" ↔ "${p.details.sourceBLabel}" has ${p.details.weight} matching value — ${p.details.weight === "low" ? "do NOT rely on this column for matching" : "prioritize this column"}\n`
+            break
+          case "sign_convention":
+            context += `- Sign convention: Amounts in "${p.details.sourceAColumn}" and "${p.details.sourceBColumn}" use ${p.details.convention === "inverted" ? "opposite signs" : "same signs"} for the same transaction\n`
+            break
+          case "description_alias":
+            context += `- Description alias: "${p.details.from}" = "${p.details.to}"\n`
+            break
+          case "custom_rule":
+            context += `- Custom rule: ${p.description}\n`
+            break
+        }
+      }
+      context += `These patterns were discovered from manual matches in previous runs. Use them to improve match confidence.\n`
+    }
+
+    return context
   }
 }

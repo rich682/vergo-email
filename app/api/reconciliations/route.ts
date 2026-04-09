@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, sourceType, sourceAConfig, sourceBConfig, matchingRules } = body
+    const { name, sourceType, sourceAConfig, sourceBConfig, matchingRules, matchingGuidelines } = body
 
     if (!name) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
@@ -79,6 +79,13 @@ export async function POST(request: NextRequest) {
         dateWindowDays: 3,
         fuzzyDescription: true,
       },
+      ...(matchingGuidelines && {
+        matchingGuidelines: {
+          guidelines: matchingGuidelines,
+          updatedAt: new Date().toISOString(),
+          updatedBy: session.user.id,
+        },
+      }),
       createdById: session.user.id,
     })
 
