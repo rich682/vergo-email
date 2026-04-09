@@ -6,7 +6,7 @@
  * Called on run completion (sign-off). Analyzes manual matches to discover
  * value mappings, column weight insights, description aliases, and sign conventions.
  */
-import { createId } from "@paralleldrive/cuid2"
+import { randomUUID } from "crypto"
 import { prisma } from "@/lib/prisma"
 import type {
   LearnedPattern,
@@ -143,7 +143,7 @@ export class ReconciliationLearningService {
           if (count < 2) continue
           const [from, to] = pairKey.split("|||")
           patterns.push({
-            id: createId(),
+            id: randomUUID(),
             type: "value_mapping",
             description: `"${from}" (${colA.label}) maps to "${to}" (${colB.label})`,
             details: {
@@ -217,7 +217,7 @@ export class ReconciliationLearningService {
     if (initialsMatches.length > 0) {
       const best = initialsMatches.sort((a, b) => b.count - a.count)[0]
       patterns.push({
-        id: createId(),
+        id: randomUUID(),
         type: "value_mapping",
         description: `Characters ${best.position + 1}-${best.position + best.length} of "${colA.label}" contain initials matching "${colB.label}"`,
         details: {
@@ -287,7 +287,7 @@ export class ReconciliationLearningService {
       // If reference/text columns almost never match, flag them as low weight
       if ((colA.type === "reference" || colA.type === "text") && matchRate < 0.2) {
         patterns.push({
-          id: createId(),
+          id: randomUUID(),
           type: "column_weight",
           description: `"${colA.label}" and "${colB.label}" rarely match — low value for matching`,
           details: {
@@ -343,7 +343,7 @@ export class ReconciliationLearningService {
 
         if (invertedCount / totalChecked > 0.7) {
           patterns.push({
-            id: createId(),
+            id: randomUUID(),
             type: "sign_convention",
             description: `Amounts in "${colA.label}" and "${colB.label}" use opposite signs (one is negative for the same transaction)`,
             details: {
