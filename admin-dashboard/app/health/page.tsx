@@ -147,7 +147,7 @@ export default async function HealthPage() {
               </thead>
               <tbody>
                 {history.slice(1).map((run) => (
-                  <HealthDetail key={run.id} mode="row" run={run} />
+                  <HealthDetail key={run.id} mode="row" run={{ ...run, results: run.results as unknown as CheckResult[], runAt: run.runAt.toISOString() }} />
                 ))}
               </tbody>
             </table>
