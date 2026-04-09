@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { PrismaClient } from "@prisma/client"
 import { requireAuth } from "@/lib/auth"
 import { DashboardLayout } from "@/components/dashboard-layout"
@@ -15,6 +16,7 @@ interface CheckResult {
   message: string
   details: Record<string, any>[]
   count: number
+  link?: string
 }
 
 async function getHealthData() {
@@ -117,7 +119,13 @@ export default async function HealthPage() {
                       </span>
                     </td>
                     <td className="px-5 py-3 text-sm text-gray-300 max-w-md truncate">
-                      {check.message}
+                      {check.link ? (
+                        <Link href={check.link} className="hover:text-orange-400 transition-colors">
+                          {check.message} <span className="text-orange-400 text-xs ml-1">View &rarr;</span>
+                        </Link>
+                      ) : (
+                        check.message
+                      )}
                     </td>
                     <td className="px-5 py-3 text-sm text-right text-gray-400">
                       {check.count}

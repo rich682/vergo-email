@@ -16,6 +16,7 @@ export interface CheckResult {
   message: string
   details: Record<string, any>[]
   count: number
+  link?: string
 }
 
 interface RunResult {
@@ -46,8 +47,6 @@ export class HealthMonitorService {
       this.checkSyncHealth,
       this.checkDataGrowth,
       this.checkErrorRate,
-      this.checkUserEngagement,
-      this.checkBoardHealth,
     ]
 
     for (const fn of checkFns) {
@@ -411,87 +410,8 @@ export class HealthMonitorService {
         : `${totalErrors} error(s) in last 24 hours`,
       details: highErrorOrgs.map((e) => ({ organizationId: e.organizationId, errorCount: e._count })),
       count: highErrorOrgs.length,
+      link: "/errors",
     }]
   }
 
-  // ── 6. User Engagement ──────────────────────────────────────────────
-
-  private static async checkUserEngagement(): Promise<CheckResult[]> {
-    const results: CheckResult[] = []
-
-    // 6a. Dormant admin users
-    const dormantAdmins = await prisma.user.findMany({
-      where: {
-        role: "ADMIN",
-        isDebugUser: false,
-        OR: [
-          { lastLoginAt: null },
-          { lastLoginAt: { lt: ago(DAYS(30)) } },
-        ],
-      },
-      select: { id: true, email: true, organizationId: true, lastLoginAt: true },
-    })
-    results.push({
-      name: "dormant_admins",
-      category: "user_engagement",
-      status: dormantAdmins.length > 0 ? "warning" : "ok",
-      message: dormantAdmins.length > 0
-        ? `${dormantAdmins.length} admin user(s) haven't logged in for >30 days`
-        : "All admin users active",
-      details: dormantAdmins.map((u) => ({ id: u.id, email: u.email, organizationId: u.organizationId, lastLoginAt: u.lastLoginAt })),
-      count: dormantAdmins.length,
-    })
-
-    // 6b. Inactive organizations (no login in 14 days)
-    const activeOrgIds = await prisma.user.groupBy({
-      by: ["organizationId"],
-      where: {
-        isDebugUser: false,
-        lastLoginAt: { gte: ago(DAYS(14)) },
-      },
-    })
-    const activeOrgIdSet = new Set(activeOrgIds.map((o) => o.organizationId))
-
-    const allOrgs = await prisma.organization.findMany({
-      select: { id: true, name: true },
-    })
-    const inactiveOrgs = allOrgs.filter((o) => !activeOrgIdSet.has(o.id))
-
-    results.push({
-      name: "inactive_orgs",
-      category: "user_engagement",
-      status: inactiveOrgs.length > 0 ? "warning" : "ok",
-      message: inactiveOrgs.length > 0
-        ? `${inactiveOrgs.length} organization(s) with no user login in 14 days`
-        : "All organizations have recent activity",
-      details: inactiveOrgs.map((o) => ({ organizationId: o.id, orgName: o.name })),
-      count: inactiveOrgs.length,
-    })
-
-    return results
-  }
-
-  // ── 7. Board Health ─────────────────────────────────────────────────
-
-  private static async checkBoardHealth(): Promise<CheckResult[]> {
-    const overdueBoards = await prisma.board.findMany({
-      where: {
-        status: "IN_PROGRESS",
-        periodEnd: { lt: new Date() },
-        closedAt: null,
-      },
-      select: { id: true, name: true, organizationId: true, periodEnd: true },
-    })
-
-    return [{
-      name: "overdue_boards",
-      category: "board_health",
-      status: overdueBoards.length > 0 ? "warning" : "ok",
-      message: overdueBoards.length > 0
-        ? `${overdueBoards.length} board(s) past period end but still IN_PROGRESS`
-        : "No overdue boards",
-      details: overdueBoards.map((b) => ({ id: b.id, name: b.name, organizationId: b.organizationId, periodEnd: b.periodEnd })),
-      count: overdueBoards.length,
-    }]
-  }
 }
