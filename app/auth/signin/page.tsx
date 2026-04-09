@@ -139,13 +139,6 @@ export default function SignInPage() {
             </button>
           </form>
 
-          {/* Sign up link */}
-          <p className="mt-8 text-center text-gray-500">
-            Don't have an account?{" "}
-            <Link href="/signup" className="text-orange-600 hover:text-orange-700 font-medium transition-colors">
-              Sign up free
-            </Link>
-          </p>
         </div>
       </div>
 
