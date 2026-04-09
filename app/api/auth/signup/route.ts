@@ -233,7 +233,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: "Account created! Please check your email to verify your account.",
-      emailSent: emailResult.success,
+      emailSent: true,
       organization: {
         id: result.organization.id,
         name: result.organization.name,

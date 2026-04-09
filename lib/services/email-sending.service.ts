@@ -163,13 +163,16 @@ export class EmailSendingService {
     // Generate a Message-ID header for tracking (Gmail will use this in In-Reply-To when someone replies)
     const messageIdHeader = `<${Date.now()}-${Math.random().toString(36).substring(2, 15)}@${data.account.email.split('@')[1] || 'gmail.com'}>`
 
+    // Sanitize headers to prevent injection via newline characters
+    const sanitizeHeader = (v: string) => v.replace(/[\r\n]/g, " ").trim()
+
     // Create email message with Message-ID header
     const messageParts = [
-      `To: ${data.to}`,
-      `From: ${data.account.email}`,
-      `Reply-To: ${data.replyTo}`,
+      `To: ${sanitizeHeader(data.to)}`,
+      `From: ${sanitizeHeader(data.account.email)}`,
+      `Reply-To: ${sanitizeHeader(data.replyTo)}`,
       `Message-ID: ${messageIdHeader}`,
-      `Subject: ${data.subject}`,
+      `Subject: ${sanitizeHeader(data.subject)}`,
       "Content-Type: text/html; charset=utf-8",
       "",
       data.htmlBody || data.body

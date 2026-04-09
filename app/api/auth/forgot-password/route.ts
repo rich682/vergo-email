@@ -8,11 +8,22 @@ import { normalizeEmail } from "@/lib/utils/email"
 import { prisma } from "@/lib/prisma"
 import { AuthEmailService } from "@/lib/services/auth-email.service"
 import { validateOrigin } from "@/lib/utils/csrf"
+import { checkRateLimit } from "@/lib/utils/rate-limit"
 
 export async function POST(request: NextRequest) {
   // CSRF protection
   if (!validateOrigin(request)) {
     return NextResponse.json({ error: "Invalid request origin" }, { status: 403 })
+  }
+
+  // Rate limit: 5 requests per 15 minutes per IP
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
+  const rateLimitResult = await checkRateLimit(`forgot-password:${ip}`, 5)
+  if (!rateLimitResult.allowed) {
+    return NextResponse.json(
+      { success: true, message: "If an account exists with that email, you will receive a password reset link shortly." },
+      { status: 200 } // Return 200 to prevent enumeration even on rate limit
+    )
   }
 
   try {

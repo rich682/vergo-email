@@ -65,6 +65,7 @@ export async function POST() {
     checkSyncHealth,
     checkDataGrowth,
     checkErrorRate,
+    checkSecurity,
     checkCodeQuality,
   ]
 
@@ -355,6 +356,126 @@ async function checkErrorRate(): Promise<CheckResult[]> {
       link: "/errors",
       diagnostic: "Elevated error rate across the platform. No single org is spiking, but the aggregate volume is higher than normal.",
       fix: "Review the /errors page for common patterns. Check if a recent deployment introduced regressions.",
+    })
+  }
+
+  return results
+}
+
+// ── Security Checks ─────────────────────────────────────────────────
+
+async function checkSecurity(): Promise<CheckResult[]> {
+  const results: CheckResult[] = []
+  const testIds = await getTestOrgIds()
+
+  // 1. Users with no password hash (incomplete accounts)
+  const noPasswordUsers = await prisma.user.findMany({
+    where: { passwordHash: null, emailVerified: true },
+    select: { id: true, email: true, organizationId: true, role: true },
+  })
+  const filteredNoPass = noPasswordUsers.filter((u) => !testIds.has(u.organizationId))
+  if (filteredNoPass.length > 0) {
+    results.push({
+      name: "users_without_passwords",
+      category: "security",
+      status: "warning",
+      message: `${filteredNoPass.length} verified user(s) have no password set`,
+      details: filteredNoPass.map((u) => ({ id: u.id, email: u.email, role: u.role })),
+      count: filteredNoPass.length,
+      diagnostic: "Users marked as email-verified but without a password hash. These accounts cannot log in via credentials but may have been created through an incomplete OAuth flow or a code bug.",
+      fix: "Review these accounts. If they're legitimate OAuth users, no action needed. If they should use password login, trigger a password reset email for each affected user.",
+    })
+  }
+
+  // 2. Admin users per org (flag orgs with many admins)
+  const adminsByOrg = await prisma.user.groupBy({
+    by: ["organizationId"],
+    where: { role: "ADMIN", isDebugUser: false },
+    _count: true,
+  })
+  const manyAdminOrgs = adminsByOrg.filter((g) => g._count > 5 && !testIds.has(g.organizationId))
+  if (manyAdminOrgs.length > 0) {
+    results.push({
+      name: "excessive_admin_users",
+      category: "security",
+      status: "warning",
+      message: `${manyAdminOrgs.length} org(s) have >5 admin users`,
+      details: manyAdminOrgs.map((g) => ({ organizationId: g.organizationId, adminCount: g._count })),
+      count: manyAdminOrgs.length,
+      diagnostic: "Organizations with many admin users increase the attack surface. Each admin has full access to all data, settings, and user management. Best practice is to limit admin accounts to 2-3 per org.",
+      fix: "Review admin lists for affected orgs. Downgrade unnecessary admins to MANAGER or MEMBER role. Consider implementing an admin approval workflow.",
+    })
+  }
+
+  // 3. Debug users in non-test orgs
+  const debugUsers = await prisma.user.findMany({
+    where: { isDebugUser: true },
+    select: { id: true, email: true, organizationId: true },
+  })
+  const debugInCustomerOrgs = debugUsers.filter((u) => !testIds.has(u.organizationId))
+  if (debugInCustomerOrgs.length > 0) {
+    results.push({
+      name: "debug_users_in_customer_orgs",
+      category: "security",
+      status: "critical",
+      message: `${debugInCustomerOrgs.length} debug user(s) exist in customer organizations`,
+      details: debugInCustomerOrgs.map((u) => ({ id: u.id, email: u.email, organizationId: u.organizationId })),
+      count: debugInCustomerOrgs.length,
+      diagnostic: "Debug users with known/weak passwords exist in real customer organizations. These are backdoor accounts that could be used to access customer financial data. This is a critical security risk.",
+      fix: "Immediately delete debug users from customer orgs: DELETE FROM \"User\" WHERE \"isDebugUser\" = true AND \"organizationId\" NOT IN (select id from \"Organization\" where \"isTestAccount\" = true). Then remove the debug user creation code from the signup flow.",
+    })
+  }
+
+  // 4. Expired or stale verification tokens
+  const staleTokens = await prisma.user.count({
+    where: {
+      verificationToken: { not: null },
+      tokenExpiresAt: { lt: new Date() },
+    },
+  })
+  if (staleTokens > 10) {
+    results.push({
+      name: "stale_verification_tokens",
+      category: "security",
+      status: "warning",
+      message: `${staleTokens} user(s) have expired verification tokens not cleaned up`,
+      details: [{ count: staleTokens }],
+      count: staleTokens,
+      diagnostic: "Expired password reset and invite tokens are still stored in the database. While they can't be used (validation checks expiry), they represent unnecessary sensitive data retention.",
+      fix: "Clean up expired tokens: UPDATE \"User\" SET \"verificationToken\" = NULL, \"tokenExpiresAt\" = NULL WHERE \"tokenExpiresAt\" < NOW(). Consider adding this to a scheduled cleanup job.",
+    })
+  }
+
+  // 5. Public file access (attachment files stored as public)
+  results.push({
+    name: "public_file_storage",
+    category: "security",
+    status: "warning",
+    message: "Form file uploads are stored with public URL access",
+    details: [{ location: "app/api/forms/public/[token]/upload/route.ts", setting: "access: 'public'" }],
+    count: 1,
+    diagnostic: "Files uploaded through public forms are stored in blob storage with public access. Anyone with the URL can download the file without authentication. For financial documents, this is a data exposure risk.",
+    fix: "Change file storage to private access and implement authenticated download routes that verify the user belongs to the file's organization. Update the upload route to use access: 'private' and create a signed URL endpoint for downloads.",
+  })
+
+  // 6. Check for orgs without any admin (orphaned orgs)
+  const orgsWithoutAdmin = await prisma.organization.findMany({
+    where: {
+      isTestAccount: false,
+      users: { none: { role: "ADMIN", isDebugUser: false } },
+    },
+    select: { id: true, name: true },
+  })
+  if (orgsWithoutAdmin.length > 0) {
+    results.push({
+      name: "orgs_without_admin",
+      category: "security",
+      status: "critical",
+      message: `${orgsWithoutAdmin.length} customer org(s) have no admin user`,
+      details: orgsWithoutAdmin.map((o) => ({ organizationId: o.id, orgName: o.name })),
+      count: orgsWithoutAdmin.length,
+      diagnostic: "Organizations without any admin user cannot manage settings, permissions, or user access. This typically happens when the only admin account is deleted or deactivated.",
+      fix: "Promote an existing user to ADMIN role or contact the organization to set up a new admin account.",
     })
   }
 
