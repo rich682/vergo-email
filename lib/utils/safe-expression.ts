@@ -64,6 +64,24 @@ function tokenize(expression: string): Token[] {
       continue
     }
 
+    // Bracket-wrapped identifiers: [TOTAL REVENUE], [TOTAL DIRECT JOB COSTS]
+    if (char === "[") {
+      i++ // skip opening bracket
+      let ident = ""
+      while (i < expr.length && expr[i] !== "]") {
+        ident += expr[i]
+        i++
+      }
+      if (i < expr.length && expr[i] === "]") {
+        i++ // skip closing bracket
+      }
+      if (!ident) {
+        throw new Error("Empty bracket identifier")
+      }
+      tokens.push({ type: "identifier", value: ident })
+      continue
+    }
+
     // Identifiers (variable names)
     if (/[a-zA-Z_]/.test(char)) {
       let ident = ""

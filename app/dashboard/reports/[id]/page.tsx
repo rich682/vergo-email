@@ -1061,119 +1061,108 @@ export default function ReportBuilderPage() {
                         </div>
                       )}
 
-                      {/* Draggable group order */}
-                      {groupByColumnKey && orderedGroupValues.length > 0 && (
-                        <div className="space-y-1">
-                          <Label className="text-xs text-gray-500">Group Order</Label>
-                          <div className="space-y-0.5">
-                            {orderedGroupValues.map((groupName) => (
-                              <div
-                                key={groupName}
-                                draggable
-                                onDragStart={(e) => e.dataTransfer.setData("text/plain", groupName)}
-                                onDragOver={(e) => e.preventDefault()}
-                                onDrop={(e) => {
-                                  e.preventDefault()
-                                  const draggedName = e.dataTransfer.getData("text/plain")
-                                  if (draggedName === groupName) return
-                                  const newOrder = [...orderedGroupValues]
-                                  const draggedIdx = newOrder.indexOf(draggedName)
-                                  const targetIdx = newOrder.indexOf(groupName)
-                                  if (draggedIdx === -1 || targetIdx === -1) return
-                                  newOrder.splice(draggedIdx, 1)
-                                  newOrder.splice(targetIdx, 0, draggedName)
-                                  setGroupOrder(newOrder)
-                                  setHasUnsavedChanges(true)
-                                }}
-                                className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-grab active:cursor-grabbing"
-                              >
-                                <GripVertical className="w-3 h-3 text-gray-300 flex-shrink-0" />
-                                <span className="text-xs text-gray-700 font-medium">{groupName}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                      {/* Unified draggable list: groups + formula rows */}
+                      {groupByColumnKey && orderedGroupValues.length > 0 && (() => {
+                        // Build unified list: groups + formula rows from groupOrder
+                        const formulasByKey = new Map(accountingFormulaRows.map(fr => [fr.key, fr]))
+                        const unifiedItems: Array<{ id: string; type: "group" | "formula"; label: string; formulaRow?: AccountingFormulaRow }> = []
+                        const usedGroups = new Set<string>()
+                        const usedFormulas = new Set<string>()
 
-                  {/* Formula Rows (cross-group calculations) */}
-                  {groupByColumnKey && showGroupSubtotals && (
-                    <div className="border border-gray-200 rounded-lg overflow-hidden">
-                      <div className="px-3 py-2.5 bg-gray-50 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <FunctionSquare className="w-4 h-4 text-gray-500" />
-                          <span className="font-medium text-sm text-gray-700">Formula Rows</span>
-                          {accountingFormulaRows.length > 0 && (
-                            <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
-                              {accountingFormulaRows.length}
-                            </span>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => {
-                            setEditingFormulaRow(null)
-                            setFormulaRowModalOpen(true)
-                          }}
-                          className="p-1 hover:bg-gray-200 rounded"
-                          title="Add formula row"
-                        >
-                          <Plus className="w-3.5 h-3.5 text-gray-500" />
-                        </button>
-                      </div>
-                      {accountingFormulaRows.length === 0 ? (
-                        <div className="p-3">
-                          <p className="text-xs text-gray-400 italic">
-                            Add formula rows for cross-group calculations (e.g., GROSS PROFIT = [TOTAL REVENUE] - [TOTAL DIRECT JOB COSTS])
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="p-2 space-y-0.5">
-                          {[...accountingFormulaRows].sort((a, b) => a.order - b.order).map((fr) => (
-                            <div
-                              key={fr.key}
-                              draggable
-                              onDragStart={(e) => e.dataTransfer.setData("text/plain", fr.key)}
-                              onDragOver={(e) => e.preventDefault()}
-                              onDrop={(e) => {
-                                e.preventDefault()
-                                const draggedKey = e.dataTransfer.getData("text/plain")
-                                if (draggedKey === fr.key) return
-                                const sorted = [...accountingFormulaRows].sort((a, b) => a.order - b.order)
-                                const di = sorted.findIndex(r => r.key === draggedKey)
-                                const ti = sorted.findIndex(r => r.key === fr.key)
-                                if (di === -1 || ti === -1) return
-                                const [item] = sorted.splice(di, 1)
-                                sorted.splice(ti, 0, item)
-                                setAccountingFormulaRows(sorted.map((r, i) => ({ ...r, order: i })))
-                                setHasUnsavedChanges(true)
-                              }}
-                              className="flex items-center gap-1.5 px-2 py-1.5 rounded hover:bg-gray-50 group cursor-grab active:cursor-grabbing"
-                            >
-                              <GripVertical className="w-3 h-3 text-gray-300 flex-shrink-0" />
-                              <FunctionSquare className="w-3 h-3 text-blue-400 flex-shrink-0" />
-                              <span className="text-xs text-gray-700 font-medium truncate flex-1">{fr.label}</span>
+                        // First pass: use groupOrder to build ordered items
+                        for (const entry of groupOrder) {
+                          if (entry.startsWith("formula:")) {
+                            const fKey = entry.substring(8)
+                            const fr = formulasByKey.get(fKey)
+                            if (fr) {
+                              unifiedItems.push({ id: entry, type: "formula", label: fr.label, formulaRow: fr })
+                              usedFormulas.add(fKey)
+                            }
+                          } else if (orderedGroupValues.includes(entry)) {
+                            unifiedItems.push({ id: entry, type: "group", label: entry })
+                            usedGroups.add(entry)
+                          }
+                        }
+                        // Append remaining groups
+                        for (const g of orderedGroupValues) {
+                          if (!usedGroups.has(g)) unifiedItems.push({ id: g, type: "group", label: g })
+                        }
+                        // Append remaining formulas
+                        for (const fr of accountingFormulaRows) {
+                          if (!usedFormulas.has(fr.key)) unifiedItems.push({ id: `formula:${fr.key}`, type: "formula", label: fr.label, formulaRow: fr })
+                        }
+
+                        return (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-xs text-gray-500">Layout Order</Label>
                               <button
-                                onClick={() => { setEditingFormulaRow(fr); setFormulaRowModalOpen(true) }}
-                                className="p-0.5 hover:bg-gray-200 rounded opacity-0 group-hover:opacity-100"
+                                onClick={() => { setEditingFormulaRow(null); setFormulaRowModalOpen(true) }}
+                                className="text-xs px-2 py-0.5 text-blue-600 hover:bg-blue-50 rounded"
                               >
-                                <Pencil className="w-3 h-3 text-gray-400" />
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setAccountingFormulaRows(prev => prev.filter(r => r.key !== fr.key).map((r, i) => ({ ...r, order: i })))
-                                  setHasUnsavedChanges(true)
-                                }}
-                                className="p-0.5 hover:bg-red-100 rounded opacity-0 group-hover:opacity-100"
-                              >
-                                <Trash2 className="w-3 h-3 text-red-400" />
+                                + Formula Row
                               </button>
                             </div>
-                          ))}
-                        </div>
-                      )}
+                            <p className="text-xs text-gray-400">Drag to reorder groups and formula rows</p>
+                            <div className="space-y-0.5">
+                              {unifiedItems.map((item) => (
+                                <div
+                                  key={item.id}
+                                  draggable
+                                  onDragStart={(e) => e.dataTransfer.setData("text/plain", item.id)}
+                                  onDragOver={(e) => e.preventDefault()}
+                                  onDrop={(e) => {
+                                    e.preventDefault()
+                                    const draggedId = e.dataTransfer.getData("text/plain")
+                                    if (draggedId === item.id) return
+                                    const ids = unifiedItems.map(i => i.id)
+                                    const di = ids.indexOf(draggedId)
+                                    const ti = ids.indexOf(item.id)
+                                    if (di === -1 || ti === -1) return
+                                    ids.splice(di, 1)
+                                    ids.splice(ti, 0, draggedId)
+                                    setGroupOrder(ids)
+                                    setHasUnsavedChanges(true)
+                                  }}
+                                  className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-grab active:cursor-grabbing group"
+                                >
+                                  <GripVertical className="w-3 h-3 text-gray-300 flex-shrink-0" />
+                                  {item.type === "group" ? (
+                                    <ListOrdered className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                                  ) : (
+                                    <FunctionSquare className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                                  )}
+                                  <span className={`text-xs truncate flex-1 ${item.type === "formula" ? "text-blue-700 font-medium" : "text-gray-700 font-medium"}`}>
+                                    {item.label}
+                                  </span>
+                                  {item.type === "formula" && (
+                                    <>
+                                      <button
+                                        onClick={() => { setEditingFormulaRow(item.formulaRow!); setFormulaRowModalOpen(true) }}
+                                        className="p-0.5 hover:bg-gray-200 rounded opacity-0 group-hover:opacity-100"
+                                      >
+                                        <Pencil className="w-3 h-3 text-gray-400" />
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          setAccountingFormulaRows(prev => prev.filter(r => r.key !== item.formulaRow!.key))
+                                          setGroupOrder(prev => prev.filter(e => e !== item.id))
+                                          setHasUnsavedChanges(true)
+                                        }}
+                                        className="p-0.5 hover:bg-red-100 rounded opacity-0 group-hover:opacity-100"
+                                      >
+                                        <Trash2 className="w-3 h-3 text-red-400" />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </div>
-                  )}
+                  </div>
                 </>
               )
             })()}
@@ -1949,6 +1938,8 @@ export default function ReportBuilderPage() {
             setAccountingFormulaRows(prev => prev.map(r => r.key === editingFormulaRow.key ? row : r))
           } else {
             setAccountingFormulaRows(prev => [...prev, row])
+            // Also add to groupOrder so it appears in the unified list
+            setGroupOrder(prev => [...prev, `formula:${row.key}`])
           }
           setHasUnsavedChanges(true)
           setFormulaRowModalOpen(false)

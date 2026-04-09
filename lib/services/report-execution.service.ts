@@ -866,68 +866,75 @@ export class ReportExecutionService {
         }
       }
 
-      // Determine group display order: use custom groupOrder if provided, else data appearance order
-      let orderedGroups: string[]
+      // Build unified display order: groupOrder can contain group names and "formula:key" entries
+      // This allows formula rows to be interspersed between groups
+      const formulasByKey = new Map(accountingFormulaRows.map(fr => [fr.key, fr]))
+
+      // Build the ordered list of items to render
+      // groupOrder entries: plain strings = group names, "formula:key" = formula rows
+      const renderedGroups = new Set<string>()
+      const renderedFormulas = new Set<string>()
+      const orderedItems: Array<{ type: "group"; name: string } | { type: "formula"; row: AccountingFormulaRow }> = []
+
       if (groupOrder.length > 0) {
-        // Start with custom order, then append any groups not in the custom order
-        orderedGroups = [...groupOrder.filter(g => groupSet.has(g))]
-        for (const g of groupAppearanceOrder) {
-          if (!orderedGroups.includes(g)) orderedGroups.push(g)
+        for (const entry of groupOrder) {
+          if (entry.startsWith("formula:")) {
+            const fKey = entry.substring(8)
+            const fr = formulasByKey.get(fKey)
+            if (fr) {
+              orderedItems.push({ type: "formula", row: fr })
+              renderedFormulas.add(fKey)
+            }
+          } else if (groupSet.has(entry)) {
+            orderedItems.push({ type: "group", name: entry })
+            renderedGroups.add(entry)
+          }
         }
-      } else {
-        orderedGroups = groupAppearanceOrder
+      }
+
+      // Append any groups/formulas not in the custom order
+      for (const g of groupAppearanceOrder) {
+        if (!renderedGroups.has(g)) orderedItems.push({ type: "group", name: g })
+      }
+      for (const fr of accountingFormulaRows.sort((a, b) => a.order - b.order)) {
+        if (!renderedFormulas.has(fr.key)) orderedItems.push({ type: "formula", row: fr })
       }
 
       dataRows = []
+      let isFirstItem = true
 
-      let isFirstGroup = true
-      for (const groupName of orderedGroups) {
+      // Helper: render a group (header + source rows + subtotal)
+      const renderGroup = (groupName: string) => {
         const rowIds = groupRowIds[groupName] || []
 
-        // Spacer row between groups (not before the first one)
-        if (!isFirstGroup) {
-          const spacerRow: Record<string, unknown> = {
-            _label: "",
-            _format: "text",
-            _type: "spacer",
-          }
+        // Spacer row between items
+        if (!isFirstItem) {
+          const spacerRow: Record<string, unknown> = { _label: "", _format: "text", _type: "spacer" }
           for (const pv of pivotValues) spacerRow[pv] = null
           if (showVariance) spacerRow["_variance"] = null
           dataRows.push(spacerRow)
         }
-        isFirstGroup = false
+        isFirstItem = false
 
-        // Section header row
+        // Section header
         const headerRow: Record<string, unknown> = {
-          _label: `${groupName}:`,
-          _format: "text",
-          _type: "section",
-          _bold: true,
-          _separatorAbove: false,
+          _label: `${groupName}:`, _format: "text", _type: "section", _bold: true, _separatorAbove: false,
         }
         for (const pv of pivotValues) headerRow[pv] = null
         if (showVariance) headerRow["_variance"] = null
         dataRows.push(headerRow)
 
-        // Source rows within this group
-        for (const rowId of rowIds) {
-          dataRows.push(buildSourceRow(rowId))
-        }
+        // Source rows
+        for (const rowId of rowIds) dataRows.push(buildSourceRow(rowId))
 
-        // Subtotal row
+        // Subtotal
         if (showSubtotals && rowIds.length > 0) {
           const subtotalRow: Record<string, unknown> = {
-            _label: `TOTAL ${groupName}`,
-            _format: "currency",
-            _type: "formula",
-            _bold: true,
-            _separatorAbove: true,
+            _label: `TOTAL ${groupName}`, _format: "currency", _type: "formula", _bold: true, _separatorAbove: true,
           }
-
           const subtotalValues: Record<string, number | null> = {}
           for (const pv of pivotValues) {
-            let sum = 0
-            let hasValue = false
+            let sum = 0; let hasValue = false
             for (const rowId of rowIds) {
               const val = lookup[rowId]?.[pv]
               if (val != null) { sum += val; hasValue = true }
@@ -935,72 +942,55 @@ export class ReportExecutionService {
             subtotalRow[pv] = hasValue ? Math.round(sum * 100) / 100 : null
             subtotalValues[pv] = hasValue ? Math.round(sum * 100) / 100 : null
           }
-
           if (showVariance) {
-            const firstVal = subtotalValues[pivotValues[0]]
-            const lastVal = subtotalValues[pivotValues[pivotValues.length - 1]]
-            if (firstVal != null && lastVal != null) {
-              subtotalRow["_variance"] = Math.round((lastVal - firstVal) * 100) / 100
-            } else {
-              subtotalRow["_variance"] = null
-            }
+            const fv = subtotalValues[pivotValues[0]], lv = subtotalValues[pivotValues[pivotValues.length - 1]]
+            subtotalRow["_variance"] = (fv != null && lv != null) ? Math.round((lv - fv) * 100) / 100 : null
           }
-
-          // Store subtotal for cross-group formulas — key is the subtotal label
           groupSubtotalValues[`TOTAL ${groupName}`] = subtotalValues
           dataRows.push(subtotalRow)
         }
       }
 
-      // Cross-group formula rows (e.g., GROSS PROFIT)
-      if (accountingFormulaRows.length > 0) {
-        const sortedFormulas = [...accountingFormulaRows].sort((a, b) => a.order - b.order)
-
-        for (const fr of sortedFormulas) {
-          const formulaRow: Record<string, unknown> = {
-            _label: fr.label,
-            _format: "currency",
-            _type: "formula",
-            _bold: fr.isBold !== false,
-            _separatorAbove: fr.separatorAbove !== false,
-          }
-
-          const rowValues: Record<string, number | null> = {}
-          for (const pv of pivotValues) {
-            const context: Record<string, number> = {}
-            for (const [key, vals] of Object.entries(groupSubtotalValues)) {
-              if (vals[pv] != null) context[key] = vals[pv]!
-            }
-            // Also include previously computed formula row values
-            for (const [key, vals] of Object.entries(groupSubtotalValues)) {
-              if (vals[pv] != null) context[key] = vals[pv]!
-            }
-
-            try {
-              const result = evaluateSafeExpression(fr.expression || "0", context)
-              const num = typeof result === "number" && !isNaN(result) ? Math.round(result * 100) / 100 : null
-              formulaRow[pv] = num
-              rowValues[pv] = num
-            } catch {
-              formulaRow[pv] = null
-              rowValues[pv] = null
-            }
-          }
-
-          if (showVariance) {
-            const firstVal = rowValues[pivotValues[0]]
-            const lastVal = rowValues[pivotValues[pivotValues.length - 1]]
-            if (firstVal != null && lastVal != null) {
-              formulaRow["_variance"] = Math.round((lastVal - firstVal) * 100) / 100
-            } else {
-              formulaRow["_variance"] = null
-            }
-          }
-
-          // Make this formula row available for subsequent formulas
-          groupSubtotalValues[fr.label] = rowValues
-          dataRows.push(formulaRow)
+      // Helper: render a formula row
+      const renderFormulaRow = (fr: AccountingFormulaRow) => {
+        if (!isFirstItem) {
+          const spacerRow: Record<string, unknown> = { _label: "", _format: "text", _type: "spacer" }
+          for (const pv of pivotValues) spacerRow[pv] = null
+          if (showVariance) spacerRow["_variance"] = null
+          dataRows.push(spacerRow)
         }
+        isFirstItem = false
+
+        const formulaRow: Record<string, unknown> = {
+          _label: fr.label, _format: "currency", _type: "formula",
+          _bold: fr.isBold !== false, _separatorAbove: fr.separatorAbove !== false,
+        }
+        const rowValues: Record<string, number | null> = {}
+        for (const pv of pivotValues) {
+          const context: Record<string, number> = {}
+          for (const [key, vals] of Object.entries(groupSubtotalValues)) {
+            if (vals[pv] != null) context[key] = vals[pv]!
+          }
+          try {
+            const result = evaluateSafeExpression(fr.expression || "0", context)
+            const num = typeof result === "number" && !isNaN(result) ? Math.round(result * 100) / 100 : null
+            formulaRow[pv] = num; rowValues[pv] = num
+          } catch {
+            formulaRow[pv] = null; rowValues[pv] = null
+          }
+        }
+        if (showVariance) {
+          const fv = rowValues[pivotValues[0]], lv = rowValues[pivotValues[pivotValues.length - 1]]
+          formulaRow["_variance"] = (fv != null && lv != null) ? Math.round((lv - fv) * 100) / 100 : null
+        }
+        groupSubtotalValues[fr.label] = rowValues
+        dataRows.push(formulaRow)
+      }
+
+      // Process unified ordered items
+      for (const item of orderedItems) {
+        if (item.type === "group") renderGroup(item.name)
+        else renderFormulaRow(item.row)
       }
     } else {
       // No grouping: auto-discover rows from data (flat list)
