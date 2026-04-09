@@ -30,7 +30,7 @@ export default async function HealthPage() {
   requireAuth()
   const { latest, history } = await getHealthData()
 
-  const latestResults = (latest?.results as CheckResult[] | null) || []
+  const latestResults = (latest?.results as unknown as CheckResult[] | null) || []
   const criticalCount = latestResults.filter((r) => r.status === "critical").length
   const warningCount = latestResults.filter((r) => r.status === "warning").length
 
