@@ -321,7 +321,7 @@ export class ReportDefinitionService {
         rowColumnKey: input.rowColumnKey,
         valueColumnKey: input.valueColumnKey,
         pivotColumnHeaderFormat: input.pivotColumnHeaderFormat,
-        showVarianceColumn: input.showVarianceColumn ?? true,
+        showVarianceColumn: input.showVarianceColumn ?? false,
         rowInfoColumnKeys: (input.rowInfoColumnKeys || []) as any,
         groupByColumnKey: input.groupByColumnKey,
         showGroupSubtotals: input.showGroupSubtotals ?? true,

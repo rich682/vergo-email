@@ -782,7 +782,7 @@ export class ReportExecutionService {
     const dbSchema = ((report as any).database?.schema?.columns || []) as Array<{ key: string; label: string; dataType: string }>
 
     // Build table columns
-    const showVariance = report.showVarianceColumn !== false
+    const showVariance = report.showVarianceColumn === true
     const headerFormat = report.pivotColumnHeaderFormat
     const columns: TableColumn[] = [
       { key: "_label", label: "", dataType: "text", type: "source" },

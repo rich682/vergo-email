@@ -1400,7 +1400,7 @@ model ReportDefinition {
   pivotColumnHeaderFormat String?
 
   // Accounting layout: whether to show the auto-generated variance column
-  showVarianceColumn Boolean @default(true)
+  showVarianceColumn Boolean @default(false)
 
   // Accounting layout: additional info columns shown alongside the row label (e.g., GL Account #)
   // Array of database column keys

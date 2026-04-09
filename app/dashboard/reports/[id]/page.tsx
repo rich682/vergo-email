@@ -246,7 +246,7 @@ export default function ReportBuilderPage() {
   const [pivotColumnHeaderFormat, setPivotColumnHeaderFormat] = useState<string | null>(null)
 
   // Editing state - Accounting layout
-  const [showVarianceColumn, setShowVarianceColumn] = useState(true)
+  const [showVarianceColumn, setShowVarianceColumn] = useState(false)
   const [rowInfoColumnKeys, setRowInfoColumnKeys] = useState<string[]>([])
   const [groupByColumnKey, setGroupByColumnKey] = useState<string | null>(null)
   const [showGroupSubtotals, setShowGroupSubtotals] = useState(true)
@@ -304,7 +304,7 @@ export default function ReportBuilderPage() {
       setPivotSortConfig(data.report.pivotSortConfig || null)
       setPivotColumnHeaderFormat(data.report.pivotColumnHeaderFormat || null)
       // Accounting layout state
-      setShowVarianceColumn(data.report.showVarianceColumn !== false)
+      setShowVarianceColumn(data.report.showVarianceColumn === true)
       setRowInfoColumnKeys(data.report.rowInfoColumnKeys || [])
       setGroupByColumnKey(data.report.groupByColumnKey || null)
       setShowGroupSubtotals(data.report.showGroupSubtotals !== false)
@@ -1729,9 +1729,6 @@ export default function ReportBuilderPage() {
                             }}
                           >
                             <div className={`flex items-center gap-1.5 ${isLabelColumn ? "" : "justify-center"}`}>
-                              {col.type === "formula" && (
-                                <FunctionSquare className="w-3.5 h-3.5 text-purple-500" />
-                              )}
                               {col.label}
                             </div>
                           </th>
@@ -1780,10 +1777,7 @@ export default function ReportBuilderPage() {
                                 }}
                               >
                                 {isLabelColumn ? (
-                                  <span className={`flex items-center gap-1.5 ${rowType === "section" ? "font-bold text-gray-700" : ""}`}>
-                                    {rowType === "formula" && <FunctionSquare className="w-3.5 h-3.5 text-purple-500" />}
-                                    {rowType === "comparison" && <TrendingUp className="w-3.5 h-3.5 text-amber-500" />}
-                                    {rowType === "section" && <Type className="w-3.5 h-3.5 text-purple-500" />}
+                                  <span className={`${rowType === "section" ? "font-bold text-gray-700" : ""}`}>
                                     {formatCellValue(row[col.key], effectiveFormat)}
                                   </span>
                                 ) : (
@@ -1816,8 +1810,7 @@ export default function ReportBuilderPage() {
                                 }}
                               >
                                 {isLabelColumn ? (
-                                  <span className="flex items-center gap-1.5">
-                                    <FunctionSquare className="w-3.5 h-3.5 text-purple-500" />
+                                  <span>
                                     {fr.label}
                                   </span>
                                 ) : (
