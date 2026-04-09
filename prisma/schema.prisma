@@ -143,6 +143,7 @@ model Organization {
   aiContext            Json? // AI context for report insights: { industry, entityType, keyMetrics[], terminology{} }
   subscriptionStatus   SubscriptionStatus @default(FREE_TRIAL)
   trialStartedAt       DateTime?
+  isTestAccount        Boolean  @default(false)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 

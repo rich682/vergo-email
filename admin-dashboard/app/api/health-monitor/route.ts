@@ -54,6 +54,10 @@ export async function POST() {
   const startTime = Date.now()
   const results: CheckResult[] = []
 
+  // Load test account IDs to exclude from checks
+  _testOrgIds = null // reset cache per run
+  await getTestOrgIds()
+
   // Run each category with error isolation
   const categories = [
     checkStuckProcesses,
@@ -107,15 +111,35 @@ export async function POST() {
   return NextResponse.json({ id: record.id, status: overallStatus, summary })
 }
 
+// ── Test account filter ───────────────────────────────────────────────
+
+let _testOrgIds: Set<string> | null = null
+
+async function getTestOrgIds(): Promise<Set<string>> {
+  if (_testOrgIds) return _testOrgIds
+  const testOrgs = await prisma.organization.findMany({
+    where: { isTestAccount: true },
+    select: { id: true },
+  })
+  _testOrgIds = new Set(testOrgs.map((o) => o.id))
+  return _testOrgIds
+}
+
+function excludeTestOrgs<T extends { organizationId?: string | null }>(items: T[]): T[] {
+  if (!_testOrgIds || _testOrgIds.size === 0) return items
+  return items.filter((item) => !item.organizationId || !_testOrgIds!.has(item.organizationId))
+}
+
 // ── Check implementations ─────────────────────────────────────────────
 
 async function checkStuckProcesses(): Promise<CheckResult[]> {
   const results: CheckResult[] = []
 
-  const stuckRecRuns = await prisma.reconciliationRun.findMany({
+  const stuckRecRunsRaw = await prisma.reconciliationRun.findMany({
     where: { status: "PROCESSING", updatedAt: { lt: ago(MINUTES(30)) } },
     select: { id: true, organizationId: true, updatedAt: true },
   })
+  const stuckRecRuns = excludeTestOrgs(stuckRecRunsRaw)
   if (stuckRecRuns.length > 0) {
     results.push({
       name: "stuck_reconciliation_runs",
@@ -129,10 +153,11 @@ async function checkStuckProcesses(): Promise<CheckResult[]> {
     })
   }
 
-  const stuckDrafts = await prisma.emailDraft.findMany({
+  const stuckDraftsRaw = await prisma.emailDraft.findMany({
     where: { aiGenerationStatus: "processing", updatedAt: { lt: ago(MINUTES(10)) } },
     select: { id: true, organizationId: true, updatedAt: true },
   })
+  const stuckDrafts = excludeTestOrgs(stuckDraftsRaw)
   if (stuckDrafts.length > 0) {
     results.push({
       name: "stuck_draft_generation",
@@ -146,10 +171,11 @@ async function checkStuckProcesses(): Promise<CheckResult[]> {
     })
   }
 
-  const stuckWorkflows = await prisma.workflowRun.findMany({
+  const stuckWorkflowsRaw = await prisma.workflowRun.findMany({
     where: { status: { notIn: ["COMPLETED", "FAILED", "CANCELLED"] }, startedAt: { lt: ago(HOURS(1)) } },
     select: { id: true, organizationId: true, status: true, startedAt: true },
   })
+  const stuckWorkflows = excludeTestOrgs(stuckWorkflowsRaw)
   if (stuckWorkflows.length > 0) {
     results.push({
       name: "stuck_workflow_runs",
@@ -207,10 +233,11 @@ async function checkOrphanedRecords(): Promise<CheckResult[]> {
 async function checkSyncHealth(): Promise<CheckResult[]> {
   const results: CheckResult[] = []
 
-  const staleSync = await prisma.connectedEmailAccount.findMany({
+  const staleSyncRaw = await prisma.connectedEmailAccount.findMany({
     where: { isActive: true, OR: [{ lastSyncAt: null }, { lastSyncAt: { lt: ago(HOURS(24)) } }] },
     select: { id: true, email: true, organizationId: true, lastSyncAt: true, provider: true },
   })
+  const staleSync = excludeTestOrgs(staleSyncRaw)
   if (staleSync.length > 0) {
     results.push({
       name: "stale_email_sync",
@@ -224,10 +251,11 @@ async function checkSyncHealth(): Promise<CheckResult[]> {
     })
   }
 
-  const expiredTokens = await prisma.connectedEmailAccount.findMany({
+  const expiredTokensRaw = await prisma.connectedEmailAccount.findMany({
     where: { isActive: true, tokenExpiresAt: { lt: new Date() } },
     select: { id: true, email: true, organizationId: true, tokenExpiresAt: true },
   })
+  const expiredTokens = excludeTestOrgs(expiredTokensRaw)
   if (expiredTokens.length > 0) {
     results.push({
       name: "expired_tokens",
@@ -241,10 +269,11 @@ async function checkSyncHealth(): Promise<CheckResult[]> {
     })
   }
 
-  const syncIssues = await prisma.accountingIntegration.findMany({
+  const syncIssuesRaw = await prisma.accountingIntegration.findMany({
     where: { isActive: true, OR: [{ syncStatus: "error" }, { lastSyncAt: { lt: ago(HOURS(48)) } }] },
     select: { id: true, organizationId: true, syncStatus: true, lastSyncAt: true, lastSyncError: true },
   })
+  const syncIssues = excludeTestOrgs(syncIssuesRaw)
   if (syncIssues.length > 0) {
     results.push({
       name: "accounting_sync_issues",
@@ -265,12 +294,14 @@ async function checkDataGrowth(): Promise<CheckResult[]> {
   const results: CheckResult[] = []
   const ONE_GB = 1_073_741_824
 
-  const storageByOrg = await prisma.attachment.groupBy({
+  const testIds = await getTestOrgIds()
+  const storageByOrgRaw = await prisma.attachment.groupBy({
     by: ["organizationId"],
     _sum: { fileSize: true },
     _count: true,
     having: { fileSize: { _sum: { gt: ONE_GB } } },
   })
+  const storageByOrg = storageByOrgRaw.filter((s) => !testIds.has(s.organizationId))
   if (storageByOrg.length > 0) {
     results.push({
       name: "storage_by_org",
@@ -288,11 +319,13 @@ async function checkDataGrowth(): Promise<CheckResult[]> {
 }
 
 async function checkErrorRate(): Promise<CheckResult[]> {
-  const errorsByOrg = await prisma.appError.groupBy({
+  const testIds = await getTestOrgIds()
+  const errorsByOrgRaw = await prisma.appError.groupBy({
     by: ["organizationId"],
     _count: true,
     where: { createdAt: { gte: ago(HOURS(24)) } },
   })
+  const errorsByOrg = errorsByOrgRaw.filter((e) => !e.organizationId || !testIds.has(e.organizationId))
 
   const totalErrors = errorsByOrg.reduce((sum, e) => sum + e._count, 0)
   const highErrorOrgs = errorsByOrg.filter((e) => e._count > 50)

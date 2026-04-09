@@ -4,6 +4,7 @@ import { DashboardLayout } from "@/components/dashboard-layout"
 import { StatCard } from "@/components/stat-card"
 import { FeatureFlagsEditor } from "@/components/feature-flags-editor"
 import { SubscriptionStatusEditor } from "@/components/subscription-status-editor"
+import { TestAccountToggle } from "@/components/test-account-toggle"
 import { CreateDebugUsersButton } from "@/components/create-debug-users-button"
 import { formatDate, formatDateTime, timeAgo } from "@/lib/utils"
 import Link from "next/link"
@@ -106,11 +107,14 @@ export default async function CompanyDetailPage({ params }: { params: { id: stri
         </div>
       </div>
 
-      <SubscriptionStatusEditor
-        orgId={org.id}
-        initialStatus={org.subscriptionStatus}
-        trialStartedAt={org.trialStartedAt?.toISOString() ?? null}
-      />
+      <div className="flex items-center gap-3">
+        <SubscriptionStatusEditor
+          orgId={org.id}
+          initialStatus={org.subscriptionStatus}
+          trialStartedAt={org.trialStartedAt?.toISOString() ?? null}
+        />
+        <TestAccountToggle orgId={org.id} initialValue={org.isTestAccount} />
+      </div>
 
       {/* Activity Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
