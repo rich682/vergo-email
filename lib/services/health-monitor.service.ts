@@ -17,6 +17,8 @@ export interface CheckResult {
   details: Record<string, any>[]
   count: number
   link?: string
+  diagnostic?: string
+  fix?: string
 }
 
 interface RunResult {

@@ -17,6 +17,8 @@ interface CheckResult {
   details: Record<string, any>[]
   count: number
   link?: string
+  diagnostic?: string
+  fix?: string
 }
 
 async function getHealthData() {
@@ -33,8 +35,10 @@ export default async function HealthPage() {
   const { latest, history } = await getHealthData()
 
   const latestResults = (latest?.results as unknown as CheckResult[] | null) || []
-  const criticalCount = latestResults.filter((r) => r.status === "critical").length
-  const warningCount = latestResults.filter((r) => r.status === "warning").length
+  const issues = latestResults.filter((r) => r.status !== "ok")
+  const criticalCount = issues.filter((r) => r.status === "critical").length
+  const warningCount = issues.filter((r) => r.status === "warning").length
+  const passedCount = latestResults.length - issues.length
 
   const statusColor = latest?.status === "critical" ? "red" : latest?.status === "warning" ? "orange" : "green"
   const statusLabel = latest?.status?.toUpperCase() || "NO DATA"
@@ -62,15 +66,16 @@ export default async function HealthPage() {
             color={statusColor}
           />
           <StatCard
-            title="Issues Found"
-            value={latest?.issuesFound ?? 0}
+            title="Issues"
+            value={issues.length}
             subtitle={`${criticalCount} critical, ${warningCount} warning`}
             color={criticalCount > 0 ? "red" : warningCount > 0 ? "orange" : "green"}
           />
           <StatCard
-            title="Checks Run"
-            value={latest?.checksRun ?? 0}
-            subtitle="across 7 categories"
+            title="Passed"
+            value={passedCount}
+            subtitle={`of ${latestResults.length} checks`}
+            color="green"
           />
           <StatCard
             title="Duration"
@@ -79,63 +84,25 @@ export default async function HealthPage() {
           />
         </div>
 
-        {/* Latest run results */}
-        {latestResults.length > 0 && (
+        {/* Issues only */}
+        {issues.length > 0 ? (
           <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-800">
-              <h2 className="text-sm font-semibold text-white">Latest Check Results</h2>
+            <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-white">Issues Detected ({issues.length})</h2>
+              <span className="text-xs text-gray-500">{passedCount} checks passed</span>
             </div>
-            <table className="w-full">
-              <thead>
-                <tr className="text-xs text-gray-500 border-b border-gray-800">
-                  <th className="text-left px-5 py-3 font-medium">Check</th>
-                  <th className="text-left px-5 py-3 font-medium">Category</th>
-                  <th className="text-left px-5 py-3 font-medium">Status</th>
-                  <th className="text-left px-5 py-3 font-medium">Message</th>
-                  <th className="text-right px-5 py-3 font-medium">Count</th>
-                </tr>
-              </thead>
-              <tbody>
-                {latestResults.map((check, i) => (
-                  <tr key={i} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                    <td className="px-5 py-3 text-sm text-white font-mono">
-                      {check.name}
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className="text-xs text-gray-400 bg-gray-800 px-2 py-0.5 rounded">
-                        {check.category}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded ${
-                        check.status === "critical"
-                          ? "bg-red-900/40 text-red-400"
-                          : check.status === "warning"
-                            ? "bg-yellow-900/40 text-yellow-400"
-                            : "bg-green-900/40 text-green-400"
-                      }`}>
-                        {check.status === "critical" ? "!!!" : check.status === "warning" ? "!" : ""}
-                        {check.status.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-sm text-gray-300 max-w-md truncate">
-                      {check.link ? (
-                        <Link href={check.link} className="hover:text-orange-400 transition-colors">
-                          {check.message} <span className="text-orange-400 text-xs ml-1">View &rarr;</span>
-                        </Link>
-                      ) : (
-                        check.message
-                      )}
-                    </td>
-                    <td className="px-5 py-3 text-sm text-right text-gray-400">
-                      {check.count}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="divide-y divide-gray-800/50">
+              {issues.map((check, i) => (
+                <HealthDetail key={i} mode="issue" check={check} />
+              ))}
+            </div>
           </div>
-        )}
+        ) : latest ? (
+          <div className="bg-gray-900 rounded-xl border border-green-900/30 p-8 text-center">
+            <p className="text-green-400 font-medium">All {latestResults.length} checks passed</p>
+            <p className="text-sm text-gray-500 mt-1">No issues detected</p>
+          </div>
+        ) : null}
 
         {/* History */}
         {history.length > 1 && (

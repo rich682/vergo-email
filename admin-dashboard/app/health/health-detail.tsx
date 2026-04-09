@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 
 interface CheckResult {
   name: string
@@ -10,6 +11,9 @@ interface CheckResult {
   message: string
   details: Record<string, any>[]
   count: number
+  link?: string
+  diagnostic?: string
+  fix?: string
 }
 
 interface HealthRun {
@@ -26,9 +30,11 @@ interface HealthRun {
 export function HealthDetail({
   mode,
   run,
+  check,
 }: {
-  mode: "trigger" | "row"
+  mode: "trigger" | "row" | "issue"
   run?: HealthRun
+  check?: CheckResult
 }) {
   const router = useRouter()
   const [running, setRunning] = useState(false)
@@ -71,6 +77,78 @@ export function HealthDetail({
     )
   }
 
+  // ── Issue card mode ────────────────────────────────────────────────
+
+  if (mode === "issue" && check) {
+    const isCritical = check.status === "critical"
+
+    return (
+      <div className="group">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="w-full px-5 py-4 flex items-center gap-4 hover:bg-gray-800/30 transition-colors text-left"
+        >
+          <span className={`shrink-0 px-2 py-0.5 rounded text-xs font-medium ${
+            isCritical ? "bg-red-900/40 text-red-400" : "bg-yellow-900/40 text-yellow-400"
+          }`}>
+            {check.status.toUpperCase()}
+          </span>
+          <span className="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded shrink-0">
+            {check.category}
+          </span>
+          <span className="text-sm text-gray-200 flex-1">
+            {check.message}
+          </span>
+          {check.link && (
+            <Link
+              href={check.link}
+              onClick={(e) => e.stopPropagation()}
+              className="text-xs text-orange-400 hover:text-orange-300 shrink-0"
+            >
+              View &rarr;
+            </Link>
+          )}
+          <span className="text-xs text-gray-500 shrink-0">{check.count}</span>
+          <svg
+            className={`w-4 h-4 text-gray-500 shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {expanded && (check.diagnostic || check.fix || check.details.length > 0) && (
+          <div className="px-5 pb-4 space-y-3">
+            {check.diagnostic && (
+              <div className="bg-gray-800/50 rounded-lg p-4">
+                <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Diagnostic</p>
+                <p className="text-sm text-gray-300 leading-relaxed">{check.diagnostic}</p>
+              </div>
+            )}
+            {check.fix && (
+              <div className="bg-orange-950/20 border border-orange-900/30 rounded-lg p-4">
+                <p className="text-xs font-medium text-orange-400 uppercase tracking-wider mb-2">How to Fix</p>
+                <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{check.fix}</p>
+              </div>
+            )}
+            {check.details.length > 0 && check.details.length <= 10 && (
+              <div className="bg-gray-800/30 rounded-lg p-4">
+                <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Details</p>
+                <div className="space-y-1">
+                  {check.details.map((d, i) => (
+                    <pre key={i} className="text-xs text-gray-400 font-mono overflow-x-auto">
+                      {JSON.stringify(d, null, 0)}
+                    </pre>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // ── History row mode ───────────────────────────────────────────────
 
   if (!run) return null
@@ -106,14 +184,14 @@ export function HealthDetail({
         <tr>
           <td colSpan={5} className="px-5 py-3 bg-gray-800/20">
             <div className="space-y-2">
-              {issueChecks.map((check, i) => (
+              {issueChecks.map((c, i) => (
                 <div key={i} className="flex items-start gap-3 text-xs">
                   <span className={`shrink-0 px-1.5 py-0.5 rounded font-medium ${
-                    check.status === "critical" ? "bg-red-900/40 text-red-400" : "bg-yellow-900/40 text-yellow-400"
+                    c.status === "critical" ? "bg-red-900/40 text-red-400" : "bg-yellow-900/40 text-yellow-400"
                   }`}>
-                    {check.status.toUpperCase()}
+                    {c.status.toUpperCase()}
                   </span>
-                  <span className="text-gray-300">{check.message}</span>
+                  <span className="text-gray-300">{c.message}</span>
                 </div>
               ))}
             </div>
