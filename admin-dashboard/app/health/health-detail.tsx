@@ -41,14 +41,7 @@ export function HealthDetail({
       setRunning(true)
       try {
         const res = await fetch("/api/health-monitor", { method: "POST" })
-        if (!res.ok) {
-          // Try the main app endpoint directly
-          const mainRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || ""}/api/admin/health-monitor`, {
-            method: "POST",
-            credentials: "include",
-          })
-          if (!mainRes.ok) throw new Error("Failed to trigger health check")
-        }
+        if (!res.ok) throw new Error("Failed to trigger health check")
         router.refresh()
       } catch (err) {
         console.error("Health check trigger failed:", err)
