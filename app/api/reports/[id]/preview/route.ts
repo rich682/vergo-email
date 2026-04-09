@@ -51,6 +51,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         groupByColumnKey?: string | null
         showGroupSubtotals?: boolean
         groupOrder?: string[]
+        hiddenGroups?: string[]
+        hideZeroBalanceRows?: boolean
         accountingFormulaRows?: any[]
       }
       filters?: Record<string, unknown>

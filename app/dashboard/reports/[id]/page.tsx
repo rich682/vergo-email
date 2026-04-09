@@ -27,6 +27,8 @@ import {
   ArrowUpDown,
   Type,
   ListOrdered,
+  Eye,
+  EyeOff,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -144,6 +146,8 @@ interface ReportDefinition {
   groupByColumnKey: string | null
   showGroupSubtotals: boolean
   groupOrder: string[]
+  hiddenGroups: string[]
+  hideZeroBalanceRows: boolean
   accountingFormulaRows: AccountingFormulaRow[]
   // Pivot/accounting column header format
   pivotColumnHeaderFormat: string | null
@@ -251,6 +255,8 @@ export default function ReportBuilderPage() {
   const [groupByColumnKey, setGroupByColumnKey] = useState<string | null>(null)
   const [showGroupSubtotals, setShowGroupSubtotals] = useState(true)
   const [groupOrder, setGroupOrder] = useState<string[]>([])
+  const [hiddenGroups, setHiddenGroups] = useState<string[]>([])
+  const [hideZeroBalanceRows, setHideZeroBalanceRows] = useState(false)
   const [accountingFormulaRows, setAccountingFormulaRows] = useState<AccountingFormulaRow[]>([])
   const [formulaRowModalOpen, setFormulaRowModalOpen] = useState(false)
   const [editingFormulaRow, setEditingFormulaRow] = useState<AccountingFormulaRow | null>(null)
@@ -309,6 +315,8 @@ export default function ReportBuilderPage() {
       setGroupByColumnKey(data.report.groupByColumnKey || null)
       setShowGroupSubtotals(data.report.showGroupSubtotals !== false)
       setGroupOrder(data.report.groupOrder || [])
+      setHiddenGroups(data.report.hiddenGroups || [])
+      setHideZeroBalanceRows(data.report.hideZeroBalanceRows === true)
       setAccountingFormulaRows(data.report.accountingFormulaRows || [])
       // Variance state
       setCompareMode(data.report.compareMode || "none")
@@ -416,6 +424,8 @@ export default function ReportBuilderPage() {
             groupByColumnKey,
             showGroupSubtotals,
             groupOrder,
+            hiddenGroups,
+            hideZeroBalanceRows,
             accountingFormulaRows,
           },
           // Apply active filters to preview (only include keys with non-empty value arrays)
@@ -443,7 +453,7 @@ export default function ReportBuilderPage() {
     } finally {
       setPreviewLoading(false)
     }
-  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, rowInfoColumnKeys, groupByColumnKey, showGroupSubtotals, groupOrder, accountingFormulaRows, filterBindings])
+  }, [id, report, currentPeriodKey, effectiveCompareMode, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, rowInfoColumnKeys, groupByColumnKey, showGroupSubtotals, groupOrder, hiddenGroups, hideZeroBalanceRows, accountingFormulaRows, filterBindings])
 
   // Fetch preview when report loads or period/mode changes
   useEffect(() => {
@@ -507,6 +517,8 @@ export default function ReportBuilderPage() {
           groupByColumnKey,
           showGroupSubtotals,
           groupOrder,
+          hiddenGroups,
+          hideZeroBalanceRows,
           accountingFormulaRows,
           // Variance settings - use effectiveCompareMode to ensure comparison rows work
           compareMode: effectiveCompareMode,
@@ -530,7 +542,7 @@ export default function ReportBuilderPage() {
     } finally {
       setSaving(false)
     }
-  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, rowInfoColumnKeys, groupByColumnKey, showGroupSubtotals, groupOrder, accountingFormulaRows, effectiveCompareMode, filterBindings])
+  }, [id, report, reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, rowInfoColumnKeys, groupByColumnKey, showGroupSubtotals, groupOrder, hiddenGroups, hideZeroBalanceRows, accountingFormulaRows, effectiveCompareMode, filterBindings])
 
   // Auto-save effect: debounce 1 second after changes
   useEffect(() => {
@@ -559,7 +571,7 @@ export default function ReportBuilderPage() {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, rowInfoColumnKeys, groupByColumnKey, showGroupSubtotals, groupOrder, accountingFormulaRows, effectiveCompareMode, filterBindings, handleSave, report])
+  }, [reportColumns, reportFormulaRows, pivotColumnKey, metricRows, pivotFormulaColumns, pivotSortConfig, pivotColumnHeaderFormat, showVarianceColumn, rowInfoColumnKeys, groupByColumnKey, showGroupSubtotals, groupOrder, hiddenGroups, hideZeroBalanceRows, accountingFormulaRows, effectiveCompareMode, filterBindings, handleSave, report])
 
   // Toggle source column
   const toggleSourceColumn = (dbColumn: { key: string; label: string; dataType: string }) => {
@@ -1031,6 +1043,7 @@ export default function ReportBuilderPage() {
                           onValueChange={(value) => {
                             setGroupByColumnKey(value === "none" ? null : value)
                             setGroupOrder([])
+                            setHiddenGroups([])
                             setHasUnsavedChanges(true)
                           }}
                         >
@@ -1047,18 +1060,32 @@ export default function ReportBuilderPage() {
                       </div>
 
                       {groupByColumnKey && (
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-500 text-xs">Show Subtotals</span>
-                          <button
-                            className={`px-2 py-0.5 rounded text-xs font-medium ${showGroupSubtotals ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}
-                            onClick={() => {
-                              setShowGroupSubtotals(!showGroupSubtotals)
-                              setHasUnsavedChanges(true)
-                            }}
-                          >
-                            {showGroupSubtotals ? "On" : "Off"}
-                          </button>
-                        </div>
+                        <>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-500 text-xs">Show Subtotals</span>
+                            <button
+                              className={`px-2 py-0.5 rounded text-xs font-medium ${showGroupSubtotals ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}
+                              onClick={() => {
+                                setShowGroupSubtotals(!showGroupSubtotals)
+                                setHasUnsavedChanges(true)
+                              }}
+                            >
+                              {showGroupSubtotals ? "On" : "Off"}
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-500 text-xs">Hide Zero Balances</span>
+                            <button
+                              className={`px-2 py-0.5 rounded text-xs font-medium ${hideZeroBalanceRows ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}
+                              onClick={() => {
+                                setHideZeroBalanceRows(!hideZeroBalanceRows)
+                                setHasUnsavedChanges(true)
+                              }}
+                            >
+                              {hideZeroBalanceRows ? "On" : "Off"}
+                            </button>
+                          </div>
+                        </>
                       )}
 
                       {/* Unified draggable list: groups + formula rows */}
@@ -1124,7 +1151,7 @@ export default function ReportBuilderPage() {
                                     setGroupOrder(ids)
                                     setHasUnsavedChanges(true)
                                   }}
-                                  className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-grab active:cursor-grabbing group"
+                                  className={`flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-grab active:cursor-grabbing group ${item.type === "group" && hiddenGroups.includes(item.label) ? "opacity-50" : ""}`}
                                 >
                                   <GripVertical className="w-3 h-3 text-gray-300 flex-shrink-0" />
                                   {item.type === "group" ? (
@@ -1132,9 +1159,29 @@ export default function ReportBuilderPage() {
                                   ) : (
                                     <FunctionSquare className="w-3 h-3 text-blue-400 flex-shrink-0" />
                                   )}
-                                  <span className={`text-xs truncate flex-1 ${item.type === "formula" ? "text-blue-700 font-medium" : "text-gray-700 font-medium"}`}>
+                                  <span className={`text-xs truncate flex-1 ${item.type === "formula" ? "text-blue-700 font-medium" : "text-gray-700 font-medium"} ${item.type === "group" && hiddenGroups.includes(item.label) ? "line-through" : ""}`}>
                                     {item.label}
                                   </span>
+                                  {item.type === "group" && (
+                                    <button
+                                      onClick={() => {
+                                        setHiddenGroups(prev =>
+                                          prev.includes(item.label)
+                                            ? prev.filter(g => g !== item.label)
+                                            : [...prev, item.label]
+                                        )
+                                        setHasUnsavedChanges(true)
+                                      }}
+                                      className="p-0.5 hover:bg-gray-200 rounded opacity-0 group-hover:opacity-100"
+                                      title={hiddenGroups.includes(item.label) ? "Show group" : "Hide group"}
+                                    >
+                                      {hiddenGroups.includes(item.label) ? (
+                                        <EyeOff className="w-3 h-3 text-gray-400" />
+                                      ) : (
+                                        <Eye className="w-3 h-3 text-gray-400" />
+                                      )}
+                                    </button>
+                                  )}
                                   {item.type === "formula" && (
                                     <>
                                       <button

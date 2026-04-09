@@ -54,6 +54,8 @@ export interface ExecutePreviewInput {
     groupByColumnKey?: string | null
     showGroupSubtotals?: boolean
     groupOrder?: string[]
+    hiddenGroups?: string[]
+    hideZeroBalanceRows?: boolean
     accountingFormulaRows?: AccountingFormulaRow[]
   }
   filters?: Record<string, string[]>  // Optional - column-value filters
@@ -118,6 +120,8 @@ interface ReportWithConfig {
   groupByColumnKey?: string | null
   showGroupSubtotals?: boolean
   groupOrder?: string[]
+  hiddenGroups?: string[]
+  hideZeroBalanceRows?: boolean
   accountingFormulaRows?: AccountingFormulaRow[]
 }
 
@@ -167,6 +171,8 @@ export class ReportExecutionService {
       groupByColumnKey: liveConfig.groupByColumnKey !== undefined ? liveConfig.groupByColumnKey : (report as any).groupByColumnKey,
       showGroupSubtotals: liveConfig.showGroupSubtotals !== undefined ? liveConfig.showGroupSubtotals : (report as any).showGroupSubtotals,
       groupOrder: liveConfig.groupOrder !== undefined ? liveConfig.groupOrder : (report as any).groupOrder,
+      hiddenGroups: liveConfig.hiddenGroups !== undefined ? liveConfig.hiddenGroups : (report as any).hiddenGroups,
+      hideZeroBalanceRows: liveConfig.hideZeroBalanceRows !== undefined ? liveConfig.hideZeroBalanceRows : (report as any).hideZeroBalanceRows,
       accountingFormulaRows: liveConfig.accountingFormulaRows !== undefined ? liveConfig.accountingFormulaRows : (report as any).accountingFormulaRows,
     } : report
 
@@ -837,6 +843,8 @@ export class ReportExecutionService {
     const groupByColumnKey = (report as any).groupByColumnKey as string | null
     const showSubtotals = (report as any).showGroupSubtotals !== false
     const groupOrder = ((report as any).groupOrder || []) as string[]
+    const hiddenGroups = new Set(((report as any).hiddenGroups || []) as string[])
+    const hideZeroBalanceRows = (report as any).hideZeroBalanceRows === true
     const accountingFormulaRows = ((report as any).accountingFormulaRows || []) as AccountingFormulaRow[]
 
     let dataRows: Array<Record<string, unknown>>
@@ -904,8 +912,27 @@ export class ReportExecutionService {
       let isFirstItem = true
 
       // Helper: render a group (header + source rows + subtotal)
+      // Hidden groups still compute subtotals (for formula rows) but don't emit visible rows
       const renderGroup = (groupName: string) => {
         const rowIds = groupRowIds[groupName] || []
+        const isHidden = hiddenGroups.has(groupName)
+
+        // Always compute subtotals so formula rows referencing this group work correctly
+        if (rowIds.length > 0) {
+          const subtotalValues: Record<string, number | null> = {}
+          for (const pv of pivotValues) {
+            let sum = 0; let hasValue = false
+            for (const rowId of rowIds) {
+              const val = lookup[rowId]?.[pv]
+              if (val != null) { sum += val; hasValue = true }
+            }
+            subtotalValues[pv] = hasValue ? Math.round(sum * 100) / 100 : null
+          }
+          groupSubtotalValues[`TOTAL ${groupName}`] = subtotalValues
+        }
+
+        // Skip rendering if group is hidden
+        if (isHidden) return
 
         // Spacer row between items
         if (!isFirstItem) {
@@ -927,26 +954,19 @@ export class ReportExecutionService {
         // Source rows
         for (const rowId of rowIds) dataRows.push(buildSourceRow(rowId))
 
-        // Subtotal
+        // Subtotal row (visual only — values already computed above)
         if (showSubtotals && rowIds.length > 0) {
           const subtotalRow: Record<string, unknown> = {
             _label: `TOTAL ${groupName}`, _format: "currency", _type: "formula", _bold: true, _separatorAbove: true,
           }
-          const subtotalValues: Record<string, number | null> = {}
+          const subtotalValues = groupSubtotalValues[`TOTAL ${groupName}`]!
           for (const pv of pivotValues) {
-            let sum = 0; let hasValue = false
-            for (const rowId of rowIds) {
-              const val = lookup[rowId]?.[pv]
-              if (val != null) { sum += val; hasValue = true }
-            }
-            subtotalRow[pv] = hasValue ? Math.round(sum * 100) / 100 : null
-            subtotalValues[pv] = hasValue ? Math.round(sum * 100) / 100 : null
+            subtotalRow[pv] = subtotalValues[pv]
           }
           if (showVariance) {
             const fv = subtotalValues[pivotValues[0]], lv = subtotalValues[pivotValues[pivotValues.length - 1]]
             subtotalRow["_variance"] = (fv != null && lv != null) ? Math.round((lv - fv) * 100) / 100 : null
           }
-          groupSubtotalValues[`TOTAL ${groupName}`] = subtotalValues
           dataRows.push(subtotalRow)
         }
       }
@@ -995,6 +1015,20 @@ export class ReportExecutionService {
     } else {
       // No grouping: auto-discover rows from data (flat list)
       dataRows = rowIdOrder.map(rowId => buildSourceRow(rowId))
+    }
+
+    // Filter out zero-balance source rows (rows where all pivot values are 0 or null)
+    if (hideZeroBalanceRows) {
+      dataRows = dataRows.filter(row => {
+        // Only filter source rows (not section headers, spacers, subtotals, or formula rows)
+        if (row._type === "section" || row._type === "spacer" || row._type === "formula") return true
+        // Check if any pivot value is non-zero
+        for (const pv of pivotValues) {
+          const val = row[pv]
+          if (val != null && val !== 0) return true
+        }
+        return false
+      })
     }
 
     // Apply pivotFormulaColumns if any (reuse existing evaluatePivotFormulaColumn)

@@ -1416,6 +1416,12 @@ model ReportDefinition {
   // string[] e.g. ["REVENUE", "DIRECT JOB COSTS", "EQUIPMENT COSTS"]
   groupOrder Json @default("[]")
 
+  // Accounting layout: groups to hide from report output (string[] of group names)
+  hiddenGroups Json @default("[]")
+
+  // Accounting layout: whether to hide rows where all values are zero
+  hideZeroBalanceRows Boolean @default(false)
+
   // Accounting layout: cross-group formula rows
   // Array of: { key, label, expression, order, isBold?, separatorAbove? }
   accountingFormulaRows Json @default("[]")
@@ -1598,6 +1604,14 @@ model ReconciliationConfig {
   // Matching rules (JSON)
   // { amountMatch: "exact"|"tolerance", amountTolerance?: number, dateWindowDays: number, fuzzyDescription: boolean }
   matchingRules Json
+
+  // User-provided free-text matching instructions for this reconciliation type
+  // { guidelines: string, updatedAt: string, updatedBy: string }
+  matchingGuidelines Json?
+
+  // Learned patterns from previous runs (auto-extracted + user-edited)
+  // { patterns: LearnedPattern[], stats: MatchingStats, lastLearnedFromRunId?: string }
+  learnedContext Json?
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

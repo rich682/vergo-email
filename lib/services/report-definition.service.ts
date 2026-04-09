@@ -110,6 +110,8 @@ export interface CreateReportDefinitionInput {
   groupByColumnKey?: string
   showGroupSubtotals?: boolean
   groupOrder?: string[]
+  hiddenGroups?: string[]
+  hideZeroBalanceRows?: boolean
   accountingFormulaRows?: AccountingFormulaRow[]
   // Pivot/accounting column header format
   pivotColumnHeaderFormat?: string
@@ -138,6 +140,8 @@ export interface UpdateReportDefinitionInput {
   groupByColumnKey?: string | null
   showGroupSubtotals?: boolean
   groupOrder?: string[]
+  hiddenGroups?: string[]
+  hideZeroBalanceRows?: boolean
   accountingFormulaRows?: AccountingFormulaRow[]
   // Filter configuration - which database columns to expose as filters
   filterColumnKeys?: string[]
@@ -326,6 +330,8 @@ export class ReportDefinitionService {
         groupByColumnKey: input.groupByColumnKey,
         showGroupSubtotals: input.showGroupSubtotals ?? true,
         groupOrder: (input.groupOrder || []) as any,
+        hiddenGroups: (input.hiddenGroups || []) as any,
+        hideZeroBalanceRows: input.hideZeroBalanceRows ?? false,
         accountingFormulaRows: (input.accountingFormulaRows || []) as any,
         metricRows: (input.metricRows || []) as any,
         pivotFormulaColumns: (input.pivotFormulaColumns || []) as any,
@@ -405,6 +411,8 @@ export class ReportDefinitionService {
         ...(input.groupByColumnKey !== undefined && { groupByColumnKey: input.groupByColumnKey }),
         ...(input.showGroupSubtotals !== undefined && { showGroupSubtotals: input.showGroupSubtotals }),
         ...(input.groupOrder !== undefined && { groupOrder: input.groupOrder as any }),
+        ...(input.hiddenGroups !== undefined && { hiddenGroups: input.hiddenGroups as any }),
+        ...(input.hideZeroBalanceRows !== undefined && { hideZeroBalanceRows: input.hideZeroBalanceRows }),
         ...(input.accountingFormulaRows !== undefined && { accountingFormulaRows: input.accountingFormulaRows as any }),
         // Pivot/accounting column header format
         ...(input.pivotColumnHeaderFormat !== undefined && { pivotColumnHeaderFormat: input.pivotColumnHeaderFormat }),
@@ -484,6 +492,8 @@ export class ReportDefinitionService {
         groupByColumnKey: existing.groupByColumnKey,
         showGroupSubtotals: existing.showGroupSubtotals,
         groupOrder: existing.groupOrder as any,
+        hiddenGroups: existing.hiddenGroups as any,
+        hideZeroBalanceRows: existing.hideZeroBalanceRows,
         accountingFormulaRows: existing.accountingFormulaRows as any,
         createdById,
       },
