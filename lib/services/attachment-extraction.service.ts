@@ -87,12 +87,12 @@ export class AttachmentExtractionService {
       const detectedMime = mimeType || response.headers.get("content-type") || "application/octet-stream"
 
       return this.extractFromBuffer(buffer, detectedMime)
-    } catch (error: any) {
+    } catch (error) {
       return {
         success: false,
         text: "",
         mimeType: mimeType || "unknown",
-        error: `Extraction failed: ${error.message}`
+        error: `Extraction failed: ${(error as Error).message}`
       }
     }
   }
@@ -179,7 +179,7 @@ export class AttachmentExtractionService {
         const textContent = await page.getTextContent()
         
         const pageText = textContent.items
-          .map((item: any) => item.str || "")
+          .map((item: { str?: string }) => item.str || "")
           .join(" ")
         
         if (pageText.trim()) {
@@ -195,13 +195,13 @@ export class AttachmentExtractionService {
         mimeType: "application/pdf",
         metadata: { pageCount }
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("[AttachmentExtraction] PDF extraction error:", error)
       return {
         success: false,
         text: "",
         mimeType: "application/pdf",
-        error: `PDF extraction failed: ${error.message}`
+        error: `PDF extraction failed: ${(error as Error).message}`
       }
     }
   }
@@ -221,12 +221,12 @@ export class AttachmentExtractionService {
         const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, {
           header: 1,
           defval: ""
-        }) as any[][]
+        }) as unknown[][]
 
         if (jsonData.length === 0) continue
 
         // First row is headers
-        const headers = jsonData[0].map((h: any) => String(h || "").trim())
+        const headers = jsonData[0].map((h: unknown) => String(h || "").trim())
         const rows: Record<string, any>[] = []
 
         // Convert remaining rows to objects
@@ -292,13 +292,13 @@ export class AttachmentExtractionService {
       }
 
       return result
-    } catch (error: any) {
+    } catch (error) {
       console.error("[AttachmentExtraction] Excel extraction error:", error)
       return {
         success: false,
         text: "",
         mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        error: `Excel extraction failed: ${error.message}`
+        error: `Excel extraction failed: ${(error as Error).message}`
       }
     }
   }
@@ -324,7 +324,7 @@ export class AttachmentExtractionService {
       const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, {
         header: 1,
         defval: ""
-      }) as any[][]
+      }) as unknown[][]
 
       if (jsonData.length === 0) {
         return {
@@ -336,7 +336,7 @@ export class AttachmentExtractionService {
       }
 
       // First row is headers
-      const headers = jsonData[0].map((h: any) => String(h || "").trim())
+      const headers = jsonData[0].map((h: unknown) => String(h || "").trim())
       const rows: Record<string, any>[] = []
 
       for (let i = 1; i < jsonData.length; i++) {
@@ -386,13 +386,13 @@ export class AttachmentExtractionService {
           columns: headers.filter(h => h)
         }
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("[AttachmentExtraction] CSV extraction error:", error)
       return {
         success: false,
         text: "",
         mimeType: "text/csv",
-        error: `CSV extraction failed: ${error.message}`
+        error: `CSV extraction failed: ${(error as Error).message}`
       }
     }
   }
@@ -452,12 +452,12 @@ export class AttachmentExtractionService {
         success: true,
         signals
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("[AttachmentExtraction] PDF signal extraction error:", error)
       return {
         success: false,
         signals: this.emptySignals(),
-        error: `PDF signal extraction failed: ${error.message}`
+        error: `PDF signal extraction failed: ${(error as Error).message}`
       }
     }
   }
@@ -531,13 +531,13 @@ If you cannot extract certain fields, return empty arrays. Focus on HIGH CONFIDE
       const parsed = JSON.parse(response)
 
       const signals: ExtractedSignals = {
-        totals: (parsed.totals || []).map((t: any) => ({
+        totals: (parsed.totals || []).map((t: Record<string, unknown>) => ({
           label: t.label,
           value: parseFloat(t.value) || 0,
           currency: t.currency || "USD",
           confidence: t.confidence || "medium"
         })),
-        dates: (parsed.dates || []).map((d: any) => ({
+        dates: (parsed.dates || []).map((d: Record<string, unknown>) => ({
           label: d.label,
           date: d.date,
           type: d.type || "other"
@@ -551,12 +551,12 @@ If you cannot extract certain fields, return empty arrays. Focus on HIGH CONFIDE
         success: true,
         signals
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("[AttachmentExtraction] Image signal extraction error:", error)
       return {
         success: false,
         signals: this.emptySignals(),
-        error: `Image signal extraction failed: ${error.message}`
+        error: `Image signal extraction failed: ${(error as Error).message}`
       }
     }
   }

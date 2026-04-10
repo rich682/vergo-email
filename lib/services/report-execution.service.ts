@@ -156,25 +156,28 @@ export class ReportExecutionService {
       throw new Error("Report not found")
     }
 
+    // Cast report to include all config fields (Prisma returns them but the generated type is partial)
+    const reportConfig = report as typeof report & ReportWithConfig
+
     // Apply liveConfig overrides if provided (for preview without saving)
     const effectiveReport = liveConfig ? {
-      ...report,
-      columns: liveConfig.columns ?? report.columns,
-      formulaRows: liveConfig.formulaRows ?? report.formulaRows,
-      pivotColumnKey: liveConfig.pivotColumnKey !== undefined ? liveConfig.pivotColumnKey : report.pivotColumnKey,
-      metricRows: liveConfig.metricRows ?? report.metricRows,
-      pivotFormulaColumns: liveConfig.pivotFormulaColumns ?? report.pivotFormulaColumns,
-      pivotSortConfig: liveConfig.pivotSortConfig !== undefined ? liveConfig.pivotSortConfig : (report as any).pivotSortConfig,
-      pivotColumnHeaderFormat: liveConfig.pivotColumnHeaderFormat !== undefined ? liveConfig.pivotColumnHeaderFormat : (report as any).pivotColumnHeaderFormat,
-      showVarianceColumn: liveConfig.showVarianceColumn !== undefined ? liveConfig.showVarianceColumn : (report as any).showVarianceColumn,
-      rowInfoColumnKeys: liveConfig.rowInfoColumnKeys !== undefined ? liveConfig.rowInfoColumnKeys : (report as any).rowInfoColumnKeys,
-      groupByColumnKey: liveConfig.groupByColumnKey !== undefined ? liveConfig.groupByColumnKey : (report as any).groupByColumnKey,
-      showGroupSubtotals: liveConfig.showGroupSubtotals !== undefined ? liveConfig.showGroupSubtotals : (report as any).showGroupSubtotals,
-      groupOrder: liveConfig.groupOrder !== undefined ? liveConfig.groupOrder : (report as any).groupOrder,
-      hiddenGroups: liveConfig.hiddenGroups !== undefined ? liveConfig.hiddenGroups : (report as any).hiddenGroups,
-      hideZeroBalanceRows: liveConfig.hideZeroBalanceRows !== undefined ? liveConfig.hideZeroBalanceRows : (report as any).hideZeroBalanceRows,
-      accountingFormulaRows: liveConfig.accountingFormulaRows !== undefined ? liveConfig.accountingFormulaRows : (report as any).accountingFormulaRows,
-    } : report
+      ...reportConfig,
+      columns: liveConfig.columns ?? reportConfig.columns,
+      formulaRows: liveConfig.formulaRows ?? reportConfig.formulaRows,
+      pivotColumnKey: liveConfig.pivotColumnKey !== undefined ? liveConfig.pivotColumnKey : reportConfig.pivotColumnKey,
+      metricRows: liveConfig.metricRows ?? reportConfig.metricRows,
+      pivotFormulaColumns: liveConfig.pivotFormulaColumns ?? reportConfig.pivotFormulaColumns,
+      pivotSortConfig: liveConfig.pivotSortConfig !== undefined ? liveConfig.pivotSortConfig : reportConfig.pivotSortConfig,
+      pivotColumnHeaderFormat: liveConfig.pivotColumnHeaderFormat !== undefined ? liveConfig.pivotColumnHeaderFormat : reportConfig.pivotColumnHeaderFormat,
+      showVarianceColumn: liveConfig.showVarianceColumn !== undefined ? liveConfig.showVarianceColumn : reportConfig.showVarianceColumn,
+      rowInfoColumnKeys: liveConfig.rowInfoColumnKeys !== undefined ? liveConfig.rowInfoColumnKeys : reportConfig.rowInfoColumnKeys,
+      groupByColumnKey: liveConfig.groupByColumnKey !== undefined ? liveConfig.groupByColumnKey : reportConfig.groupByColumnKey,
+      showGroupSubtotals: liveConfig.showGroupSubtotals !== undefined ? liveConfig.showGroupSubtotals : reportConfig.showGroupSubtotals,
+      groupOrder: liveConfig.groupOrder !== undefined ? liveConfig.groupOrder : reportConfig.groupOrder,
+      hiddenGroups: liveConfig.hiddenGroups !== undefined ? liveConfig.hiddenGroups : reportConfig.hiddenGroups,
+      hideZeroBalanceRows: liveConfig.hideZeroBalanceRows !== undefined ? liveConfig.hideZeroBalanceRows : reportConfig.hideZeroBalanceRows,
+      accountingFormulaRows: liveConfig.accountingFormulaRows !== undefined ? liveConfig.accountingFormulaRows : reportConfig.accountingFormulaRows,
+    } : reportConfig
 
     const cadence = report.cadence as ReportCadence
     const dateColumnKey = report.dateColumnKey
@@ -197,7 +200,7 @@ export class ReportExecutionService {
         currentRows = this.filterRowsByColumnValues(currentRows, filters)
       }
 
-      const table = this.evaluateAccountingLayout(effectiveReport as any, currentRows)
+      const table = this.evaluateAccountingLayout(effectiveReport as ReportWithConfig, currentRows)
 
       // For accounting layout, periods come from the pivot column values (dates as columns)
       // rather than row-level dateColumnKey data
@@ -276,9 +279,9 @@ export class ReportExecutionService {
     let table: ExecutePreviewResult["table"]
 
     if (layout === "pivot") {
-      table = this.evaluatePivotLayout(effectiveReport as any, currentRows, compareRows)
+      table = this.evaluatePivotLayout(effectiveReport as ReportWithConfig, currentRows, compareRows)
     } else {
-      table = this.evaluateStandardLayout(effectiveReport as any, currentRows, compareRows)
+      table = this.evaluateStandardLayout(effectiveReport as ReportWithConfig, currentRows, compareRows)
     }
 
     return {
@@ -621,7 +624,7 @@ export class ReportExecutionService {
       { key: "_label", label: "", dataType: "text", type: "source" },
       ...pivotValues.map(pv => ({
         key: pv,
-        label: formatPivotColumnHeader(pivotLabelByKey[pv] || pv, pivotHeaderFormat as any),
+        label: formatPivotColumnHeader(pivotLabelByKey[pv] || pv, pivotHeaderFormat || null),
         dataType: "number" as const,
         type: "source" as const,
       }))
@@ -769,7 +772,7 @@ export class ReportExecutionService {
     }
 
     // Row info columns (additional columns alongside the label, e.g., GL Account #)
-    const rowInfoColumnKeys = ((report as any).rowInfoColumnKeys || []) as string[]
+    const rowInfoColumnKeys = (report.rowInfoColumnKeys || []) as string[]
     // Build info lookup: { rowId: { colKey: value } } — take first occurrence
     const rowInfoLookup: Record<string, Record<string, unknown>> = {}
     if (rowInfoColumnKeys.length > 0) {
@@ -785,7 +788,7 @@ export class ReportExecutionService {
     }
 
     // Get database schema for column labels
-    const dbSchema = ((report as any).database?.schema?.columns || []) as Array<{ key: string; label: string; dataType: string }>
+    const dbSchema = (((report as Record<string, unknown>).database as { schema?: { columns?: Array<{ key: string; label: string; dataType: string }> } } | undefined)?.schema?.columns || []) as Array<{ key: string; label: string; dataType: string }>
 
     // Build table columns
     const showVariance = report.showVarianceColumn === true
@@ -804,7 +807,7 @@ export class ReportExecutionService {
       }),
       ...pivotValues.map(pv => ({
         key: pv,
-        label: formatPivotColumnHeader(pv, headerFormat as any),
+        label: formatPivotColumnHeader(pv, headerFormat || null),
         dataType: "currency" as const,
         type: "source" as const,
       })),
@@ -840,12 +843,12 @@ export class ReportExecutionService {
     }
 
     // Check if group-by is configured
-    const groupByColumnKey = (report as any).groupByColumnKey as string | null
-    const showSubtotals = (report as any).showGroupSubtotals !== false
-    const groupOrder = ((report as any).groupOrder || []) as string[]
-    const hiddenGroups = new Set(((report as any).hiddenGroups || []) as string[])
-    const hideZeroBalanceRows = (report as any).hideZeroBalanceRows === true
-    const accountingFormulaRows = ((report as any).accountingFormulaRows || []) as AccountingFormulaRow[]
+    const groupByColumnKey = report.groupByColumnKey ?? null
+    const showSubtotals = report.showGroupSubtotals !== false
+    const groupOrder = (report.groupOrder || []) as string[]
+    const hiddenGroups = new Set((report.hiddenGroups || []) as string[])
+    const hideZeroBalanceRows = report.hideZeroBalanceRows === true
+    const accountingFormulaRows = (report.accountingFormulaRows || []) as AccountingFormulaRow[]
 
     let dataRows: Array<Record<string, unknown>>
 

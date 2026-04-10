@@ -149,7 +149,7 @@ export class EmailSendingService {
     body: string
     htmlBody?: string
     replyTo: string
-  }): Promise<{ messageId: string; providerData: any }> {
+  }): Promise<{ messageId: string; providerData: Record<string, unknown> }> {
     // Ensure token is valid
     const validAccount = await TokenRefreshService.ensureValidToken(data.account)
     
@@ -229,7 +229,7 @@ export class EmailSendingService {
     body: string
     htmlBody?: string
     replyTo: string
-  }): Promise<{ messageId: string; providerData: any }> {
+  }): Promise<{ messageId: string; providerData: Record<string, unknown> }> {
     if (!data.account.smtpHost || !data.account.smtpPort || !data.account.smtpUser) {
       throw new Error("SMTP configuration incomplete")
     }
@@ -371,7 +371,7 @@ export class EmailSendingService {
           if (!validation.valid) {
             throw new Error(validation.reason || `Invalid recipient email: ${data.to}`)
           }
-        } catch (validationError: any) {
+        } catch (validationError) {
           if (validationError.message?.includes("does not exist") ||
               validationError.message?.includes("no mail server") ||
               validationError.message?.includes("Invalid email format") ||
@@ -542,7 +542,7 @@ export class EmailSendingService {
         } else if (account.provider === "MICROSOFT") {
           account = await EmailConnectionService.refreshMicrosoftToken(account.id)
         }
-      } catch (refreshError: any) {
+      } catch (refreshError) {
         log.error("Token refresh failed for email account", refreshError, {
           accountId: account.id,
           provider: account.provider
@@ -566,7 +566,7 @@ export class EmailSendingService {
       if (!validation.valid) {
         throw new Error(validation.reason || `Invalid recipient email: ${data.to}`)
       }
-    } catch (validationError: any) {
+    } catch (validationError) {
       // If the error is from our validation (not DNS infrastructure), throw immediately
       if (validationError.message?.includes("does not exist") ||
           validationError.message?.includes("no mail server") ||
@@ -596,7 +596,7 @@ export class EmailSendingService {
     }
 
     // Send email based on provider, with Resend as fallback
-    let sendResult: { messageId: string; providerData: any }
+    let sendResult: { messageId: string; providerData: Record<string, unknown> }
     let usedFallback = false
     
     // Convert attachments to Buffer format for providers
@@ -640,9 +640,9 @@ export class EmailSendingService {
           htmlBody: htmlBodyWithTracking,
           replyTo,
           attachments: providerAttachments
-        } as any)
+        } as Parameters<typeof this.sendViaSMTP>[0])
       }
-    } catch (primaryError: any) {
+    } catch (primaryError) {
       // Primary send failed — try Resend as fallback
       log.warn("Primary email send failed, attempting Resend fallback", {
         to: data.to,
@@ -824,7 +824,7 @@ export class EmailSendingService {
         } else if (account.provider === "MICROSOFT") {
           account = await EmailConnectionService.refreshMicrosoftToken(account.id)
         }
-      } catch (refreshError: any) {
+      } catch (refreshError) {
         log.error("Token refresh failed for email account", refreshError, {
           accountId: account.id,
           provider: account.provider
@@ -844,7 +844,7 @@ export class EmailSendingService {
     }
 
     // Send email based on provider
-    let sendResult: { messageId: string; providerData: any }
+    let sendResult: { messageId: string; providerData: Record<string, unknown> }
 
     if (account.provider === EmailProvider.GMAIL) {
       const provider = new GmailProvider()
@@ -981,7 +981,7 @@ export class EmailSendingService {
         })
 
         return { email: recipient.email, ...result }
-      } catch (error: any) {
+      } catch (error) {
         log.error("Failed to send email to recipient", error, {
           email: recipient.email,
           campaignName: data.campaignName
@@ -1009,7 +1009,7 @@ export class EmailSendingService {
             }
           })
           failedTaskId = failedRequest.id
-        } catch (createErr: any) {
+        } catch (createErr) {
           log.error("Failed to create failed request record", createErr, {
             email: recipient.email
           }, { organizationId: data.organizationId, operation: "sendBulkEmail" })
@@ -1040,7 +1040,7 @@ export class EmailSendingService {
         for (const requestId of successfulRequestIds) {
           try {
             await ReminderStateService.initializeForRequest(requestId, data.remindersConfig)
-          } catch (error: any) {
+          } catch (error) {
             log.error("Failed to initialize reminders for request", error, { requestId }, { organizationId: data.organizationId })
           }
         }
