@@ -35,13 +35,21 @@ export default async function HealthPage() {
   const { latest, history } = await getHealthData()
 
   const latestResults = (latest?.results as unknown as CheckResult[] | null) || []
-  const issues = latestResults.filter((r) => r.status !== "ok")
-  const criticalCount = issues.filter((r) => r.status === "critical").length
-  const warningCount = issues.filter((r) => r.status === "warning").length
-  const passedCount = latestResults.length - issues.length
+  const allIssues = latestResults.filter((r) => r.status !== "ok")
 
-  const statusColor = latest?.status === "critical" ? "red" : latest?.status === "warning" ? "orange" : "green"
-  const statusLabel = latest?.status?.toUpperCase() || "NO DATA"
+  // Separate runtime issues from static tech debt
+  const TECH_DEBT_CATEGORIES = new Set(["code_quality"])
+  const runtimeIssues = allIssues.filter((r) => !TECH_DEBT_CATEGORIES.has(r.category))
+  const techDebt = allIssues.filter((r) => TECH_DEBT_CATEGORIES.has(r.category))
+
+  const criticalCount = runtimeIssues.filter((r) => r.status === "critical").length
+  const warningCount = runtimeIssues.filter((r) => r.status === "warning").length
+  const passedCount = latestResults.length - allIssues.length
+
+  // Status based on runtime issues only (tech debt doesn't affect operational status)
+  const runtimeStatus = criticalCount > 0 ? "critical" : warningCount > 0 ? "warning" : "healthy"
+  const statusColor = runtimeStatus === "critical" ? "red" : runtimeStatus === "warning" ? "orange" : "green"
+  const statusLabel = latest ? runtimeStatus.toUpperCase() : "NO DATA"
 
   return (
     <DashboardLayout>
@@ -66,16 +74,16 @@ export default async function HealthPage() {
             color={statusColor}
           />
           <StatCard
-            title="Issues"
-            value={issues.length}
+            title="Runtime Issues"
+            value={runtimeIssues.length}
             subtitle={`${criticalCount} critical, ${warningCount} warning`}
             color={criticalCount > 0 ? "red" : warningCount > 0 ? "orange" : "green"}
           />
           <StatCard
-            title="Passed"
-            value={passedCount}
-            subtitle={`of ${latestResults.length} checks`}
-            color="green"
+            title="Tech Debt"
+            value={techDebt.length}
+            subtitle="static findings"
+            color={techDebt.length > 0 ? "blue" : "green"}
           />
           <StatCard
             title="Duration"
@@ -84,25 +92,40 @@ export default async function HealthPage() {
           />
         </div>
 
-        {/* Issues only */}
-        {issues.length > 0 ? (
+        {/* Runtime Issues — actionable, need attention now */}
+        {runtimeIssues.length > 0 ? (
           <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-white">Issues Detected ({issues.length})</h2>
+              <h2 className="text-sm font-semibold text-white">Runtime Issues ({runtimeIssues.length})</h2>
               <span className="text-xs text-gray-500">{passedCount} checks passed</span>
             </div>
             <div className="divide-y divide-gray-800/50">
-              {issues.map((check, i) => (
+              {runtimeIssues.map((check, i) => (
                 <HealthDetail key={i} mode="issue" check={check} />
               ))}
             </div>
           </div>
         ) : latest ? (
           <div className="bg-gray-900 rounded-xl border border-green-900/30 p-8 text-center">
-            <p className="text-green-400 font-medium">All {latestResults.length} checks passed</p>
-            <p className="text-sm text-gray-500 mt-1">No issues detected</p>
+            <p className="text-green-400 font-medium">No runtime issues detected</p>
+            <p className="text-sm text-gray-500 mt-1">{passedCount} checks passed</p>
           </div>
         ) : null}
+
+        {/* Tech Debt — static findings, plan for future sprints */}
+        {techDebt.length > 0 && (
+          <div className="bg-gray-900 rounded-xl border border-gray-800/50 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-400">Tech Debt ({techDebt.length})</h2>
+              <span className="text-xs text-gray-600">Static findings — plan for future sprints</span>
+            </div>
+            <div className="divide-y divide-gray-800/50">
+              {techDebt.map((check, i) => (
+                <HealthDetail key={i} mode="issue" check={check} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* History */}
         {history.length > 1 && (
