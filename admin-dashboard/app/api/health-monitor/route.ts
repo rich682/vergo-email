@@ -479,6 +479,90 @@ async function checkSecurity(): Promise<CheckResult[]> {
     })
   }
 
+  // 7. Debug user creation code in signup flow (static)
+  results.push({
+    name: "debug_user_backdoor_code",
+    category: "security",
+    status: "critical",
+    message: "Signup endpoint contains debug user creation code (app/api/auth/signup/route.ts:195-216)",
+    details: [{ file: "app/api/auth/signup/route.ts", lines: "195-216", envVar: "ENABLE_DEBUG_USERS" }],
+    count: 1,
+    diagnostic: "The signup flow contains code that creates 3 debug users (admin/manager/member) with known passwords when ENABLE_DEBUG_USERS=true. If this env var is accidentally set in production, every new customer org gets backdoor accounts with full access to their financial data.",
+    fix: "Delete lines 195-216 from app/api/auth/signup/route.ts entirely. Debug users should be created via a separate admin script (scripts/seed-debug-users.ts), never embedded in the signup flow. Risk to customers: ZERO — removing dead code that only fires on env var.",
+  })
+
+  // 8. No login attempt rate limiting
+  results.push({
+    name: "no_login_rate_limiting",
+    category: "security",
+    status: "warning",
+    message: "No rate limiting on login attempts — brute force attacks possible",
+    details: [{ file: "lib/auth.ts", component: "NextAuth CredentialsProvider authorize()" }],
+    count: 1,
+    diagnostic: "The NextAuth CredentialsProvider has no limit on failed login attempts. An attacker can try unlimited password combinations against any user email. For a platform handling sensitive financial data, this is a significant risk.",
+    fix: "Add rate limiting wrapper in lib/auth.ts authorize function: const rl = await checkRateLimit('login:' + email, 10). Return null if rate limited. This gives users 10 attempts per window before lockout. Risk to customers: LOW — legitimate users rarely fail 10 times.",
+  })
+
+  // 9. CSP allows unsafe-inline and unsafe-eval
+  results.push({
+    name: "csp_unsafe_directives",
+    category: "security",
+    status: "warning",
+    message: "Content Security Policy allows 'unsafe-inline' and 'unsafe-eval' for scripts",
+    details: [{ file: "next.config.js", line: 79, current: "script-src 'self' 'unsafe-inline' 'unsafe-eval'" }],
+    count: 1,
+    diagnostic: "The CSP header includes 'unsafe-inline' and 'unsafe-eval' which weaken XSS protection. If an attacker can inject HTML (e.g., via a crafted email body that bypasses DOMPurify), they can execute inline scripts. DOMPurify provides defense-in-depth, but CSP is the last line.",
+    fix: "Remove 'unsafe-eval' (rarely needed in production). Replace 'unsafe-inline' with nonce-based CSP using Next.js nonce support. Test all pages after change as some third-party scripts may break. Risk to customers: MEDIUM — requires QA pass on all pages.",
+  })
+
+  // 10. CSRF disabled in development mode
+  results.push({
+    name: "csrf_dev_bypass",
+    category: "security",
+    status: "warning",
+    message: "CSRF protection completely disabled in development mode",
+    details: [{ file: "lib/utils/csrf.ts", line: 13, code: "if (process.env.NODE_ENV === 'development') return true" }],
+    count: 1,
+    diagnostic: "The validateOrigin() function skips all CSRF checks when NODE_ENV=development. If a development build is accidentally deployed to production (e.g., wrong build command), CSRF protection is completely absent — any external site could make authenticated requests on behalf of logged-in users.",
+    fix: "Remove the dev bypass or replace with a console.warn log. Alternatively, check for a specific CSRF_SKIP_DEV env var that would never be set in production. Risk to customers: ZERO — only changes dev behavior.",
+  })
+
+  // 11. Public form user enumeration
+  results.push({
+    name: "form_user_enumeration",
+    category: "security",
+    status: "warning",
+    message: "Public form endpoints expose internal org user list to unauthenticated visitors",
+    details: [{ file: "app/api/forms/public/[token]/route.ts", issue: "Returns all non-debug org users to form fillers" }],
+    count: 1,
+    diagnostic: "When a form has a 'user' type field, the public form endpoint returns the full list of organization users (names and emails) to unauthenticated external form fillers. This leaks internal team structure and contact information.",
+    fix: "Only return users explicitly assigned to the form definition, not all org users. Add a 'formAssignedUsers' relation or filter by a user list defined in the form config. Risk to customers: LOW — only affects forms with user-type fields.",
+  })
+
+  // 12. Password policy gaps
+  results.push({
+    name: "password_policy_gaps",
+    category: "security",
+    status: "warning",
+    message: "No password history enforcement or expiration policy",
+    details: [{ gaps: ["Users can reuse old passwords on reset", "No forced password rotation", "No password expiration for admin accounts"] }],
+    count: 1,
+    diagnostic: "Users can reuse the same password indefinitely after resets. There is no forced password rotation policy. For a platform handling sensitive financial data (credit card statements, AP reports, bank reconciliations), this falls below enterprise security expectations.",
+    fix: "1) Store last 5 password hashes in a passwordHistory JSON field on User. Check against them on password reset. 2) Add optional org-level setting for password expiration (e.g., 90 days for admin accounts). Risk to customers: LOW — additive change.",
+  })
+
+  // 13. Token type confusion
+  results.push({
+    name: "token_type_confusion",
+    category: "security",
+    status: "warning",
+    message: "Password reset, invite, and verification tokens share the same database field",
+    details: [{ field: "User.verificationToken", sharedBy: ["password reset", "team invite", "email verification"] }],
+    count: 1,
+    diagnostic: "The User model uses a single 'verificationToken' field for three different purposes: password resets, team invites, and email verification. While each flow checks different conditions (expiry, user state), a theoretical cross-use attack exists — e.g., using a password reset token URL with the invite acceptance endpoint.",
+    fix: "Add a 'tokenType' field (enum: 'reset' | 'invite' | 'verify') and validate it in each auth flow. Alternatively, use separate columns: resetToken, inviteToken, verifyToken. Risk to customers: LOW — schema migration with no behavior change for valid flows.",
+  })
+
   return results
 }
 
@@ -563,9 +647,26 @@ async function checkCodeQuality(): Promise<CheckResult[]> {
       { file: "lib/services/quest.service.ts", issue: "Entity resolution in loop instead of batch query" },
       { file: "lib/services/accounting-sync.service.ts", issue: "Account iteration without batched related queries" },
       { file: "lib/services/quest.service.ts", issue: "findMany without take: limit loads all unsent drafts" },
+      { file: "lib/services/reminder-runner.service.ts", issue: "findMany on form reminders without take: limit (line 221)" },
     ],
-    diagnostic: "Querying the database inside loops causes N+1 query patterns that scale linearly with data size. A quest with 100 recipients makes 100 individual queries instead of 1 batch query. This will become a performance bottleneck as customer data grows.",
-    fix: "1) quest.service.ts: Replace entity loop with batch findMany using { id: { in: entityIds } }. 2) Add 'take: 100' to all findMany calls that don't have explicit pagination. 3) accounting-sync: batch account processing with Promise.all for independent operations.",
+    diagnostic: "Querying the database inside loops causes N+1 query patterns that scale linearly with data size. A quest with 100 recipients makes 100 individual queries instead of 1 batch query. Unbounded findMany calls risk OOM crashes when data grows. This will become a performance bottleneck and stability risk as customer data grows.",
+    fix: "1) quest.service.ts: Replace entity loop with batch findMany using { id: { in: entityIds } }. 2) Add 'take: 100' to all findMany calls without pagination (quest.service.ts:621, reminder-runner.service.ts:221). 3) accounting-sync: batch account processing with Promise.all. Risk to customers: LOW — same logic, just paginated.",
+  })
+
+  results.push({
+    name: "missing_database_indexes",
+    category: "code_quality",
+    status: "warning",
+    message: "4 recommended composite indexes missing from schema",
+    count: 4,
+    details: [
+      { model: "Request", index: "@@index([organizationId, riskLevel])", reason: "Risk filtering in review hub" },
+      { model: "Message", index: "@@index([organizationId, reviewStatus, createdAt])", reason: "Review status filtering with date sort" },
+      { model: "TaskInstance", index: "@@index([organizationId, ownerId, status])", reason: "Filtered task lists by owner and status" },
+      { model: "EmailDraft", index: "@@index([organizationId, status])", reason: "Draft lookup by status" },
+    ],
+    diagnostic: "Frequently queried field combinations lack composite indexes. As data grows, these queries will do full table scans instead of index lookups, causing slow page loads for task lists, review hub, and draft management.",
+    fix: "Add the 4 indexes to prisma/schema.prisma and run 'npx prisma db push'. Postgres creates indexes without blocking reads. Brief write lock during creation (milliseconds at current data sizes). Risk to customers: VERY LOW.",
   })
 
   return results
