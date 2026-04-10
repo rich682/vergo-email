@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Suspense } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -102,7 +102,7 @@ function formatFileSize(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export default function CollectionPage() {
+function CollectionPageContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const boardIdFromUrl = searchParams.get("boardId")
@@ -529,5 +529,13 @@ export default function CollectionPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function CollectionPage() {
+  return (
+    <Suspense fallback={<div className="animate-pulse space-y-4"><div className="h-8 w-48 rounded bg-gray-200" /><div className="h-64 rounded bg-gray-100" /></div>}>
+      <CollectionPageContent />
+    </Suspense>
   )
 }

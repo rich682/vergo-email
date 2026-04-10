@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -151,7 +151,7 @@ interface Board {
 // Main Component
 // ============================================
 
-export default function JobsPage() {
+function JobsPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { can, role } = usePermissions()
@@ -1388,5 +1388,13 @@ export default function JobsPage() {
         />
       )}
     </div>
+  )
+}
+
+export default function JobsPage() {
+  return (
+    <Suspense fallback={<div className="animate-pulse space-y-4"><div className="h-8 w-48 rounded bg-gray-200" /><div className="h-64 rounded bg-gray-100" /></div>}>
+      <JobsPageContent />
+    </Suspense>
   )
 }

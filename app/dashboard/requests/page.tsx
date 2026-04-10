@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Suspense } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -202,7 +202,7 @@ function hasReply(status: string): boolean {
   return ["REPLIED", "HAS_ATTACHMENTS", "VERIFYING", "FULFILLED", "COMPLETE"].includes(status)
 }
 
-export default function RequestsPage() {
+function RequestsPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const boardIdFromUrl = searchParams.get("boardId")
@@ -850,5 +850,13 @@ export default function RequestsPage() {
       )}
 
     </div>
+  )
+}
+
+export default function RequestsPage() {
+  return (
+    <Suspense fallback={<div className="animate-pulse space-y-4"><div className="h-8 w-48 rounded bg-gray-200" /><div className="h-64 rounded bg-gray-100" /></div>}>
+      <RequestsPageContent />
+    </Suspense>
   )
 }

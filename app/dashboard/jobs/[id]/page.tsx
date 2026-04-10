@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, Suspense } from "react"
 import { useRouter, useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -290,7 +290,7 @@ function getInitials(name: string | null, email: string): string {
 // Main Component
 // ============================================
 
-export default function JobDetailPage() {
+function JobDetailPageContent() {
   const router = useRouter()
   const params = useParams()
   const searchParams = useSearchParams()
@@ -1629,5 +1629,13 @@ export default function JobDetailPage() {
         onSuccess={() => { fetchFormRequestCount(); }}
       />
     </div>
+  )
+}
+
+export default function JobDetailPage() {
+  return (
+    <Suspense fallback={<div className="animate-pulse space-y-4"><div className="h-8 w-48 rounded bg-gray-200" /><div className="h-64 rounded bg-gray-100" /></div>}>
+      <JobDetailPageContent />
+    </Suspense>
   )
 }
