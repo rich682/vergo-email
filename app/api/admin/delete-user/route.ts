@@ -1,7 +1,8 @@
 /**
  * DELETE /api/admin/delete-user
- * Admin endpoint to delete a user by email
- * WARNING: This is a destructive operation - use with caution
+ * Admin endpoint to delete a user by email.
+ * If the user is the last in the org, the org is NOT auto-deleted —
+ * org deletion requires explicit confirmation via a separate step.
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -34,11 +35,11 @@ export async function DELETE(request: NextRequest) {
     const user = await prisma.user.findFirst({
       where: {
         email: email.toLowerCase(),
-        organizationId: session.user.organizationId
+        organizationId: session.user.organizationId,
       },
       include: {
-        organization: true
-      }
+        organization: true,
+      },
     })
 
     if (!user) {
@@ -54,29 +55,28 @@ export async function DELETE(request: NextRequest) {
 
     // Delete the user (cascade will handle related records based on schema)
     await prisma.user.delete({
-      where: { id: user.id }
+      where: { id: user.id },
     })
 
     // Check if org has any remaining users
     const remainingUsers = await prisma.user.count({
-      where: { organizationId: user.organizationId }
+      where: { organizationId: user.organizationId },
     })
 
-    // If no users left, delete the organization too
+    // Warn but do NOT auto-delete the org — too destructive
     if (remainingUsers === 0) {
-      console.log(`[Admin] No users remaining, deleting organization: ${user.organization?.name}`)
-      await prisma.organization.delete({
-        where: { id: user.organizationId }
-      })
+      console.warn(`[Admin] WARNING: Organization "${user.organization?.name}" (${user.organizationId}) has no remaining users. Manual deletion required if intended.`)
     }
 
     return NextResponse.json({
       success: true,
       message: `User ${email} deleted successfully`,
-      organizationDeleted: remainingUsers === 0
+      remainingUsers,
+      warning: remainingUsers === 0
+        ? `Organization "${user.organization?.name}" has no remaining users. Contact support to delete the organization if intended.`
+        : undefined,
     })
-
-  } catch (error: any) {
+  } catch (error) {
     console.error("[Admin] Delete user error:", error)
     return NextResponse.json(
       { error: "Failed to delete user" },

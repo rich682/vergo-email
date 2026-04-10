@@ -88,9 +88,10 @@ export async function POST(
         skipRateLimit: true, // Retries should bypass rate limiting
       })
 
-      // Delete the old failed request since a new one was created by sendEmail
-      await prisma.request.delete({
+      // Soft-delete the old failed request since a new one was created by sendEmail
+      await prisma.request.update({
         where: { id: requestId, organizationId },
+        data: { deletedAt: new Date(), deletedById: session.user.id },
       })
 
       console.log(`[RetryRequest] Retry successful for ${failedRequest.entity.email}, new request: ${sendResult.taskId}`)

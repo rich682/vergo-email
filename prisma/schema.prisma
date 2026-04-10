@@ -283,6 +283,7 @@ model User {
   deletedReconciliationConfigs ReconciliationConfig[] @relation("ReconciliationConfigDeleter")
   deletedAgentDefinitions      AgentDefinition[]      @relation("AgentDefinitionDeleter")
   deletedEntities              Entity[]               @relation("EntityDeleter")
+  deletedRequests              Request[]              @relation("RequestDeleter")
 
   // Review Hub reverse relations
   reviewedFormRequests          FormRequest[]          @relation("FormRequestReviewer")
@@ -556,8 +557,13 @@ model Request {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  // Soft delete
+  deletedAt   DateTime?
+  deletedById String?
+
   taskInstance      TaskInstance?      @relation(fields: [taskInstanceId], references: [id], onDelete: SetNull)
   entity            Entity?            @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  deletedBy         User?              @relation("RequestDeleter", fields: [deletedById], references: [id])
   messages          Message[]
   reminderStates    ReminderState[]
   collectedItems    CollectedItem[] // Evidence/attachments collected for this request
@@ -609,6 +615,9 @@ model Message {
   reviewedAt   DateTime?
   reviewedById String?
   reviewNotes  String?
+
+  // Soft delete
+  deletedAt   DateTime?
 
   entity            Entity?            @relation(fields: [entityId], references: [id], onDelete: SetNull)
   request           Request            @relation(fields: [requestId], references: [id], onDelete: Cascade)

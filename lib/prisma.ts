@@ -12,6 +12,8 @@ const SOFT_DELETE_MODELS = [
   'AgentDefinition',
   'Entity',
   'Group',
+  'Request',
+  'Message',
 ] as const
 
 type SoftDeleteModel = typeof SOFT_DELETE_MODELS[number]
