@@ -35,6 +35,14 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Popover,
   PopoverContent,
@@ -176,6 +184,10 @@ export default function DatabaseDetailPage() {
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
   const [deleting, setDeleting] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [editRowModalOpen, setEditRowModalOpen] = useState(false)
+  const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null)
+  const [editingRowData, setEditingRowData] = useState<DatabaseRow>({})
+  const [saving, setSaving] = useState(false)
 
   // Tab state
   const [activeTab, setActiveTab] = useState<"data" | "schema">("data")
@@ -559,6 +571,41 @@ export default function DatabaseDetailPage() {
       console.error("Error deleting rows:", err)
     } finally {
       setDeleting(false)
+    }
+  }
+
+  const handleEditRow = () => {
+    if (selectedRows.size !== 1 || !database) return
+    const rowIndex = Array.from(selectedRows)[0]
+    const row = database.rows[rowIndex]
+    if (!row) return
+    setEditingRowIndex(rowIndex)
+    setEditingRowData({ ...row })
+    setEditRowModalOpen(true)
+  }
+
+  const handleSaveRow = async () => {
+    if (editingRowIndex === null || !database) return
+    setSaving(true)
+    try {
+      const response = await fetch(`/api/databases/${databaseId}/rows`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ rowIndex: editingRowIndex, row: editingRowData }),
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to update row")
+      }
+      setEditRowModalOpen(false)
+      setEditingRowIndex(null)
+      setSelectedRows(new Set())
+      await fetchDatabase()
+    } catch (err) {
+      console.error("Error updating row:", err)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -1169,6 +1216,16 @@ export default function DatabaseDetailPage() {
                   >
                     Clear
                   </Button>
+                  {selectedRows.size === 1 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleEditRow}
+                    >
+                      <Pencil className="w-4 h-4 mr-1.5" />
+                      Edit
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="destructive"
@@ -2217,6 +2274,87 @@ export default function DatabaseDetailPage() {
                 <>
                   <Trash2 className="w-4 h-4 mr-1.5" />
                   Delete {selectedRows.size} Row{selectedRows.size !== 1 ? "s" : ""}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Row Dialog */}
+      <Dialog open={editRowModalOpen} onOpenChange={(o) => { if (!o) { setEditRowModalOpen(false); setEditingRowIndex(null) } }}>
+        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Row</DialogTitle>
+            <DialogDescription>
+              Modify the values for this row. Click save when done.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {database && sortedColumns.map((col) => (
+              <div key={col.key} className="space-y-1">
+                <Label className="text-sm font-medium">{col.label}</Label>
+                {col.dataType === "dropdown" && col.dropdownOptions && col.dropdownOptions.length > 0 ? (
+                  <Select
+                    value={String(editingRowData[col.key] ?? "")}
+                    onValueChange={(v) => setEditingRowData(prev => ({ ...prev, [col.key]: v }))}
+                  >
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {col.dropdownOptions.map((opt) => (
+                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : col.dataType === "boolean" ? (
+                  <Select
+                    value={editingRowData[col.key] === true ? "true" : editingRowData[col.key] === false ? "false" : ""}
+                    onValueChange={(v) => setEditingRowData(prev => ({ ...prev, [col.key]: v === "true" ? true : v === "false" ? false : null }))}
+                  >
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="true">Yes</SelectItem>
+                      <SelectItem value="false">No</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    type={col.dataType === "number" || col.dataType === "currency" ? "number" : col.dataType === "date" ? "date" : "text"}
+                    step={col.dataType === "currency" ? "0.01" : col.dataType === "number" ? "any" : undefined}
+                    value={editingRowData[col.key] ?? ""}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setEditingRowData(prev => ({
+                        ...prev,
+                        [col.key]: col.dataType === "number" || col.dataType === "currency"
+                          ? (val === "" ? null : Number(val))
+                          : val || null,
+                      }))
+                    }}
+                    className="h-8 text-sm"
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setEditRowModalOpen(false); setEditingRowIndex(null) }} disabled={saving}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveRow} disabled={saving}>
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-1.5" />
+                  Save
                 </>
               )}
             </Button>

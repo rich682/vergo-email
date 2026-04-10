@@ -2,6 +2,7 @@
  * Database Rows API
  *
  * GET    /api/databases/[id]/rows?limit=N - Get sample rows (default 3)
+ * PATCH  /api/databases/[id]/rows - Update a single row by index
  * DELETE /api/databases/[id]/rows - Delete specific rows from a database
  */
 
@@ -51,6 +52,70 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     console.error("Error fetching sample rows:", error)
     return NextResponse.json(
       { error: "Failed to fetch sample rows" },
+      { status: 500 }
+    )
+  }
+}
+
+// PATCH - Update a single row by index
+export async function PATCH(request: NextRequest, { params }: RouteParams) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.organizationId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    if (!canPerformAction(session.user.role, "databases:manage", session.user.orgActionPermissions)) {
+      return NextResponse.json(
+        { error: "You do not have permission to manage databases" },
+        { status: 403 }
+      )
+    }
+
+    const body = await request.json()
+    const { rowIndex, row } = body as { rowIndex: number; row: DatabaseRow }
+
+    if (typeof rowIndex !== "number" || rowIndex < 0) {
+      return NextResponse.json({ error: "Invalid rowIndex" }, { status: 400 })
+    }
+
+    if (!row || typeof row !== "object") {
+      return NextResponse.json({ error: "Invalid row data" }, { status: 400 })
+    }
+
+    const database = await prisma.database.findFirst({
+      where: { id: params.id, organizationId: session.user.organizationId },
+    })
+
+    if (!database) {
+      return NextResponse.json({ error: "Database not found" }, { status: 404 })
+    }
+
+    if (database.isReadOnly || database.sourceType) {
+      return NextResponse.json({ error: "This database is read-only" }, { status: 403 })
+    }
+
+    const existingRows = database.rows as unknown as DatabaseRow[]
+
+    if (rowIndex >= existingRows.length) {
+      return NextResponse.json({ error: "Row index out of bounds" }, { status: 400 })
+    }
+
+    const updatedRows = [...existingRows]
+    updatedRows[rowIndex] = row
+
+    await prisma.database.update({
+      where: { id: params.id },
+      data: {
+        rows: updatedRows as unknown as Prisma.InputJsonValue,
+      },
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Error updating row:", error)
+    return NextResponse.json(
+      { error: "Failed to update row" },
       { status: 500 }
     )
   }
