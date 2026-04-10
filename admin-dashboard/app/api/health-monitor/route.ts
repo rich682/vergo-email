@@ -492,29 +492,8 @@ async function checkSecurity(): Promise<CheckResult[]> {
     })
   }
 
-  // 7. Debug user creation code in signup flow (static)
-  results.push({
-    name: "debug_user_backdoor_code",
-    category: "security",
-    status: "critical",
-    message: "Signup endpoint contains debug user creation code (app/api/auth/signup/route.ts:195-216)",
-    details: [{ file: "app/api/auth/signup/route.ts", lines: "195-216", envVar: "ENABLE_DEBUG_USERS" }],
-    count: 1,
-    diagnostic: "The signup flow contains code that creates 3 debug users (admin/manager/member) with known passwords when ENABLE_DEBUG_USERS=true. If this env var is accidentally set in production, every new customer org gets backdoor accounts with full access to their financial data.",
-    fix: "Delete lines 195-216 from app/api/auth/signup/route.ts entirely. Debug users should be created via a separate admin script (scripts/seed-debug-users.ts), never embedded in the signup flow. Risk to customers: ZERO — removing dead code that only fires on env var.",
-  })
-
-  // 8. No login attempt rate limiting
-  results.push({
-    name: "no_login_rate_limiting",
-    category: "security",
-    status: "warning",
-    message: "No rate limiting on login attempts — brute force attacks possible",
-    details: [{ file: "lib/auth.ts", component: "NextAuth CredentialsProvider authorize()" }],
-    count: 1,
-    diagnostic: "The NextAuth CredentialsProvider has no limit on failed login attempts. An attacker can try unlimited password combinations against any user email. For a platform handling sensitive financial data, this is a significant risk.",
-    fix: "Add rate limiting wrapper in lib/auth.ts authorize function: const rl = await checkRateLimit('login:' + email, 10). Return null if rate limited. This gives users 10 attempts per window before lockout. Risk to customers: LOW — legitimate users rarely fail 10 times.",
-  })
+  // FIXED: debug_user_backdoor_code — removed in commit e70ae04
+  // FIXED: no_login_rate_limiting — added in commit e70ae04
 
   // 9. CSP allows unsafe-inline and unsafe-eval
   results.push({
@@ -582,27 +561,77 @@ async function checkSecurity(): Promise<CheckResult[]> {
 // ── Static Code Quality Checks ──────────────────────────────────────
 
 async function checkCodeQuality(): Promise<CheckResult[]> {
-  // These are known static findings from codebase audit.
-  // They don't change daily but serve as a persistent reminder of tech debt.
+  // Dynamic code quality checks — track file sizes against frozen baselines.
+  // If a file grows beyond its baseline, it means new code was added to an already-oversized file
+  // instead of being extracted into a new component.
   const results: CheckResult[] = []
 
-  results.push({
-    name: "oversized_files",
-    category: "code_quality",
-    status: "warning",
-    message: "29 components exceed 400 lines, 17 pages exceed 500 lines",
-    count: 46,
-    details: [
-      { file: "app/dashboard/reports/[id]/page.tsx", lines: 3513 },
-      { file: "app/dashboard/databases/[id]/page.tsx", lines: 2268 },
-      { file: "components/jobs/send-request-modal.tsx", lines: 1727 },
-      { file: "app/dashboard/jobs/[id]/page.tsx", lines: 1633 },
-      { file: "lib/services/board.service.ts", lines: 1329 },
-      { file: "lib/services/report-execution.service.ts", lines: 1265 },
-    ],
-    diagnostic: "Large files are harder to test, review, and modify. The top offenders handle multiple concerns in a single file (e.g., reports/[id]/page.tsx manages column config, formulas, filters, preview, and viewers). This increases bug risk when making changes.",
-    fix: "Priority splits: 1) reports/[id]/page.tsx -> ReportBuilder + ReportColumnsPanel + ReportFormulasPanel + ReportPreview. 2) send-request-modal.tsx -> SendRequestModal + RecipientSelection + DraftComposition. 3) board.service.ts -> board.service + board-period-calculation.service. Target: no file over 500 lines.",
-  })
+  // Frozen baselines as of April 10, 2026 — these should only ever go DOWN
+  const FILE_SIZE_BASELINES: Record<string, number> = {
+    "app/dashboard/reports/[id]/page.tsx": 3513,
+    "app/dashboard/databases/[id]/page.tsx": 2268,
+    "components/jobs/send-request-modal.tsx": 1727,
+    "app/dashboard/jobs/[id]/page.tsx": 1633,
+    "app/dashboard/boards/page.tsx": 1327,
+    "lib/services/board.service.ts": 1329,
+    "lib/services/report-execution.service.ts": 1265,
+    "components/jobs/reconciliation/reconciliation-results.tsx": 1242,
+    "lib/services/form-request.service.ts": 1139,
+    "lib/services/accounting-sync.service.ts": 1095,
+  }
+
+  // Count actual lines for tracked files
+  const fs = require("fs")
+  const path = require("path")
+  const projectRoot = process.cwd()
+
+  const fileChecks: { file: string; baseline: number; current: number; delta: number }[] = []
+  const grownFiles: { file: string; baseline: number; current: number; delta: number }[] = []
+
+  for (const [file, baseline] of Object.entries(FILE_SIZE_BASELINES)) {
+    try {
+      const filePath = path.join(projectRoot, file)
+      const content = fs.readFileSync(filePath, "utf-8")
+      const current = content.split("\n").length
+      const delta = current - baseline
+      fileChecks.push({ file, baseline, current, delta })
+      if (delta > 0) {
+        grownFiles.push({ file, baseline, current, delta })
+      }
+    } catch {
+      // File might not exist in admin dashboard build context — skip
+    }
+  }
+
+  if (grownFiles.length > 0) {
+    results.push({
+      name: "file_size_regression",
+      category: "code_quality",
+      status: "critical",
+      message: `${grownFiles.length} oversized file(s) have GROWN since baseline — new code added to already-bloated files`,
+      count: grownFiles.length,
+      details: grownFiles,
+      diagnostic: "These files were already identified as too large. Adding more code to them makes the problem worse. New features should be extracted into separate components/services, not appended to existing oversized files.",
+      fix: "Extract the newly added code into a separate file. Rule: no PR should increase the line count of any file in the baseline list. If you need to add functionality, create a new component and import it.",
+    })
+  }
+
+  if (fileChecks.length > 0) {
+    const shrunkFiles = fileChecks.filter((f) => f.delta < -10)
+    const unchangedFiles = fileChecks.filter((f) => f.delta >= -10 && f.delta <= 0)
+    const totalDelta = fileChecks.reduce((sum, f) => sum + f.delta, 0)
+
+    results.push({
+      name: "oversized_files_tracker",
+      category: "code_quality",
+      status: grownFiles.length > 0 ? "warning" : "ok",
+      message: `${fileChecks.length} tracked files: ${shrunkFiles.length} shrunk, ${unchangedFiles.length} stable, ${grownFiles.length} grown (net ${totalDelta > 0 ? "+" : ""}${totalDelta} lines)`,
+      count: fileChecks.length,
+      details: fileChecks.sort((a, b) => b.delta - a.delta),
+      diagnostic: "Tracking the top oversized files against a frozen baseline from April 10, 2026. Goal: all files should trend toward 500 lines or fewer over time. Negative delta = progress. Positive delta = regression.",
+      fix: "When modifying these files, extract new code into child components instead of adding lines. Over time, refactor existing sections out into focused files when touching adjacent code.",
+    })
+  }
 
   results.push({
     name: "type_safety_gaps",
@@ -637,33 +666,21 @@ async function checkCodeQuality(): Promise<CheckResult[]> {
     fix: "Start with highest-impact services: 1) email-sync.service.ts — test sync cursor handling and error recovery. 2) quest.service.ts — test entity resolution and batch processing. 3) email-sending.service.ts — test rate limiting and personalization rendering.",
   })
 
-  results.push({
-    name: "missing_timeout_config",
-    category: "code_quality",
-    status: "warning",
-    message: "Most API routes lack explicit timeout configuration (maxDuration)",
-    count: 1,
-    details: [
-      { issue: "Only 4-5 routes set maxDuration. OpenAI API calls in many services have no explicit timeout." },
-    ],
-    diagnostic: "Without explicit maxDuration, Vercel functions default to 25s (Pro) or 60s (Enterprise). Long-running operations (AI generation, reconciliation matching, email sync) can silently timeout, leaving processes in stuck states.",
-    fix: "Add 'export const maxDuration = 60' to all routes that call OpenAI, process files, or trigger background work. Specifically: all /api/reconciliations/ match routes, /api/email-drafts/generate, /api/review/analyze.",
-  })
+  // FIXED: missing_timeout_config — added maxDuration to 6 routes in commit e70ae04
+  // FIXED: n_plus_one quest metadata loop — batched in commit 53738cf
+  // FIXED: unbounded queries — take: limits added in commit e70ae04
 
   results.push({
-    name: "n_plus_one_query_risks",
+    name: "n_plus_one_accounting_sync",
     category: "code_quality",
     status: "warning",
-    message: "N+1 query patterns detected in quest and accounting sync services",
-    count: 3,
+    message: "N+1 query pattern in accounting sync service — account iteration without batching",
+    count: 1,
     details: [
-      { file: "lib/services/quest.service.ts", issue: "Entity resolution in loop instead of batch query" },
       { file: "lib/services/accounting-sync.service.ts", issue: "Account iteration without batched related queries" },
-      { file: "lib/services/quest.service.ts", issue: "findMany without take: limit loads all unsent drafts" },
-      { file: "lib/services/reminder-runner.service.ts", issue: "findMany on form reminders without take: limit (line 221)" },
     ],
-    diagnostic: "Querying the database inside loops causes N+1 query patterns that scale linearly with data size. A quest with 100 recipients makes 100 individual queries instead of 1 batch query. Unbounded findMany calls risk OOM crashes when data grows. This will become a performance bottleneck and stability risk as customer data grows.",
-    fix: "1) quest.service.ts: Replace entity loop with batch findMany using { id: { in: entityIds } }. 2) Add 'take: 100' to all findMany calls without pagination (quest.service.ts:621, reminder-runner.service.ts:221). 3) accounting-sync: batch account processing with Promise.all. Risk to customers: LOW — same logic, just paginated.",
+    diagnostic: "The accounting sync service iterates over connected accounts and performs individual queries per account instead of batching. As customer count grows, this becomes a performance bottleneck.",
+    fix: "Batch account processing with Promise.all for independent operations. Load all accounts, group related queries, process in parallel. Risk to customers: LOW — same logic, just faster.",
   })
 
   results.push({
