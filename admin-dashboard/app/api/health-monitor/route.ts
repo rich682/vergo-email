@@ -383,7 +383,7 @@ async function checkSecurity(): Promise<CheckResult[]> {
 
   // 1. Users with no password hash (incomplete accounts)
   const noPasswordUsers = await prisma.user.findMany({
-    where: { passwordHash: null, emailVerified: true },
+    where: { passwordHash: "", emailVerified: true },
     select: { id: true, email: true, organizationId: true, role: true },
   })
   const filteredNoPass = noPasswordUsers.filter((u) => !testIds.has(u.organizationId))
