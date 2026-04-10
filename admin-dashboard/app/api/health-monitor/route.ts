@@ -234,11 +234,18 @@ async function checkOrphanedRecords(): Promise<CheckResult[]> {
 async function checkSyncHealth(): Promise<CheckResult[]> {
   const results: CheckResult[] = []
 
+  const testIds = await getTestOrgIds()
   const staleSyncRaw = await prisma.connectedEmailAccount.findMany({
     where: { isActive: true, OR: [{ lastSyncAt: null }, { lastSyncAt: { lt: ago(HOURS(24)) } }] },
-    select: { id: true, email: true, organizationId: true, lastSyncAt: true, provider: true },
+    select: { id: true, email: true, organizationId: true, lastSyncAt: true, provider: true, userId: true },
   })
-  const staleSync = excludeTestOrgs(staleSyncRaw)
+  // Exclude accounts in test orgs AND accounts owned by users from test orgs (e.g., Vergo staff in customer orgs)
+  const ownerUserIds = staleSyncRaw.map((a) => a.userId).filter(Boolean) as string[]
+  const ownerUsers = ownerUserIds.length > 0
+    ? await prisma.user.findMany({ where: { id: { in: ownerUserIds } }, select: { id: true, organizationId: true } })
+    : []
+  const testOwnerIds = new Set(ownerUsers.filter((u) => testIds.has(u.organizationId)).map((u) => u.id))
+  const staleSync = staleSyncRaw.filter((a) => !testIds.has(a.organizationId) && !(a.userId && testOwnerIds.has(a.userId)))
   if (staleSync.length > 0) {
     results.push({
       name: "stale_email_sync",
@@ -254,9 +261,15 @@ async function checkSyncHealth(): Promise<CheckResult[]> {
 
   const expiredTokensRaw = await prisma.connectedEmailAccount.findMany({
     where: { isActive: true, tokenExpiresAt: { lt: new Date() } },
-    select: { id: true, email: true, organizationId: true, tokenExpiresAt: true },
+    select: { id: true, email: true, organizationId: true, tokenExpiresAt: true, userId: true },
   })
-  const expiredTokens = excludeTestOrgs(expiredTokensRaw)
+  // Exclude test org accounts AND accounts owned by test org users
+  const expOwnerIds = expiredTokensRaw.map((a) => a.userId).filter(Boolean) as string[]
+  const expOwnerUsers = expOwnerIds.length > 0
+    ? await prisma.user.findMany({ where: { id: { in: expOwnerIds } }, select: { id: true, organizationId: true } })
+    : []
+  const expTestOwnerIds = new Set(expOwnerUsers.filter((u) => testIds.has(u.organizationId)).map((u) => u.id))
+  const expiredTokens = expiredTokensRaw.filter((a) => !testIds.has(a.organizationId) && !(a.userId && expTestOwnerIds.has(a.userId)))
   if (expiredTokens.length > 0) {
     results.push({
       name: "expired_tokens",
