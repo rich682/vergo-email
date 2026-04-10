@@ -550,7 +550,7 @@ export function ReportTab({
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <div className="overflow-auto rounded-lg border border-gray-200" style={{ maxHeight: '70vh' }}>
                 <table className="text-sm border-collapse" style={{ tableLayout: 'auto', width: 'max-content' }}>
                   <thead className="bg-gray-100 sticky top-0 z-20">
                     <tr className="border-b-2 border-gray-200">
@@ -575,7 +575,7 @@ export function ReportTab({
                     </tr>
                   </thead>
                   <tbody>
-                    {previewData.table.rows.slice(0, 20).map((row, rowIndex) => {
+                    {previewData.table.rows.map((row, rowIndex) => {
                       const rowBold = row._bold as boolean | undefined
                       const rowSeparator = row._separatorAbove as boolean | undefined
                       return (
@@ -650,11 +650,6 @@ export function ReportTab({
                     </tfoot>
                   )}
                 </table>
-                {previewData.table.rows.length > 20 && (
-                  <p className="text-xs text-gray-400 text-center py-2 bg-gray-50 border-t border-gray-100">
-                    Showing 20 of {previewData.table.rows.length} rows
-                  </p>
-                )}
               </div>
             )}
           </div>
