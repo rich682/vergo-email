@@ -7,6 +7,8 @@
  * DELETE /api/automation-rules — Deactivate/delete a rule (query param `id`)
  */
 
+export const maxDuration = 30
+
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"

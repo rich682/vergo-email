@@ -8,6 +8,8 @@
  *   - action: "create_draft" - Create a new draft request (for scheduled sending)
  */
 
+export const maxDuration = 30
+
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"

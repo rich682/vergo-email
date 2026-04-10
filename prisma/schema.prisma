@@ -575,6 +575,7 @@ model Request {
   @@index([draftSourceRequestId]) // For looking up source request content
   @@index([organizationId, taskInstanceId, isDraft]) // Requests tab: board-scoped request queries
   @@index([organizationId, taskInstanceId, status]) // Inbox: request status filtering
+  @@index([organizationId, riskLevel]) // Review hub: risk filtering
   @@map("Task")
 }
 
@@ -626,6 +627,7 @@ model Message {
   @@index([isAutoReply])
   @@index([reviewStatus])
   @@index([direction, isAutoReply, requestId]) // Inbox: inbound message filtering
+  @@index([reviewStatus, createdAt]) // Review hub: status filtering with date sort
 }
 
 model AgentSchedule {
@@ -759,6 +761,7 @@ model EmailDraft {
   @@index([taskInstanceId])
   @@index([status])
   @@index([idempotencyKey])
+  @@index([organizationId, status]) // Draft management: status filtering
 }
 
 model PersonalizationData {

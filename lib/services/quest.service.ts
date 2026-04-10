@@ -621,7 +621,8 @@ export class QuestService {
     const drafts = await prisma.emailDraft.findMany({
       where: {
         status: { not: "SENT" }
-      }
+      },
+      take: 200,
     })
     
     const dueQuests: Quest[] = []

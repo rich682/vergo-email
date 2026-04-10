@@ -192,28 +192,7 @@ export async function POST(request: NextRequest) {
         }
       })
 
-      // TODO: Remove debug user creation before production release.
-      // This block creates debug users with known passwords for development/testing.
-      // It is gated behind ENABLE_DEBUG_USERS env var but should be removed entirely
-      // once the team no longer needs it for local development.
-      if (process.env.ENABLE_DEBUG_USERS === "true") {
-        const debugPasswordHash = await bcrypt.hash(process.env.DEBUG_USER_PASSWORD || crypto.randomUUID(), 10)
-        const debugRoles = ["ADMIN", "MANAGER", "MEMBER"] as const
-        for (const debugRole of debugRoles) {
-          await tx.user.create({
-            data: {
-              email: `debug-${debugRole.toLowerCase()}@${organization.id}.vergo.local`,
-              passwordHash: debugPasswordHash,
-              name: `Debug ${debugRole.charAt(0) + debugRole.slice(1).toLowerCase()}`,
-              role: debugRole,
-              organizationId: organization.id,
-              emailVerified: true,
-              isDebugUser: true,
-              onboardingCompleted: true,
-            }
-          })
-        }
-      }
+
 
       return { organization, user }
     })

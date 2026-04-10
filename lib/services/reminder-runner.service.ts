@@ -219,6 +219,7 @@ export async function runDueFormRemindersOnce(): Promise<ReminderRunResult> {
 
   // Find form requests due for reminders
   const dueFormRequests = await prisma.formRequest.findMany({
+    take: 500,
     where: {
       status: "PENDING",
       remindersEnabled: true,

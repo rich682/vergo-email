@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { UserRole } from "@prisma/client"
 import type { OrgActionPermissions } from "@/lib/permissions"
+import { checkRateLimit } from "@/lib/utils/rate-limit"
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -15,6 +16,12 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
+          return null
+        }
+
+        // Rate limit: 10 login attempts per window per email
+        const rl = await checkRateLimit(`login:${credentials.email.toLowerCase()}`, 10)
+        if (!rl.allowed) {
           return null
         }
 

@@ -9,8 +9,8 @@ export function validateOrigin(request: NextRequest): boolean {
   const origin = request.headers.get("origin")
   const referer = request.headers.get("referer")
 
-  // In development, skip origin check
-  if (process.env.NODE_ENV === "development") {
+  // In development, warn but still validate if possible
+  if (process.env.NODE_ENV === "development" && !origin && !referer) {
     return true
   }
 

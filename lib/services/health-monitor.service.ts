@@ -93,6 +93,12 @@ export class HealthMonitorService {
       where: { runAt: { lt: ago(DAYS(90)) } },
     })
 
+    // Cleanup expired verification tokens
+    await prisma.user.updateMany({
+      where: { verificationToken: { not: null }, tokenExpiresAt: { lt: new Date() } },
+      data: { verificationToken: null, tokenExpiresAt: null },
+    })
+
     this.log.info("Health check completed", { id: record.id, status: overallStatus, issuesFound, durationMs })
     return { id: record.id, status: overallStatus, summary }
   }
