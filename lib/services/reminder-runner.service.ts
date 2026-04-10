@@ -195,7 +195,7 @@ export async function runDueRemindersOnce(): Promise<ReminderRunResult> {
           targetType: "reminder",
         }).catch((err) => console.error("[ActivityEvent] reminder.sent failed:", err))
       } catch { /* ignore import failures */ }
-    } catch (error: any) {
+    } catch (error) {
       console.error(JSON.stringify({ event: "reminder_send_failed", reminderStateId: reminderState.id, error: error?.message }))
       errors.push(`Reminder ${reminderState.id}: ${error.message}`)
       // Do not update sentCount on failure; allow retry
@@ -333,7 +333,7 @@ export async function runDueFormRemindersOnce(): Promise<ReminderRunResult> {
         formRequestId: formRequest.id, 
         reminderNumber 
       }))
-    } catch (error: any) {
+    } catch (error) {
       console.error(JSON.stringify({ 
         event: "form_reminder_send_failed", 
         formRequestId: formRequest.id, 

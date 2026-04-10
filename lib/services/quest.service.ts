@@ -255,7 +255,7 @@ export class QuestService {
           availableTags
         })
         console.log(`QuestService.generateEmail: AI service returned subject: "${generated.subject?.substring(0, 50)}"`)
-      } catch (aiError: any) {
+      } catch (aiError) {
         console.error(`QuestService.generateEmail: AI service failed:`, aiError.message, aiError.stack)
         throw new Error(`AI generation failed: ${aiError.message}`)
       }
@@ -553,7 +553,7 @@ export class QuestService {
         taskIds: successful.map(r => r.taskId),
         errors: errors.length > 0 ? errors : undefined
       }
-    } catch (error: any) {
+    } catch (error) {
       log.error("Quest execution failed", error, {
         questId: id
       }, { organizationId, operation: "execute" })
@@ -616,30 +616,32 @@ export class QuestService {
    */
   static async findDueStandingQuests(): Promise<Quest[]> {
     const now = new Date()
-    
-    // Find all email drafts with standing quest metadata
+
+    // Load drafts with suggestedRecipients to avoid N+1 getQuestMetadata calls
     const drafts = await prisma.emailDraft.findMany({
       where: {
         status: { not: "SENT" }
       },
       take: 200,
     })
-    
+
     const dueQuests: Quest[] = []
-    
+
     for (const draft of drafts) {
-      const metadata = await this.getQuestMetadata(draft.id, draft.organizationId)
+      // Extract metadata inline instead of per-draft DB query
+      const recipients = (draft.suggestedRecipients as Record<string, unknown>) || {}
+      const metadata = (recipients[QUEST_METADATA_KEY] as QuestMetadata) || null
       if (!metadata) continue
       if (metadata.questType !== "standing") continue
       if (metadata.isPaused) continue
       if (!metadata.nextOccurrenceAt) continue
-      
+
       const nextOccurrence = new Date(metadata.nextOccurrenceAt)
       if (nextOccurrence <= now) {
         dueQuests.push(this.emailDraftToQuest(draft, metadata))
       }
     }
-    
+
     return dueQuests
   }
 
