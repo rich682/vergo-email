@@ -2758,10 +2758,8 @@ function AccountingFormulaRowModal({
   }
 
   // Build available references: group subtotals + other formula rows
-  const availableRefs = [
-    ...groupNames.map(g => `TOTAL ${g}`),
-    ...existingRows.filter(r => r.key !== editing?.key).map(r => r.label),
-  ]
+  const groupRefs = groupNames.map(g => `TOTAL ${g}`)
+  const formulaRefs = existingRows.filter(r => r.key !== editing?.key).map(r => r.label)
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
@@ -2787,7 +2785,7 @@ function AccountingFormulaRowModal({
           <div className="space-y-2">
             <Label>Expression</Label>
             <p className="text-xs text-gray-500">
-              Reference group totals using [TOTAL GROUP NAME]. E.g., [TOTAL REVENUE] - [TOTAL DIRECT JOB COSTS]
+              Reference group totals using [TOTAL GROUP NAME] or other formula rows by [LABEL]. E.g., [TOTAL REVENUE] - [TOTAL DIRECT JOB COSTS]
             </p>
             <Textarea
               value={expression}
@@ -2796,20 +2794,28 @@ function AccountingFormulaRowModal({
               rows={2}
               className="text-sm font-mono"
             />
-            {availableRefs.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {availableRefs.slice(0, 12).map(ref => (
-                  <button
-                    key={ref}
-                    type="button"
-                    className="text-[10px] px-1.5 py-0.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-600"
-                    onClick={() => setExpression(prev => prev + `[${ref}]`)}
-                  >
-                    {ref}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+              {groupRefs.map(ref => (
+                <button
+                  key={ref}
+                  type="button"
+                  className="text-[10px] px-1.5 py-0.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-600"
+                  onClick={() => setExpression(prev => prev + `[${ref}]`)}
+                >
+                  {ref}
+                </button>
+              ))}
+              {formulaRefs.map(ref => (
+                <button
+                  key={ref}
+                  type="button"
+                  className="text-[10px] px-1.5 py-0.5 bg-orange-100 hover:bg-orange-200 rounded text-orange-700"
+                  onClick={() => setExpression(prev => prev + `[${ref}]`)}
+                >
+                  {ref}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="space-y-3 pt-2 border-t border-gray-100">
