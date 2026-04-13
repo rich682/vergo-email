@@ -1029,35 +1029,61 @@ export class ReportExecutionService {
         }
         const rowValues: Record<string, number | null> = {}
 
-        // Resolve cross-report references if present
-        const exprRaw = fr.expression || "0"
-        const hasRefs = hasReportRefs(exprRaw)
-        const { resolvedExpression, refValues } = hasRefs
-          ? await resolveRefs(exprRaw)
-          : { resolvedExpression: exprRaw, refValues: {} as Record<string, Record<string, number | null>> }
+        if (fr.type === "reference" && fr.refReportName && fr.refRowLabel) {
+          // Import row: fetch values directly from another report's generated snapshot
+          const cacheKey = `${fr.refReportName}::${fr.refRowLabel}`
+          if (!(cacheKey in refCache)) {
+            refCache[cacheKey] = await ReportGenerationService.getReportRowValues(
+              organizationId,
+              fr.refReportName,
+              fr.refRowLabel,
+              currentPeriodKey,
+            )
+          }
+          const refRowValues = refCache[cacheKey]
+          if (refRowValues === null) {
+            diagnostics.warnings.push(
+              `Import "${fr.refRowLabel}" from "${fr.refReportName}": no generated data found for period "${currentPeriodKey}"`
+            )
+          }
+          for (const pv of pivotValues) {
+            const val = refRowValues?.[pv] ?? null
+            formulaRow[pv] = val
+            rowValues[pv] = val
+          }
+        } else {
+          // Formula row: evaluate expression with group subtotals + cross-report REF() context
+          const exprRaw = fr.expression || "0"
+          const hasRefs = hasReportRefs(exprRaw)
+          const { resolvedExpression, refValues } = hasRefs
+            ? await resolveRefs(exprRaw)
+            : { resolvedExpression: exprRaw, refValues: {} as Record<string, Record<string, number | null>> }
 
-        for (const pv of pivotValues) {
-          const context: Record<string, number> = {}
-          for (const [key, vals] of Object.entries(groupSubtotalValues)) {
-            if (vals[pv] != null) context[key] = vals[pv]!
-          }
-          // Inject resolved cross-report ref values for this pivot column
-          for (const [placeholder, pvMap] of Object.entries(refValues)) {
-            const val = pvMap[pv]
-            if (val != null) context[placeholder] = val
-          }
-          try {
-            const result = evaluateSafeExpression(resolvedExpression, context)
-            const num = typeof result === "number" && !isNaN(result) ? Math.round(result * 100) / 100 : null
-            formulaRow[pv] = num; rowValues[pv] = num
-          } catch {
-            formulaRow[pv] = null; rowValues[pv] = null
+          for (const pv of pivotValues) {
+            const context: Record<string, number> = {}
+            for (const [key, vals] of Object.entries(groupSubtotalValues)) {
+              if (vals[pv] != null) context[key] = vals[pv]!
+            }
+            // Inject resolved cross-report ref values for this pivot column
+            for (const [placeholder, pvMap] of Object.entries(refValues)) {
+              const val = pvMap[pv]
+              if (val != null) context[placeholder] = val
+            }
+            try {
+              const result = evaluateSafeExpression(resolvedExpression, context)
+              const num = typeof result === "number" && !isNaN(result) ? Math.round(result * 100) / 100 : null
+              formulaRow[pv] = num; rowValues[pv] = num
+            } catch {
+              formulaRow[pv] = null; rowValues[pv] = null
+            }
           }
         }
+
         if (showVariance) {
           const fv = rowValues[pivotValues[0]], lv = rowValues[pivotValues[pivotValues.length - 1]]
           formulaRow["_variance"] = (fv != null && lv != null) ? Math.round((lv - fv) * 100) / 100 : null
         }
+        // Store values so other formula rows can reference this row by [LABEL]
         groupSubtotalValues[fr.label] = rowValues
         dataRows.push(formulaRow)
       }

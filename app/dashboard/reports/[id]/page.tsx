@@ -108,7 +108,10 @@ interface PivotFormulaColumn {
 interface AccountingFormulaRow {
   key: string
   label: string
-  expression: string
+  type?: "formula" | "reference"
+  expression?: string
+  refReportName?: string
+  refRowLabel?: string
   order: number
   isBold?: boolean
   separatorAbove?: boolean
@@ -1127,7 +1130,7 @@ export default function ReportBuilderPage() {
                                 onClick={() => { setEditingFormulaRow(null); setFormulaRowModalOpen(true) }}
                                 className="text-xs px-2 py-0.5 text-blue-600 hover:bg-blue-50 rounded"
                               >
-                                + Formula Row
+                                + Add Row
                               </button>
                             </div>
                             <p className="text-xs text-gray-400">Drag to reorder groups and formula rows</p>
@@ -2732,7 +2735,13 @@ function AccountingFormulaRowModal({
   onSave,
 }: AccountingFormulaRowModalProps) {
   const [label, setLabel] = useState("")
+  const [rowType, setRowType] = useState<"formula" | "reference">("formula")
+  // Formula mode state
   const [expression, setExpression] = useState("")
+  // Import mode state
+  const [refReportName, setRefReportName] = useState("")
+  const [refRowLabel, setRefRowLabel] = useState("")
+  // Shared state
   const [isBold, setIsBold] = useState(true)
   const [separatorAbove, setSeparatorAbove] = useState(true)
   const [referenceableReports, setReferenceableReports] = useState<ReferenceableReport[]>([])
@@ -2742,12 +2751,18 @@ function AccountingFormulaRowModal({
     if (open) {
       if (editing) {
         setLabel(editing.label)
-        setExpression(editing.expression)
+        setRowType(editing.type === "reference" ? "reference" : "formula")
+        setExpression(editing.expression || "")
+        setRefReportName(editing.refReportName || "")
+        setRefRowLabel(editing.refRowLabel || "")
         setIsBold(editing.isBold !== false)
         setSeparatorAbove(editing.separatorAbove !== false)
       } else {
         setLabel("")
+        setRowType("formula")
         setExpression("")
+        setRefReportName("")
+        setRefRowLabel("")
         setIsBold(true)
         setSeparatorAbove(true)
       }
@@ -2760,16 +2775,30 @@ function AccountingFormulaRowModal({
     }
   }, [open, editing, reportId])
 
+  // For import mode: when a report is selected from the dropdown, sync refReportName
   const selectedRefReport = referenceableReports.find(r => r.id === selectedRefReportId) || null
 
+  // When editing a reference row, auto-select the matching report in the dropdown
+  useEffect(() => {
+    if (open && editing?.type === "reference" && editing.refReportName && referenceableReports.length > 0) {
+      const match = referenceableReports.find(r => r.name === editing.refReportName)
+      if (match) setSelectedRefReportId(match.id)
+    }
+  }, [open, editing, referenceableReports])
+
   const handleSave = () => {
-    if (!label.trim() || !expression.trim()) return
+    if (!label.trim()) return
+    if (rowType === "formula" && !expression.trim()) return
+    if (rowType === "reference" && (!refReportName || !refRowLabel)) return
+
     const key = editing?.key || `formula_${Date.now()}`
     const maxOrder = existingRows.length > 0 ? Math.max(...existingRows.map(r => r.order)) : -1
     onSave({
       key,
       label: label.trim(),
-      expression: expression.trim(),
+      type: rowType,
+      ...(rowType === "formula" ? { expression: expression.trim() } : {}),
+      ...(rowType === "reference" ? { refReportName, refRowLabel } : {}),
       order: editing ? editing.order : maxOrder + 1,
       isBold,
       separatorAbove,
@@ -2781,93 +2810,182 @@ function AccountingFormulaRowModal({
   const groupRefs = groupNames.map(g => `TOTAL ${g}`)
   const formulaRefs = existingRows.filter(r => r.key !== editing?.key).map(r => r.label)
 
+  const isValid = label.trim() && (
+    (rowType === "formula" && expression.trim()) ||
+    (rowType === "reference" && refReportName && refRowLabel)
+  )
+
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{editing ? "Edit Formula Row" : "Add Formula Row"}</DialogTitle>
+          <DialogTitle>{editing ? "Edit Row" : "Add Row"}</DialogTitle>
           <DialogDescription>
-            Create a cross-group calculation (e.g., GROSS PROFIT = [TOTAL REVENUE] - [TOTAL DIRECT JOB COSTS])
+            Create a formula or import a row from another report.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          {/* Type toggle */}
+          <div className="flex gap-1 p-0.5 bg-gray-100 rounded-md">
+            <button
+              type="button"
+              className={`flex-1 text-xs py-1.5 px-3 rounded transition-colors ${
+                rowType === "formula" ? "bg-white shadow-sm font-medium text-gray-900" : "text-gray-500 hover:text-gray-700"
+              }`}
+              onClick={() => setRowType("formula")}
+            >
+              Formula
+            </button>
+            <button
+              type="button"
+              className={`flex-1 text-xs py-1.5 px-3 rounded transition-colors ${
+                rowType === "reference" ? "bg-white shadow-sm font-medium text-gray-900" : "text-gray-500 hover:text-gray-700"
+              }`}
+              onClick={() => setRowType("reference")}
+            >
+              Import Row
+            </button>
+          </div>
+
           <div className="space-y-2">
             <Label>Label</Label>
             <Input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="e.g., GROSS PROFIT"
+              placeholder={rowType === "reference" ? "Auto-filled from selected row" : "e.g., GROSS PROFIT"}
               className="h-8 text-sm"
             />
           </div>
 
-          <div className="space-y-2">
-            <Label>Expression</Label>
-            <p className="text-xs text-gray-500">
-              Reference group totals using [TOTAL GROUP NAME], other formula rows by [LABEL], or values from other reports using REF(&quot;Report&quot;, &quot;Row&quot;).
-            </p>
-            <Textarea
-              value={expression}
-              onChange={(e) => setExpression(e.target.value)}
-              placeholder='[TOTAL REVENUE] - [TOTAL DIRECT JOB COSTS]'
-              rows={2}
-              className="text-sm font-mono"
-            />
-            <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
-              {groupRefs.map(ref => (
-                <button
-                  key={ref}
-                  type="button"
-                  className="text-[10px] px-1.5 py-0.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-600"
-                  onClick={() => setExpression(prev => prev + `[${ref}]`)}
-                >
-                  {ref}
-                </button>
-              ))}
-              {formulaRefs.map(ref => (
-                <button
-                  key={ref}
-                  type="button"
-                  className="text-[10px] px-1.5 py-0.5 bg-orange-100 hover:bg-orange-200 rounded text-orange-700"
-                  onClick={() => setExpression(prev => prev + `[${ref}]`)}
-                >
-                  {ref}
-                </button>
-              ))}
+          {rowType === "formula" ? (
+            /* Formula mode */
+            <div className="space-y-2">
+              <Label>Expression</Label>
+              <p className="text-xs text-gray-500">
+                Reference group totals using [TOTAL GROUP NAME], other formula rows by [LABEL], or values from other reports using REF(&quot;Report&quot;, &quot;Row&quot;).
+              </p>
+              <Textarea
+                value={expression}
+                onChange={(e) => setExpression(e.target.value)}
+                placeholder='[TOTAL REVENUE] - [TOTAL DIRECT JOB COSTS]'
+                rows={2}
+                className="text-sm font-mono"
+              />
+              <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+                {groupRefs.map(ref => (
+                  <button
+                    key={ref}
+                    type="button"
+                    className="text-[10px] px-1.5 py-0.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-600"
+                    onClick={() => setExpression(prev => prev + `[${ref}]`)}
+                  >
+                    {ref}
+                  </button>
+                ))}
+                {formulaRefs.map(ref => (
+                  <button
+                    key={ref}
+                    type="button"
+                    className="text-[10px] px-1.5 py-0.5 bg-orange-100 hover:bg-orange-200 rounded text-orange-700"
+                    onClick={() => setExpression(prev => prev + `[${ref}]`)}
+                  >
+                    {ref}
+                  </button>
+                ))}
+              </div>
+              {referenceableReports.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-gray-100">
+                  <p className="text-[10px] font-medium text-blue-600">From Other Reports</p>
+                  <Select value={selectedRefReportId} onValueChange={setSelectedRefReportId}>
+                    <SelectTrigger className="h-7 text-xs">
+                      <SelectValue placeholder="Select a report..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {referenceableReports.map(report => (
+                        <SelectItem key={report.id} value={report.id} className="text-xs">
+                          {report.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedRefReport && (
+                    <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+                      {selectedRefReport.rows.map(row => (
+                        <button
+                          key={row.label}
+                          type="button"
+                          className="text-[10px] px-1.5 py-0.5 bg-blue-50 hover:bg-blue-100 rounded text-blue-700"
+                          onClick={() => setExpression(prev => prev + `REF("${selectedRefReport.name}", "${row.label}")`)}
+                        >
+                          {row.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-            {referenceableReports.length > 0 && (
-              <div className="space-y-2 pt-2 border-t border-gray-100">
-                <p className="text-[10px] font-medium text-blue-600">From Other Reports</p>
-                <Select value={selectedRefReportId} onValueChange={setSelectedRefReportId}>
-                  <SelectTrigger className="h-7 text-xs">
+          ) : (
+            /* Import Row mode */
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>Source Report</Label>
+                <Select
+                  value={selectedRefReportId}
+                  onValueChange={(id) => {
+                    setSelectedRefReportId(id)
+                    const report = referenceableReports.find(r => r.id === id)
+                    if (report) {
+                      setRefReportName(report.name)
+                      setRefRowLabel("")  // Reset row selection when report changes
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-8 text-sm">
                     <SelectValue placeholder="Select a report..." />
                   </SelectTrigger>
                   <SelectContent>
                     {referenceableReports.map(report => (
-                      <SelectItem key={report.id} value={report.id} className="text-xs">
+                      <SelectItem key={report.id} value={report.id} className="text-sm">
                         {report.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {selectedRefReport && (
-                  <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+              </div>
+              {selectedRefReport && (
+                <div className="space-y-2">
+                  <Label>Row to Import</Label>
+                  <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
                     {selectedRefReport.rows.map(row => (
                       <button
                         key={row.label}
                         type="button"
-                        className="text-[10px] px-1.5 py-0.5 bg-blue-50 hover:bg-blue-100 rounded text-blue-700"
-                        onClick={() => setExpression(prev => prev + `REF("${selectedRefReport.name}", "${row.label}")`)}
+                        className={`text-[11px] px-2 py-1 rounded border transition-colors ${
+                          refRowLabel === row.label
+                            ? "bg-blue-500 text-white border-blue-500"
+                            : "bg-white text-gray-700 border-gray-200 hover:border-blue-300 hover:bg-blue-50"
+                        }`}
+                        onClick={() => {
+                          setRefRowLabel(row.label)
+                          // Auto-fill label if empty or was previously auto-filled
+                          if (!label.trim() || label === refRowLabel) {
+                            setLabel(row.label)
+                          }
+                        }}
                       >
                         {row.label}
                       </button>
                     ))}
                   </div>
-                )}
-              </div>
-            )}
-          </div>
+                </div>
+              )}
+              {!selectedRefReportId && referenceableReports.length === 0 && (
+                <p className="text-xs text-gray-400">No other accounting reports available to import from.</p>
+              )}
+            </div>
+          )}
 
           <div className="space-y-3 pt-2 border-t border-gray-100">
             <Label className="text-xs text-gray-500">Formatting</Label>
@@ -2887,7 +3005,7 @@ function AccountingFormulaRowModal({
           <Button
             size="sm"
             onClick={handleSave}
-            disabled={!label.trim() || !expression.trim()}
+            disabled={!isValid}
             className="bg-orange-500 hover:bg-orange-600 text-white"
           >
             {editing ? "Update" : "Add"} Row

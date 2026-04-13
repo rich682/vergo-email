@@ -73,7 +73,10 @@ export interface PivotFormulaColumn {
 export interface AccountingFormulaRow {
   key: string                    // Unique key
   label: string                  // Display label (e.g., "GROSS PROFIT")
-  expression: string             // References group totals: [TOTAL REVENUE] - [TOTAL DIRECT JOB COSTS]
+  type?: "formula" | "reference" // "formula" (default) = expression-based, "reference" = import row from another report
+  expression?: string            // Used when type="formula": [TOTAL REVENUE] - [TOTAL DIRECT JOB COSTS]
+  refReportName?: string         // Used when type="reference": source report name
+  refRowLabel?: string           // Used when type="reference": source row label
   order: number
   isBold?: boolean
   separatorAbove?: boolean
@@ -690,16 +693,23 @@ export class ReportDefinitionService {
    */
   static async computeReferencedReportIds(
     organizationId: string,
-    formulaRows: Array<{ expression: string }> | undefined
+    formulaRows: Array<{ expression?: string; type?: string; refReportName?: string }> | undefined
   ): Promise<string[] | null> {
     if (!formulaRows || formulaRows.length === 0) return null
 
     const reportNames = new Set<string>()
+
     for (const fr of formulaRows) {
-      if (!fr.expression || !hasReportRefs(fr.expression)) continue
-      const { refs } = extractReportRefs(fr.expression)
-      for (const ref of refs) {
-        reportNames.add(ref.reportName)
+      // Pick up REF() calls inside formula expressions
+      if (fr.expression && hasReportRefs(fr.expression)) {
+        const { refs } = extractReportRefs(fr.expression)
+        for (const ref of refs) {
+          reportNames.add(ref.reportName)
+        }
+      }
+      // Pick up imported reference rows
+      if (fr.type === "reference" && fr.refReportName) {
+        reportNames.add(fr.refReportName)
       }
     }
 
