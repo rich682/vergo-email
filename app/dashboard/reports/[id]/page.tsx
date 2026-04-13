@@ -1966,6 +1966,7 @@ export default function ReportBuilderPage() {
         open={formulaRowModalOpen}
         editing={editingFormulaRow}
         existingRows={accountingFormulaRows}
+        reportId={id}
         groupNames={(() => {
           if (!groupByColumnKey || !report) return []
           const seen = new Set<string>()
@@ -2704,11 +2705,19 @@ function FormulaRowModal({
 // ============================================
 // Accounting Formula Row Modal Component (for cross-group formulas)
 // ============================================
+interface ReferenceableReport {
+  id: string
+  name: string
+  layout: string
+  rows: Array<{ label: string; type: "group" | "formula" }>
+}
+
 interface AccountingFormulaRowModalProps {
   open: boolean
   editing: AccountingFormulaRow | null
   existingRows: AccountingFormulaRow[]
   groupNames: string[]  // Available group names for subtotal references
+  reportId: string      // Current report ID (excluded from cross-report refs)
   onClose: () => void
   onSave: (row: AccountingFormulaRow) => void
 }
@@ -2718,6 +2727,7 @@ function AccountingFormulaRowModal({
   editing,
   existingRows,
   groupNames,
+  reportId,
   onClose,
   onSave,
 }: AccountingFormulaRowModalProps) {
@@ -2725,6 +2735,7 @@ function AccountingFormulaRowModal({
   const [expression, setExpression] = useState("")
   const [isBold, setIsBold] = useState(true)
   const [separatorAbove, setSeparatorAbove] = useState(true)
+  const [referenceableReports, setReferenceableReports] = useState<ReferenceableReport[]>([])
 
   useEffect(() => {
     if (open) {
@@ -2739,8 +2750,13 @@ function AccountingFormulaRowModal({
         setIsBold(true)
         setSeparatorAbove(true)
       }
+      // Fetch referenceable rows from other reports
+      fetch(`/api/reports/referenceable-rows?excludeId=${reportId}`)
+        .then(res => res.json())
+        .then(data => setReferenceableReports(data.reports || []))
+        .catch(() => setReferenceableReports([]))
     }
-  }, [open, editing])
+  }, [open, editing, reportId])
 
   const handleSave = () => {
     if (!label.trim() || !expression.trim()) return
@@ -2785,12 +2801,12 @@ function AccountingFormulaRowModal({
           <div className="space-y-2">
             <Label>Expression</Label>
             <p className="text-xs text-gray-500">
-              Reference group totals using [TOTAL GROUP NAME] or other formula rows by [LABEL]. E.g., [TOTAL REVENUE] - [TOTAL DIRECT JOB COSTS]
+              Reference group totals using [TOTAL GROUP NAME], other formula rows by [LABEL], or values from other reports using REF(&quot;Report&quot;, &quot;Row&quot;).
             </p>
             <Textarea
               value={expression}
               onChange={(e) => setExpression(e.target.value)}
-              placeholder="[TOTAL REVENUE] - [TOTAL DIRECT JOB COSTS]"
+              placeholder='[TOTAL REVENUE] - [TOTAL DIRECT JOB COSTS]'
               rows={2}
               className="text-sm font-mono"
             />
@@ -2816,6 +2832,28 @@ function AccountingFormulaRowModal({
                 </button>
               ))}
             </div>
+            {referenceableReports.length > 0 && (
+              <div className="space-y-1.5 pt-1.5 border-t border-gray-100">
+                <p className="text-[10px] font-medium text-blue-600">From Other Reports</p>
+                {referenceableReports.map(report => (
+                  <div key={report.id}>
+                    <p className="text-[10px] text-gray-500 mb-0.5">{report.name}</p>
+                    <div className="flex flex-wrap gap-1">
+                      {report.rows.map(row => (
+                        <button
+                          key={`${report.id}-${row.label}`}
+                          type="button"
+                          className="text-[10px] px-1.5 py-0.5 bg-blue-50 hover:bg-blue-100 rounded text-blue-700"
+                          onClick={() => setExpression(prev => prev + `REF("${report.name}", "${row.label}")`)}
+                        >
+                          {row.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="space-y-3 pt-2 border-t border-gray-100">

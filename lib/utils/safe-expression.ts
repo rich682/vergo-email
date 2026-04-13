@@ -375,6 +375,52 @@ export function computeAggregate(
   }
 }
 
+// ============================================
+// Cross-Report Reference Resolution
+// ============================================
+
+/**
+ * Regex to match REF("Report Name", "Row Label") in expressions.
+ * Captures the report name and row label as groups 1 and 2.
+ * Supports both double and single quotes.
+ */
+const REF_PATTERN = /REF\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\)/g
+
+export interface ReportRef {
+  reportName: string
+  rowLabel: string
+  placeholder: string  // e.g., __ref_0
+  original: string     // The full REF(...) match
+}
+
+/**
+ * Extract REF() calls from an expression and replace them with placeholder variables.
+ * Returns the rewritten expression and the list of references to resolve.
+ *
+ * Example:
+ *   Input:  "[TOTAL REVENUE] - REF(\"P&L Report\", \"GROSS PROFIT\") * 0.15"
+ *   Output: { expression: "[TOTAL REVENUE] - __ref_0 * 0.15", refs: [{ reportName: "P&L Report", rowLabel: "GROSS PROFIT", placeholder: "__ref_0", original: "REF(\"P&L Report\", \"GROSS PROFIT\")" }] }
+ */
+export function extractReportRefs(expression: string): { expression: string; refs: ReportRef[] } {
+  const refs: ReportRef[] = []
+  let idx = 0
+
+  const resolved = expression.replace(REF_PATTERN, (match, reportName, rowLabel) => {
+    const placeholder = `__ref_${idx++}`
+    refs.push({ reportName, rowLabel, placeholder, original: match })
+    return placeholder
+  })
+
+  return { expression: resolved, refs }
+}
+
+/**
+ * Check if an expression contains any REF() calls
+ */
+export function hasReportRefs(expression: string): boolean {
+  return /REF\(\s*"[^"]+"\s*,\s*"[^"]+"\s*\)/.test(expression)
+}
+
 /**
  * Extract numeric values for a column from rows
  */

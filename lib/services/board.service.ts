@@ -690,6 +690,16 @@ export class BoardService {
       `[BoardService] Spawning tasks: found ${previousInstances.length} tasks from board ${previousBoardId} to copy to board ${nextBoardId}`
     )
 
+    // Collect report generation tasks to run after all task instances are spawned
+    // This allows dependency ordering: reports without cross-report refs generate first
+    const pendingReportGenerations: Array<{
+      taskInstanceId: string
+      reportDefinitionId: string
+      filterBindings: Record<string, string[]> | undefined
+      periodKey: string
+      referencedReportIds: string[] | null
+    }> = []
+
     for (const prev of previousInstances) {
       const prevAny = prev as any
       // Create new instance for next period
@@ -769,27 +779,45 @@ export class BoardService {
         })
       }
 
-      // Generate report for tasks with a report linked (snapshot the completed period)
+      // Queue report generation for after all tasks are spawned (supports dependency ordering)
       if (prevAny.reportDefinitionId && previousBoard?.periodStart) {
+        const periodKey = periodKeyFromDate(previousBoard.periodStart, previousBoard.cadence as any || "monthly")
+        if (periodKey) {
+          // Look up referencedReportIds for ordering
+          const reportDef = await prisma.reportDefinition.findFirst({
+            where: { id: prevAny.reportDefinitionId, organizationId },
+            select: { referencedReportIds: true },
+          })
+          pendingReportGenerations.push({
+            taskInstanceId: prev.id,
+            reportDefinitionId: prevAny.reportDefinitionId,
+            filterBindings: prevAny.reportFilterBindings || undefined,
+            periodKey,
+            referencedReportIds: (reportDef?.referencedReportIds as string[] | null) || null,
+          })
+        }
+      }
+    }
+
+    // Generate reports in dependency order: reports without cross-report refs first
+    const withoutRefs = pendingReportGenerations.filter(r => !r.referencedReportIds || r.referencedReportIds.length === 0)
+    const withRefs = pendingReportGenerations.filter(r => r.referencedReportIds && r.referencedReportIds.length > 0)
+
+    for (const batch of [withoutRefs, withRefs]) {
+      for (const rg of batch) {
         try {
-          // Derive period key from board's period start date
-          const periodKey = periodKeyFromDate(previousBoard.periodStart, previousBoard.cadence as any || "monthly")
-          
-          if (periodKey) {
-            await ReportGenerationService.generateForPeriod({
-              organizationId,
-              reportDefinitionId: prevAny.reportDefinitionId,
-              filterBindings: prevAny.reportFilterBindings || undefined,
-              taskInstanceId: prev.id,
-              boardId: previousBoardId,
-              periodKey,
-              generatedBy: "system",
-            })
-            console.log(`[BoardService] Generated report for task ${prev.id}, period ${periodKey}`)
-          }
+          await ReportGenerationService.generateForPeriod({
+            organizationId,
+            reportDefinitionId: rg.reportDefinitionId,
+            filterBindings: rg.filterBindings,
+            taskInstanceId: rg.taskInstanceId,
+            boardId: previousBoardId,
+            periodKey: rg.periodKey,
+            generatedBy: "system",
+          })
+          console.log(`[BoardService] Generated report for task ${rg.taskInstanceId}, period ${rg.periodKey}`)
         } catch (error) {
-          // Log but don't fail the entire operation if report generation fails
-          console.error(`[BoardService] Failed to generate report for task ${prev.id}:`, error)
+          console.error(`[BoardService] Failed to generate report for task ${rg.taskInstanceId}:`, error)
         }
       }
     }

@@ -12,6 +12,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { DatabaseSchema, DatabaseRow } from "./database.service"
+import { extractReportRefs, hasReportRefs } from "@/lib/utils/safe-expression"
 
 // ============================================
 // Types
@@ -414,6 +415,13 @@ export class ReportDefinitionService {
         ...(input.hiddenGroups !== undefined && { hiddenGroups: input.hiddenGroups as any }),
         ...(input.hideZeroBalanceRows !== undefined && { hideZeroBalanceRows: input.hideZeroBalanceRows }),
         ...(input.accountingFormulaRows !== undefined && { accountingFormulaRows: input.accountingFormulaRows as any }),
+        // Auto-compute cross-report dependencies from REF() calls in accounting formula rows
+        ...(input.accountingFormulaRows !== undefined && {
+          referencedReportIds: await this.computeReferencedReportIds(
+            organizationId,
+            input.accountingFormulaRows as Array<{ expression: string }>
+          ),
+        }),
         // Pivot/accounting column header format
         ...(input.pivotColumnHeaderFormat !== undefined && { pivotColumnHeaderFormat: input.pivotColumnHeaderFormat }),
         // Configuration fields
@@ -673,6 +681,40 @@ export class ReportDefinitionService {
         databaseId: database.id,
       },
     }
+  }
+
+  /**
+   * Scan accounting formula row expressions for REF() calls and resolve
+   * the referenced report names to their definition IDs.
+   * Returns a string[] of unique report definition IDs, or null if no refs found.
+   */
+  static async computeReferencedReportIds(
+    organizationId: string,
+    formulaRows: Array<{ expression: string }> | undefined
+  ): Promise<string[] | null> {
+    if (!formulaRows || formulaRows.length === 0) return null
+
+    const reportNames = new Set<string>()
+    for (const fr of formulaRows) {
+      if (!fr.expression || !hasReportRefs(fr.expression)) continue
+      const { refs } = extractReportRefs(fr.expression)
+      for (const ref of refs) {
+        reportNames.add(ref.reportName)
+      }
+    }
+
+    if (reportNames.size === 0) return null
+
+    // Resolve names to IDs
+    const reports = await prisma.reportDefinition.findMany({
+      where: {
+        organizationId,
+        name: { in: Array.from(reportNames) },
+      },
+      select: { id: true },
+    })
+
+    return reports.length > 0 ? reports.map(r => r.id) : null
   }
 }
 

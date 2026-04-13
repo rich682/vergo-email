@@ -10,6 +10,8 @@ import {
   parseNumericValue,
   computeAggregate,
   extractColumnValues,
+  extractReportRefs,
+  hasReportRefs,
 } from "@/lib/utils/safe-expression"
 
 // ============================================
@@ -394,5 +396,91 @@ describe("extractColumnValues", () => {
 
   it("returns empty array for empty rows", () => {
     expect(extractColumnValues([], "amount")).toEqual([])
+  })
+})
+
+// ============================================
+// extractReportRefs
+// ============================================
+describe("extractReportRefs", () => {
+  it("extracts a single REF() call", () => {
+    const result = extractReportRefs('REF("P&L Report", "GROSS PROFIT")')
+    expect(result.refs).toHaveLength(1)
+    expect(result.refs[0].reportName).toBe("P&L Report")
+    expect(result.refs[0].rowLabel).toBe("GROSS PROFIT")
+    expect(result.refs[0].placeholder).toBe("__ref_0")
+    expect(result.expression).toBe("__ref_0")
+  })
+
+  it("extracts multiple REF() calls", () => {
+    const result = extractReportRefs('REF("Report A", "ROW1") + REF("Report B", "ROW2") * 0.5')
+    expect(result.refs).toHaveLength(2)
+    expect(result.refs[0].reportName).toBe("Report A")
+    expect(result.refs[0].rowLabel).toBe("ROW1")
+    expect(result.refs[1].reportName).toBe("Report B")
+    expect(result.refs[1].rowLabel).toBe("ROW2")
+    expect(result.expression).toBe("__ref_0 + __ref_1 * 0.5")
+  })
+
+  it("handles expressions with no REF() calls", () => {
+    const result = extractReportRefs("[TOTAL REVENUE] - [TOTAL COSTS]")
+    expect(result.refs).toHaveLength(0)
+    expect(result.expression).toBe("[TOTAL REVENUE] - [TOTAL COSTS]")
+  })
+
+  it("handles mixed local refs and REF() calls", () => {
+    const result = extractReportRefs('[TOTAL REVENUE] - REF("Other Report", "NET INCOME")')
+    expect(result.refs).toHaveLength(1)
+    expect(result.expression).toBe("[TOTAL REVENUE] - __ref_0")
+  })
+
+  it("preserves the original match string", () => {
+    const result = extractReportRefs('REF("My Report", "Total")')
+    expect(result.refs[0].original).toBe('REF("My Report", "Total")')
+  })
+
+  it("handles whitespace in REF() call", () => {
+    const result = extractReportRefs('REF(  "Report" ,  "Row"  )')
+    expect(result.refs).toHaveLength(1)
+    expect(result.refs[0].reportName).toBe("Report")
+    expect(result.refs[0].rowLabel).toBe("Row")
+  })
+
+  it("works end-to-end with evaluateSafeExpression", () => {
+    const expr = 'REF("Report A", "PROFIT") + [TOTAL REVENUE]'
+    const { expression, refs } = extractReportRefs(expr)
+
+    // Simulate resolving the ref value
+    const context: Record<string, number> = {
+      "TOTAL REVENUE": 1000,
+    }
+    for (const ref of refs) {
+      context[ref.placeholder] = 500  // Simulated REF value
+    }
+
+    const result = evaluateSafeExpression(expression, context)
+    expect(result).toBe(1500)
+  })
+})
+
+// ============================================
+// hasReportRefs
+// ============================================
+describe("hasReportRefs", () => {
+  it("returns true for expressions with REF()", () => {
+    expect(hasReportRefs('REF("Report", "Row")')).toBe(true)
+  })
+
+  it("returns false for expressions without REF()", () => {
+    expect(hasReportRefs("[TOTAL REVENUE] - [TOTAL COSTS]")).toBe(false)
+  })
+
+  it("returns false for empty string", () => {
+    expect(hasReportRefs("")).toBe(false)
+  })
+
+  it("returns false for partial REF syntax", () => {
+    expect(hasReportRefs("REF(something)")).toBe(false)
+    expect(hasReportRefs('REF("only one arg")')).toBe(false)
   })
 })

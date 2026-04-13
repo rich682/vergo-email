@@ -427,6 +427,57 @@ export class ReportGenerationService {
     return results.map((r: { periodKey: string }) => r.periodKey)
   }
 
+  // ============================================
+  // Cross-Report Reference Lookup
+  // ============================================
+
+  /**
+   * Look up a row value from another report's generated snapshot.
+   * Used by REF("Report Name", "Row Label") in accounting formula expressions.
+   *
+   * For accounting layout, rows have date columns as keys (pivot values).
+   * Returns a map of { pivotColumn: number } for the matching row.
+   *
+   * Returns null if the report or row is not found.
+   */
+  static async getReportRowValues(
+    organizationId: string,
+    reportName: string,
+    rowLabel: string,
+    periodKey: string,
+  ): Promise<Record<string, number | null> | null> {
+    // Find the most recent generated report matching the name + period
+    const generated = await prismaAny.generatedReport.findFirst({
+      where: {
+        organizationId,
+        periodKey,
+        reportDefinition: { name: reportName },
+      },
+      orderBy: { generatedAt: "desc" },
+      select: { data: true },
+    })
+
+    if (!generated) return null
+
+    const data = generated.data as GeneratedReportData
+    if (!data?.table?.rows) return null
+
+    // Find the row with matching _label
+    const row = data.table.rows.find(
+      (r: Record<string, unknown>) => r._label === rowLabel
+    )
+    if (!row) return null
+
+    // Extract numeric values for each column (excluding metadata keys starting with _)
+    const values: Record<string, number | null> = {}
+    for (const [key, val] of Object.entries(row)) {
+      if (key.startsWith("_")) continue
+      values[key] = typeof val === "number" ? val : null
+    }
+
+    return values
+  }
+
   /**
    * Map Prisma result to typed GeneratedReport
    */

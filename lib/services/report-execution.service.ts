@@ -22,8 +22,12 @@ import {
   parseNumericValue,
   computeAggregate,
   extractColumnValues,
+  extractReportRefs,
+  hasReportRefs,
   type AggregateFunction,
+  type ReportRef,
 } from "@/lib/utils/safe-expression"
+import { ReportGenerationService } from "./report-generation.service"
 import type {
   ReportColumn,
   ReportFormulaRow,
@@ -200,7 +204,7 @@ export class ReportExecutionService {
         currentRows = this.filterRowsByColumnValues(currentRows, filters)
       }
 
-      const table = this.evaluateAccountingLayout(effectiveReport as ReportWithConfig, currentRows)
+      const table = await this.evaluateAccountingLayout(effectiveReport as ReportWithConfig, currentRows, organizationId, currentPeriodKey || "", diagnostics)
 
       // For accounting layout, periods come from the pivot column values (dates as columns)
       // rather than row-level dateColumnKey data
@@ -703,10 +707,13 @@ export class ReportExecutionService {
    * Optional variance column (last - first)
    * Optional accountingRows config for custom row ordering, sections, and formulas
    */
-  private static evaluateAccountingLayout(
+  private static async evaluateAccountingLayout(
     report: ReportWithConfig,
-    allRows: Array<Record<string, unknown>>
-  ): ExecutePreviewResult["table"] {
+    allRows: Array<Record<string, unknown>>,
+    organizationId: string,
+    currentPeriodKey: string,
+    diagnostics: { warnings: string[] },
+  ): Promise<ExecutePreviewResult["table"]> {
     const rowColumnKey = report.rowColumnKey
     const pivotColumnKey = report.pivotColumnKey
     const valueColumnKey = report.valueColumnKey
@@ -974,8 +981,40 @@ export class ReportExecutionService {
         }
       }
 
-      // Helper: render a formula row
-      const renderFormulaRow = (fr: AccountingFormulaRow) => {
+      // Cache for cross-report reference lookups (keyed by "reportName::rowLabel")
+      const refCache: Record<string, Record<string, number | null> | null> = {}
+
+      // Helper: resolve REF() calls in an expression and return resolved expression + ref context per pivot value
+      const resolveRefs = async (expression: string): Promise<{
+        resolvedExpression: string
+        refValues: Record<string, Record<string, number | null>>  // placeholder → { pivotValue → number }
+      }> => {
+        const { expression: resolvedExpression, refs } = extractReportRefs(expression)
+        const refValues: Record<string, Record<string, number | null>> = {}
+
+        for (const ref of refs) {
+          const cacheKey = `${ref.reportName}::${ref.rowLabel}`
+          if (!(cacheKey in refCache)) {
+            refCache[cacheKey] = await ReportGenerationService.getReportRowValues(
+              organizationId,
+              ref.reportName,
+              ref.rowLabel,
+              currentPeriodKey,
+            )
+          }
+          if (refCache[cacheKey] === null) {
+            diagnostics.warnings.push(
+              `REF("${ref.reportName}", "${ref.rowLabel}"): no generated data found for period "${currentPeriodKey}"`
+            )
+          }
+          refValues[ref.placeholder] = refCache[cacheKey] || {}
+        }
+
+        return { resolvedExpression, refValues }
+      }
+
+      // Helper: render a formula row (async to support cross-report refs)
+      const renderFormulaRow = async (fr: AccountingFormulaRow) => {
         if (!isFirstItem) {
           const spacerRow: Record<string, unknown> = { _label: "", _format: "text", _type: "spacer" }
           for (const pv of pivotValues) spacerRow[pv] = null
@@ -989,13 +1028,26 @@ export class ReportExecutionService {
           _bold: fr.isBold !== false, _separatorAbove: fr.separatorAbove !== false,
         }
         const rowValues: Record<string, number | null> = {}
+
+        // Resolve cross-report references if present
+        const exprRaw = fr.expression || "0"
+        const hasRefs = hasReportRefs(exprRaw)
+        const { resolvedExpression, refValues } = hasRefs
+          ? await resolveRefs(exprRaw)
+          : { resolvedExpression: exprRaw, refValues: {} as Record<string, Record<string, number | null>> }
+
         for (const pv of pivotValues) {
           const context: Record<string, number> = {}
           for (const [key, vals] of Object.entries(groupSubtotalValues)) {
             if (vals[pv] != null) context[key] = vals[pv]!
           }
+          // Inject resolved cross-report ref values for this pivot column
+          for (const [placeholder, pvMap] of Object.entries(refValues)) {
+            const val = pvMap[pv]
+            if (val != null) context[placeholder] = val
+          }
           try {
-            const result = evaluateSafeExpression(fr.expression || "0", context)
+            const result = evaluateSafeExpression(resolvedExpression, context)
             const num = typeof result === "number" && !isNaN(result) ? Math.round(result * 100) / 100 : null
             formulaRow[pv] = num; rowValues[pv] = num
           } catch {
@@ -1013,7 +1065,7 @@ export class ReportExecutionService {
       // Process unified ordered items
       for (const item of orderedItems) {
         if (item.type === "group") renderGroup(item.name)
-        else renderFormulaRow(item.row)
+        else await renderFormulaRow(item.row)
       }
     } else {
       // No grouping: auto-discover rows from data (flat list)
