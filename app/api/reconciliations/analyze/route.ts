@@ -10,8 +10,7 @@ import { ReconciliationFileParserService } from "@/lib/services/reconciliation-f
 import { canPerformAction } from "@/lib/permissions"
 import type { ExtractionProfile } from "@/lib/services/reconciliation.service"
 
-// Allow up to 120s for PDF AI extraction (multi-step fallback chain)
-export const maxDuration = 120
+export const maxDuration = 300
 
 export async function POST(request: NextRequest) {
   try {

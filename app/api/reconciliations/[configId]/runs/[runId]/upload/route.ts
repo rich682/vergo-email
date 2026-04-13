@@ -11,8 +11,7 @@ import { getStorageService } from "@/lib/services/storage.service"
 import { canPerformAction } from "@/lib/permissions"
 import { checkRateLimit } from "@/lib/utils/rate-limit"
 
-// Full-mode PDF parsing can take 30-60s+ with AI extraction
-export const maxDuration = 120
+export const maxDuration = 300
 interface RouteParams {
   params: Promise<{ configId: string; runId: string }>
 }

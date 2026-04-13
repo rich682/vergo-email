@@ -9,7 +9,7 @@ import { ReconciliationService } from "@/lib/services/reconciliation.service"
 import { ReconciliationLearningService } from "@/lib/services/reconciliation-learning.service"
 import { canPerformAction } from "@/lib/permissions"
 
-export const maxDuration = 60
+export const maxDuration = 300
 interface RouteParams {
   params: Promise<{ configId: string; runId: string }>
 }

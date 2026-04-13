@@ -11,8 +11,7 @@ import { ReconciliationRunStatus } from "@prisma/client"
 import { canPerformAction } from "@/lib/permissions"
 import { inngest } from "@/inngest/client"
 
-// AI matching with fuzzy pass can take 30-90s
-export const maxDuration = 120
+export const maxDuration = 300
 interface RouteParams {
   params: Promise<{ configId: string; runId: string }>
 }
