@@ -10,8 +10,8 @@ import { ReconciliationFileParserService } from "@/lib/services/reconciliation-f
 import { canPerformAction } from "@/lib/permissions"
 import type { ExtractionProfile } from "@/lib/services/reconciliation.service"
 
-// Allow up to 60s for PDF AI extraction
-export const maxDuration = 60
+// Allow up to 120s for PDF AI extraction (multi-step fallback chain)
+export const maxDuration = 120
 
 export async function POST(request: NextRequest) {
   try {
@@ -119,8 +119,9 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: any) {
     console.error("[Reconciliations] Error analyzing file:", error)
+    const message = error?.message || "Failed to analyze file"
     return NextResponse.json(
-      { error: "Failed to analyze file" },
+      { error: message.includes("AI service") ? message : `Failed to analyze file: ${message}` },
       { status: 500 }
     )
   }

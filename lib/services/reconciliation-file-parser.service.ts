@@ -347,6 +347,126 @@ Return JSON:
   }
 
   /**
+   * Send the raw PDF as a file input to GPT-4o — no canvas or page rendering needed.
+   * This is the most reliable serverless-friendly vision approach.
+   */
+  private static async parsePdfRawFile(
+    buffer: Buffer,
+    mode: "detect" | "full",
+    extractionProfile?: ExtractionProfile
+  ): Promise<{ rows: Record<string, any>[]; detectedColumns: any[] }> {
+    const openai = getOpenAIClient()
+    const base64Pdf = buffer.toString("base64")
+    const profileContext = this.buildProfileContext(extractionProfile)
+
+    const systemPrompt = mode === "detect"
+      ? `You are a document parser. Extract the structure of the main data table from this PDF.
+
+Rules:
+- Identify the main DATA TABLE (e.g. transactions, line items, entries)
+- Do NOT confuse summary sections, headers, or account info with the data table
+- Documents may contain MULTIPLE tables or sections (e.g. different cardholders, "Purchasing Activity" and "Travel Activity") — COMBINE all transaction sections into a single unified table
+- Transaction tables may NOT start on page 1 — look through ALL pages
+- If there are multiple sections per cardholder or category, add a column for the section name
+- Return the column names exactly as they appear, or infer clean names from the layout
+- Return the FIRST 5 data rows as samples
+- Count the TOTAL number of data rows across ALL sections and pages
+- Parse amounts as numbers, dates in original format
+- IGNORE non-tabular content
+${profileContext}
+Return JSON:
+{
+  "columns": ["Col1", "Col2", ...],
+  "sampleRows": [{"Col1": "val", ...}, ...],
+  "totalRowCount": 70,
+  "documentType": "credit_card_statement" | "bank_statement" | "invoice" | "ledger" | "other"
+}`
+      : `You are a document parser. Extract the COMPLETE data table from this PDF.
+
+Rules:
+- Identify the main DATA TABLE (transactions, line items, entries)
+- Documents may contain MULTIPLE tables or sections — COMBINE all into one unified table
+- Transaction tables may NOT start on page 1 — look through ALL pages
+- If multiple sections, add a column for the section name
+- Extract ALL rows from every section, not just a sample
+- Parse amounts as numbers, dates in original format
+- IGNORE non-tabular content
+${profileContext}
+Return JSON:
+{
+  "columns": ["Col1", "Col2", ...],
+  "rows": [{"Col1": "val", ...}, ...]
+}`
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: systemPrompt },
+        {
+          role: "user",
+          content: [
+            {
+              type: "file" as any,
+              file: { data: base64Pdf, filename: "document.pdf" },
+            } as any,
+            {
+              type: "text" as const,
+              text: mode === "detect"
+                ? "Detect the table structure in this PDF document."
+                : "Extract ALL rows from the data table in this PDF document.",
+            },
+          ],
+        },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.1,
+      max_tokens: mode === "detect" ? 2000 : 16000,
+    })
+
+    const content = completion.choices[0]?.message?.content
+    if (!content) return { rows: [], detectedColumns: [] }
+
+    const parsed = JSON.parse(content)
+    const columns: string[] = parsed.columns || []
+    if (columns.length === 0) return { rows: [], detectedColumns: [] }
+
+    if (mode === "detect") {
+      const sampleRows: Record<string, any>[] = parsed.sampleRows || []
+      const totalRowCount: number = parsed.totalRowCount || sampleRows.length
+
+      console.log(`[PDF Parser] Raw PDF detect: ${columns.length} columns, ${totalRowCount} total rows`)
+
+      const detectedColumns = columns.map((label: string) => ({
+        key: label,
+        label,
+        sampleValues: sampleRows.slice(0, 3).map((r: Record<string, any>) => String(r[label] ?? "")),
+      }))
+
+      const placeholderRows = Array.from({ length: totalRowCount }, (_, i) => {
+        if (i < sampleRows.length) return sampleRows[i]
+        const row: Record<string, any> = {}
+        for (const col of columns) row[col] = ""
+        return row
+      })
+
+      return { rows: placeholderRows, detectedColumns }
+    } else {
+      const rawRows: Record<string, any>[] = parsed.rows || []
+      console.log(`[PDF Parser] Raw PDF full: ${columns.length} columns, ${rawRows.length} rows`)
+
+      if (rawRows.length === 0) return { rows: [], detectedColumns: [] }
+
+      const detectedColumns = columns.map((label: string) => ({
+        key: label,
+        label,
+        sampleValues: rawRows.slice(0, 3).map((r: Record<string, any>) => String(r[label] ?? "")),
+      }))
+
+      return { rows: rawRows, detectedColumns }
+    }
+  }
+
+  /**
    * Hybrid PDF parsing: sends BOTH extracted text AND rendered page images to GPT-4o.
    * This gives the AI both the exact character content and the spatial layout context,
    * making it much more effective for complex multi-section documents.
@@ -524,14 +644,15 @@ Return JSON:
       console.log(`[PDF Parser] Extracted text: ${fullText.length} chars`)
 
       if (fullText.length < 20) {
-        console.log("[PDF Parser] Not enough text from extraction, trying vision fallback...")
+        console.log("[PDF Parser] Not enough text, trying vision fallback...")
         return await this.parsePdfWithVision(buffer, mode, extractionProfile)
       }
 
-      // Step 2: Send text to AI for table extraction (using gpt-4o for reliability)
       const openai = getOpenAIClient()
       const truncatedText = fullText.length > 30000 ? fullText.slice(0, 30000) + "\n...(truncated)" : fullText
 
+      // Step 2: Try text-based extraction with gpt-4o (reliable for complex layouts)
+      console.log("[PDF Parser] Trying text-based extraction with gpt-4o...")
       let result: { rows: Record<string, any>[]; detectedColumns: any[] }
       if (mode === "detect") {
         result = await this.parsePdfDetectMode(openai, truncatedText, extractionProfile)
@@ -539,28 +660,43 @@ Return JSON:
         result = await this.parsePdfFullMode(openai, truncatedText, extractionProfile)
       }
 
-      // If text-based extraction found columns, return
       if (result.detectedColumns.length > 0) {
         return result
       }
 
-      // Step 3: Hybrid fallback — send both text AND rendered page images
-      console.log("[PDF Parser] Text-only found no columns, trying hybrid (text + vision)...")
-      result = await this.parsePdfHybrid(buffer, fullText, mode, extractionProfile)
+      // Step 3: Try sending raw PDF as a file to gpt-4o (no canvas rendering needed)
+      console.log("[PDF Parser] Text-only found no columns, sending raw PDF to gpt-4o...")
+      result = await this.parsePdfRawFile(buffer, mode, extractionProfile)
       if (result.detectedColumns.length > 0) {
         return result
       }
 
-      // Step 4: Pure vision fallback
-      console.log("[PDF Parser] Hybrid found no columns, trying pure vision fallback...")
-      return await this.parsePdfWithVision(buffer, mode, extractionProfile)
+      // Step 4: Try hybrid text + vision (requires canvas — may fail on serverless)
+      console.log("[PDF Parser] Raw PDF found no columns, trying hybrid text + vision...")
+      try {
+        result = await this.parsePdfHybrid(buffer, fullText, mode, extractionProfile)
+        if (result.detectedColumns.length > 0) {
+          return result
+        }
+      } catch (hybridErr) {
+        console.warn("[PDF Parser] Hybrid fallback failed:", (hybridErr as Error).message)
+      }
+
+      // Step 5: Pure vision fallback (renders pages — may fail on serverless)
+      console.log("[PDF Parser] Trying pure vision fallback...")
+      try {
+        return await this.parsePdfWithVision(buffer, mode, extractionProfile)
+      } catch (visionErr) {
+        console.warn("[PDF Parser] Vision fallback failed:", (visionErr as Error).message)
+        return { rows: [], detectedColumns: [] }
+      }
     } catch (err: any) {
-      console.error("[PDF Parser] Error:", err)
+      console.error("[PDF Parser] Error:", err?.message || err)
       // Surface API errors (rate limits, auth) instead of silently returning empty
       if (err?.status === 429 || err?.status === 401 || err?.status === 403) {
         throw new Error(`AI service error: ${err.message || "Rate limit or authentication issue"}`)
       }
-      return { rows: [], detectedColumns: [] }
+      throw err // Surface the actual error so the API returns it
     }
   }
 
