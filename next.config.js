@@ -4,7 +4,7 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '10mb',
     },
-    serverComponentsExternalPackages: ['@duckdb/node-api', '@duckdb/node-bindings'],
+    serverComponentsExternalPackages: ['@duckdb/node-api', '@duckdb/node-bindings', '@napi-rs/canvas', 'unpdf'],
   },
   // TypeScript checking during build (can be slow, Vercel uses SWC which is faster)
   typescript: {
