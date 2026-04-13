@@ -11,7 +11,8 @@ import { getStorageService } from "@/lib/services/storage.service"
 import { canPerformAction } from "@/lib/permissions"
 import { checkRateLimit } from "@/lib/utils/rate-limit"
 
-export const maxDuration = 60
+// Full-mode PDF parsing can take 30-60s+ with AI extraction
+export const maxDuration = 120
 interface RouteParams {
   params: Promise<{ configId: string; runId: string }>
 }
@@ -123,9 +124,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       warnings: parseResult.warnings,
     })
   } catch (error: any) {
-    console.error("[Reconciliations] Error uploading file:", error)
+    console.error("[Reconciliations] Error uploading file:", error?.message || error)
+    const message = error?.message || "Failed to upload and parse file"
     return NextResponse.json(
-      { error: "Failed to upload and parse file" },
+      { error: message },
       { status: 500 }
     )
   }
