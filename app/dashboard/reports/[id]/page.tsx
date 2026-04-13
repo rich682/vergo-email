@@ -112,6 +112,7 @@ interface AccountingFormulaRow {
   expression?: string
   refReportName?: string
   refRowLabel?: string
+  refColumnKey?: string  // Specific source column (e.g., formula column "SUM"). Single value → all pivot columns.
   order: number
   isBold?: boolean
   separatorAbove?: boolean
@@ -2713,6 +2714,7 @@ interface ReferenceableReport {
   name: string
   layout: string
   rows: Array<{ label: string; type: "group" | "formula" }>
+  columns: Array<{ key: string; label: string; type: "pivot" | "formula" }>
 }
 
 interface AccountingFormulaRowModalProps {
@@ -2741,6 +2743,7 @@ function AccountingFormulaRowModal({
   // Import mode state
   const [refReportName, setRefReportName] = useState("")
   const [refRowLabel, setRefRowLabel] = useState("")
+  const [refColumnKey, setRefColumnKey] = useState("")
   // Shared state
   const [isBold, setIsBold] = useState(true)
   const [separatorAbove, setSeparatorAbove] = useState(true)
@@ -2755,6 +2758,7 @@ function AccountingFormulaRowModal({
         setExpression(editing.expression || "")
         setRefReportName(editing.refReportName || "")
         setRefRowLabel(editing.refRowLabel || "")
+        setRefColumnKey(editing.refColumnKey || "")
         setIsBold(editing.isBold !== false)
         setSeparatorAbove(editing.separatorAbove !== false)
       } else {
@@ -2763,6 +2767,7 @@ function AccountingFormulaRowModal({
         setExpression("")
         setRefReportName("")
         setRefRowLabel("")
+        setRefColumnKey("")
         setIsBold(true)
         setSeparatorAbove(true)
       }
@@ -2798,7 +2803,7 @@ function AccountingFormulaRowModal({
       label: label.trim(),
       type: rowType,
       ...(rowType === "formula" ? { expression: expression.trim() } : {}),
-      ...(rowType === "reference" ? { refReportName, refRowLabel } : {}),
+      ...(rowType === "reference" ? { refReportName, refRowLabel, ...(refColumnKey ? { refColumnKey } : {}) } : {}),
       order: editing ? editing.order : maxOrder + 1,
       isBold,
       separatorAbove,
@@ -2939,6 +2944,7 @@ function AccountingFormulaRowModal({
                     if (report) {
                       setRefReportName(report.name)
                       setRefRowLabel("")  // Reset row selection when report changes
+                      setRefColumnKey("")  // Reset column selection when report changes
                     }
                   }}
                 >
@@ -2979,6 +2985,25 @@ function AccountingFormulaRowModal({
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+              {selectedRefReport && selectedRefReport.columns.length > 0 && refRowLabel && (
+                <div className="space-y-2">
+                  <Label>Source Column</Label>
+                  <p className="text-xs text-gray-400">Pick a specific column (e.g., a Total/SUM column). Leave as &quot;Auto-match&quot; to match by period.</p>
+                  <Select value={refColumnKey || "__auto__"} onValueChange={(v) => setRefColumnKey(v === "__auto__" ? "" : v)}>
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__auto__" className="text-sm">Auto-match by period</SelectItem>
+                      {selectedRefReport.columns.map(col => (
+                        <SelectItem key={col.key} value={col.key} className="text-sm">
+                          {col.label} {col.type === "formula" ? "(formula)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
               {!selectedRefReportId && referenceableReports.length === 0 && (

@@ -17,11 +17,18 @@ interface ReferenceableRow {
   type: "group" | "formula"
 }
 
+interface ReferenceableColumn {
+  key: string
+  label: string
+  type: "pivot" | "formula"  // pivot = date/period column, formula = computed (SUM, etc.)
+}
+
 interface ReferenceableReport {
   id: string
   name: string
   layout: string
   rows: ReferenceableRow[]
+  columns: ReferenceableColumn[]  // Available columns (periods + formula columns)
 }
 
 export async function GET(request: NextRequest) {
@@ -81,12 +88,21 @@ export async function GET(request: NextRequest) {
         rows.push({ label: fr.label, type: "formula" })
       }
 
+      // Extract available columns: pivot formula columns (SUM, Total, etc.)
+      const columns: ReferenceableColumn[] = []
+      const pivotFormulaColumns = (report.pivotFormulaColumns || []) as Array<{ key: string; label: string; order: number }>
+      const sortedCols = [...pivotFormulaColumns].sort((a, b) => a.order - b.order)
+      for (const fc of sortedCols) {
+        columns.push({ key: fc.key, label: fc.label, type: "formula" })
+      }
+
       if (rows.length > 0) {
         result.push({
           id: report.id,
           name: report.name,
           layout: report.layout,
           rows,
+          columns,
         })
       }
     }

@@ -1046,10 +1046,21 @@ export class ReportExecutionService {
               `Import "${fr.refRowLabel}" from "${fr.refReportName}": no generated data found for period "${currentPeriodKey}"`
             )
           }
-          for (const pv of pivotValues) {
-            const val = refRowValues?.[pv] ?? null
-            formulaRow[pv] = val
-            rowValues[pv] = val
+
+          if (fr.refColumnKey && refRowValues) {
+            // Single-column import: pull one specific column value and apply to all pivot columns
+            const singleVal = refRowValues[fr.refColumnKey] ?? null
+            for (const pv of pivotValues) {
+              formulaRow[pv] = singleVal
+              rowValues[pv] = singleVal
+            }
+          } else {
+            // Multi-column import: match source columns to current report's pivot columns
+            for (const pv of pivotValues) {
+              const val = refRowValues?.[pv] ?? null
+              formulaRow[pv] = val
+              rowValues[pv] = val
+            }
           }
         } else {
           // Formula row: evaluate expression with group subtotals + cross-report REF() context

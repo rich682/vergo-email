@@ -77,6 +77,7 @@ export interface AccountingFormulaRow {
   expression?: string            // Used when type="formula": [TOTAL REVENUE] - [TOTAL DIRECT JOB COSTS]
   refReportName?: string         // Used when type="reference": source report name
   refRowLabel?: string           // Used when type="reference": source row label
+  refColumnKey?: string          // Used when type="reference": specific source column key (e.g., a formula column like "SUM"). If set, imports single value into all pivot columns.
   order: number
   isBold?: boolean
   separatorAbove?: boolean
