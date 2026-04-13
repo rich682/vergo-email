@@ -113,11 +113,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
   // Config name
   const [name, setName] = useState(taskName ? `${taskName} Reconciliation` : "")
 
-  // Document descriptions (required per source for AI context)
-  const [sourceADescription, setSourceADescription] = useState("")
-  const [sourceBDescription, setSourceBDescription] = useState("")
-
-  // Extraction hints (for AI training when detection fails or is wrong)
+  // Extraction hints (for AI training when detection fails)
   const [sourceAHints, setSourceAHints] = useState("")
   const [sourceBHints, setSourceBHints] = useState("")
   const [retryingA, setRetryingA] = useState(false)
@@ -358,19 +354,17 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
         sourceBConfig.sourceType = "file"
       }
 
-      // Save extraction profiles with document descriptions and hints
-      if (sourceADescription.trim() || sourceAHints.trim()) {
+      // Save extraction profiles with hints if provided
+      if (sourceAHints.trim()) {
         sourceAConfig.extractionProfile = {
-          documentDescription: sourceADescription.trim() || undefined,
-          extractionHints: sourceAHints.trim() || undefined,
+          extractionHints: sourceAHints.trim(),
           sourceFormat: fmtA,
           lastUpdated: new Date().toISOString(),
         }
       }
-      if (sourceBDescription.trim() || sourceBHints.trim()) {
+      if (sourceBHints.trim()) {
         sourceBConfig.extractionProfile = {
-          documentDescription: sourceBDescription.trim() || undefined,
-          extractionHints: sourceBHints.trim() || undefined,
+          extractionHints: sourceBHints.trim(),
           sourceFormat: fmtB,
           lastUpdated: new Date().toISOString(),
         }
@@ -517,8 +511,6 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
                 setDbAnalysisB(null)
                 setSourceALabel("Source A")
                 setSourceBLabel("Source B")
-                setSourceADescription("")
-                setSourceBDescription("")
                 setSourceAHints("")
                 setSourceBHints("")
                 setMappings([])
@@ -745,7 +737,6 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
 
       const setter = side === "A" ? setRetryingA : setRetryingB
       const resultSetter = side === "A" ? setSourceA : setSourceB
-      const description = side === "A" ? sourceADescription : sourceBDescription
       const hints = side === "A" ? sourceAHints : sourceBHints
 
       setter(true)
@@ -754,7 +745,6 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
       try {
         const formData = new FormData()
         formData.append("file", analysis.file)
-        if (description) formData.append("documentDescription", description)
         if (hints) formData.append("extractionHints", hints)
 
         const res = await fetch("/api/reconciliations/analyze", {
@@ -782,18 +772,11 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
       }
     }
 
-    const ExtractionReview = ({ side, analysis, dbAnalysis }: {
-      side: "A" | "B"
-      analysis: FileAnalysis | null
-      dbAnalysis: DatabaseAnalysis | null
-    }) => {
+    const renderSourceReview = (side: "A" | "B", analysis: FileAnalysis | null, dbAnalysis: DatabaseAnalysis | null) => {
       const isDb = side === "A" ? sourceAIsDatabase : sourceBIsDatabase
-      const description = side === "A" ? sourceADescription : sourceBDescription
-      const setDescription = side === "A" ? setSourceADescription : setSourceBDescription
       const hints = side === "A" ? sourceAHints : sourceBHints
       const setHints = side === "A" ? setSourceAHints : setSourceBHints
       const retrying = side === "A" ? retryingA : retryingB
-      const [showTraining, setShowTraining] = useState(false)
 
       if (isDb && dbAnalysis) {
         return (
@@ -803,15 +786,6 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
               <span className="text-sm font-medium text-green-800">{dbAnalysis.databaseName}</span>
             </div>
             <p className="text-xs text-green-600">{dbAnalysis.rowCount} rows &middot; {dbAnalysis.columns.length} columns</p>
-            <div className="mt-3">
-              <Label className="text-xs text-gray-600">Describe this data source</Label>
-              <Input
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g. SAP AP Aged Payables export, General Ledger check register"
-                className="mt-1 h-8 text-xs"
-              />
-            </div>
           </div>
         )
       }
@@ -833,16 +807,40 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
           </div>
 
           {failed ? (
-            <p className="text-xs text-amber-700 mb-3">
-              AI couldn&apos;t detect tables in this document. Describe the document below to help.
-            </p>
+            <>
+              <p className="text-xs text-amber-700 mb-3">
+                AI couldn&apos;t detect tables in this document. Provide hints below to help.
+              </p>
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-xs text-gray-600">Extraction hints for AI</Label>
+                  <textarea
+                    value={hints}
+                    onChange={(e) => setHints(e.target.value)}
+                    placeholder={"Help the AI find the right data. Examples:\n\u2022 Transactions start on page 2 in Purchasing Activity and Travel Activity sections\n\u2022 Each cardholder has their own section with separate tables\n\u2022 Ignore the summary section on page 1"}
+                    className="w-full h-20 mt-1 text-xs border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 placeholder:text-gray-300"
+                  />
+                </div>
+                <Button
+                  onClick={() => retryWithHints(side)}
+                  disabled={retrying || !hints.trim()}
+                  size="sm"
+                  className="bg-orange-500 hover:bg-orange-600 text-white text-xs"
+                >
+                  {retrying ? (
+                    <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Re-analyzing...</>
+                  ) : (
+                    <><Sparkles className="w-3 h-3 mr-1" /> Retry with AI hints</>
+                  )}
+                </Button>
+              </div>
+            </>
           ) : (
             <>
               <p className="text-xs text-green-600 mb-2">
                 {analysis.rowCount} rows &middot; {analysis.columns.length} columns detected
               </p>
-              {/* Sample data preview */}
-              <div className="mb-3 overflow-x-auto">
+              <div className="overflow-x-auto">
                 <table className="w-full text-[10px] border-collapse">
                   <thead>
                     <tr>
@@ -864,7 +862,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
                       <tr key={rowIdx}>
                         {analysis.columns.slice(0, 6).map((col) => (
                           <td key={col.key} className="px-1.5 py-0.5 text-gray-600 border-b border-green-100 truncate max-w-[120px]">
-                            {col.sampleValues[rowIdx] || "—"}
+                            {col.sampleValues[rowIdx] || "\u2014"}
                           </td>
                         ))}
                         {analysis.columns.length > 6 && <td className="px-1.5 py-0.5 text-gray-400 border-b border-green-100">...</td>}
@@ -873,62 +871,12 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
                   </tbody>
                 </table>
               </div>
-              {!showTraining && (
-                <button
-                  onClick={() => setShowTraining(true)}
-                  className="text-xs text-orange-500 hover:text-orange-600 underline"
-                >
-                  Detection wrong? Edit extraction hints
-                </button>
-              )}
             </>
           )}
-
-          {/* Document description — always shown */}
-          <div className="mt-3 space-y-3">
-            <div>
-              <Label className="text-xs text-gray-600">Describe this document *</Label>
-              <Input
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g. JPM corporate credit card statement, Chase bank statement, AP Aged Payables report"
-                className="mt-1 h-8 text-xs"
-              />
-            </div>
-
-            {/* Training panel — shown when detection failed or user wants to edit */}
-            {(failed || showTraining) && (
-              <div className="space-y-2">
-                <div>
-                  <Label className="text-xs text-gray-600">Extraction hints for AI</Label>
-                  <textarea
-                    value={hints}
-                    onChange={(e) => setHints(e.target.value)}
-                    placeholder={"Help the AI find the right data. Examples:\n• Transactions start on page 2 in Purchasing Activity and Travel Activity sections\n• Each cardholder has their own section with separate tables\n• Ignore the summary section on page 1"}
-                    className="w-full h-20 mt-1 text-xs border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 placeholder:text-gray-300"
-                  />
-                </div>
-                <Button
-                  onClick={() => retryWithHints(side)}
-                  disabled={retrying || (!description && !hints)}
-                  size="sm"
-                  className="bg-orange-500 hover:bg-orange-600 text-white text-xs"
-                >
-                  {retrying ? (
-                    <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Re-analyzing...</>
-                  ) : (
-                    <><Sparkles className="w-3 h-3 mr-1" /> Retry with AI hints</>
-                  )}
-                </Button>
-              </div>
-            )}
-          </div>
         </div>
       )
     }
 
-    const allDescribed = (sourceAIsDatabase || sourceADescription.trim().length > 0) &&
-                          (sourceBIsDatabase || sourceBDescription.trim().length > 0)
     const anyFailed = (!sourceAIsDatabase && sourceA && sourceA.columns.length === 0) ||
                        (!sourceBIsDatabase && sourceB && sourceB.columns.length === 0)
 
@@ -937,7 +885,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
         <div>
           <h3 className="text-lg font-semibold text-gray-900 mb-1">Review Extraction</h3>
           <p className="text-sm text-gray-500">
-            Verify what AI detected from your files and describe each document to improve parsing accuracy.
+            Verify what AI detected from your files.
             {anyFailed && " For documents that failed detection, provide hints to help the AI."}
           </p>
         </div>
@@ -945,11 +893,11 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
         <div className="space-y-4">
           <div>
             <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Source A — Source of Truth</h4>
-            <ExtractionReview side="A" analysis={sourceA} dbAnalysis={dbAnalysisA} />
+            {renderSourceReview("A", sourceA, dbAnalysisA)}
           </div>
           <div>
             <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Source B — Comparison</h4>
-            <ExtractionReview side="B" analysis={sourceB} dbAnalysis={dbAnalysisB} />
+            {renderSourceReview("B", sourceB, dbAnalysisB)}
           </div>
         </div>
 
@@ -969,7 +917,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
           </button>
           <Button
             onClick={generateMappings}
-            disabled={!allDescribed || anyFailed}
+            disabled={anyFailed}
             className="bg-orange-500 hover:bg-orange-600 text-white"
           >
             {anyFailed ? "Fix detection above first" : "Map Columns"} <ArrowRight className="w-4 h-4 ml-2" />
