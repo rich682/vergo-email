@@ -121,6 +121,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
 
   // State
   const [creating, setCreating] = useState(false)
+  const [creatingStatus, setCreatingStatus] = useState("")
   const [error, setError] = useState("")
   const [matchingGuidelines, setMatchingGuidelines] = useState("")
 
@@ -370,7 +371,8 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
         }
       }
 
-      // Create the config (run is triggered separately from the config detail page)
+      // Step 1: Create the config
+      setCreatingStatus("Creating reconciliation...")
       const configRes = await fetch("/api/reconciliations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -405,6 +407,67 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
       }
 
       const { config } = await configRes.json()
+
+      // Step 2: Create a run
+      setCreatingStatus("Creating test run...")
+      const runRes = await fetch(`/api/reconciliations/${config.id}/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+      if (!runRes.ok) throw new Error("Failed to create run")
+      const { run } = await runRes.json()
+
+      // Step 3: Upload source files (or load database sources)
+      const uploadSource = async (side: "A" | "B") => {
+        const isDb = side === "A" ? sourceAIsDatabase : sourceBIsDatabase
+        if (isDb) {
+          // Load database source
+          const dbAnalysis = side === "A" ? dbAnalysisA : dbAnalysisB
+          if (!dbAnalysis) throw new Error(`Database source ${side} not configured`)
+          const loadRes = await fetch(`/api/reconciliations/${config.id}/runs/${run.id}/load-database`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ source: side }),
+          })
+          if (!loadRes.ok) {
+            const data = await loadRes.json().catch(() => ({}))
+            throw new Error(data.error || `Failed to load database source ${side}`)
+          }
+        } else {
+          // Upload file source
+          const file = side === "A" ? sourceA?.file : sourceB?.file
+          if (!file) throw new Error(`File for source ${side} not available`)
+          const formData = new FormData()
+          formData.append("file", file)
+          formData.append("source", side)
+          const uploadRes = await fetch(`/api/reconciliations/${config.id}/runs/${run.id}/upload`, {
+            method: "POST",
+            body: formData,
+          })
+          if (!uploadRes.ok) {
+            const data = await uploadRes.json().catch(() => ({}))
+            throw new Error(data.error || `Failed to upload source ${side}`)
+          }
+        }
+      }
+
+      setCreatingStatus("Uploading Source A...")
+      await uploadSource("A")
+      setCreatingStatus("Uploading Source B...")
+      await uploadSource("B")
+
+      // Step 4: Trigger matching
+      setCreatingStatus("Running AI matching...")
+      const matchRes = await fetch(`/api/reconciliations/${config.id}/runs/${run.id}/match`, {
+        method: "POST",
+      })
+      if (!matchRes.ok) {
+        const data = await matchRes.json().catch(() => ({}))
+        throw new Error(data.error || "Matching failed")
+      }
+
+      setCreatingStatus("Done!")
       onCreated(config.id)
     } catch (err: any) {
       if (err.message === "Failed to fetch" || err.name === "TypeError") {
@@ -1168,11 +1231,11 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
             {creating ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Saving...
+                {creatingStatus || "Saving..."}
               </>
             ) : (
               <>
-                Save Reconciliation <ArrowRight className="w-4 h-4 ml-2" />
+                Save &amp; Run Test <ArrowRight className="w-4 h-4 ml-2" />
               </>
             )}
           </Button>
