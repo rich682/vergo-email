@@ -30,42 +30,27 @@ import { DatabaseSourcePicker, type DatabaseAnalysis } from "./database-source-p
 
 // ── Types ──────────────────────────────────────────────────────────────
 
-type SourceType =
-  | "document_document"
-  | "database_document"
-  | "database_database"
-  | "excel_excel"
-  | "excel_pdf"
-  | "excel_database"
+type SourceFormat = "pdf" | "excel" | "database"
+type SourceType = `${SourceFormat}_${SourceFormat}`
 
-const SOURCE_TYPE_META: Record<SourceType, {
-  sideA: { kind: "file" | "database"; accept?: string; formatLabel?: string }
-  sideB: { kind: "file" | "database"; accept?: string; formatLabel?: string }
-}> = {
-  document_document: {
-    sideA: { kind: "file", accept: ".csv,.xlsx,.xls,.pdf", formatLabel: "CSV, Excel, or PDF" },
-    sideB: { kind: "file", accept: ".csv,.xlsx,.xls,.pdf", formatLabel: "CSV, Excel, or PDF" },
-  },
-  database_document: {
-    sideA: { kind: "database" },
-    sideB: { kind: "file", accept: ".csv,.xlsx,.xls,.pdf", formatLabel: "CSV, Excel, or PDF" },
-  },
-  database_database: {
-    sideA: { kind: "database" },
-    sideB: { kind: "database" },
-  },
-  excel_excel: {
-    sideA: { kind: "file", accept: ".xlsx,.xls", formatLabel: "Excel (.xlsx, .xls)" },
-    sideB: { kind: "file", accept: ".xlsx,.xls", formatLabel: "Excel (.xlsx, .xls)" },
-  },
-  excel_pdf: {
-    sideA: { kind: "file", accept: ".xlsx,.xls", formatLabel: "Excel (.xlsx, .xls)" },
-    sideB: { kind: "file", accept: ".pdf", formatLabel: "PDF" },
-  },
-  excel_database: {
-    sideA: { kind: "file", accept: ".xlsx,.xls", formatLabel: "Excel (.xlsx, .xls)" },
-    sideB: { kind: "database" },
-  },
+type SideMeta = { kind: "file" | "database"; accept?: string; formatLabel?: string; format: SourceFormat }
+
+const FORMAT_META: Record<SourceFormat, SideMeta> = {
+  pdf: { kind: "file", accept: ".pdf", formatLabel: "PDF", format: "pdf" },
+  excel: { kind: "file", accept: ".csv,.xlsx,.xls", formatLabel: "Excel or CSV", format: "excel" },
+  database: { kind: "database", format: "database" },
+}
+
+const SOURCE_TYPE_META: Record<SourceType, { sideA: SideMeta; sideB: SideMeta }> = {
+  pdf_pdf: { sideA: FORMAT_META.pdf, sideB: FORMAT_META.pdf },
+  pdf_excel: { sideA: FORMAT_META.pdf, sideB: FORMAT_META.excel },
+  pdf_database: { sideA: FORMAT_META.pdf, sideB: FORMAT_META.database },
+  excel_pdf: { sideA: FORMAT_META.excel, sideB: FORMAT_META.pdf },
+  excel_excel: { sideA: FORMAT_META.excel, sideB: FORMAT_META.excel },
+  excel_database: { sideA: FORMAT_META.excel, sideB: FORMAT_META.database },
+  database_pdf: { sideA: FORMAT_META.database, sideB: FORMAT_META.pdf },
+  database_excel: { sideA: FORMAT_META.database, sideB: FORMAT_META.excel },
+  database_database: { sideA: FORMAT_META.database, sideB: FORMAT_META.database },
 }
 
 interface DetectedColumn {
@@ -103,10 +88,10 @@ interface ReconciliationSetupProps {
 
 export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, onCreated }: ReconciliationSetupProps) {
   // Step tracking
-  const [step, setStep] = useState<"source_type" | "upload" | "map" | "confirm">("source_type")
+  const [step, setStep] = useState<"source_type" | "upload" | "review" | "map" | "confirm">("source_type")
 
   // Source type selection
-  const [sourceType, setSourceType] = useState<SourceType>("document_document")
+  const [sourceType, setSourceType] = useState<SourceType>("excel_pdf")
 
   // File analysis results (for document sources)
   const [sourceA, setSourceA] = useState<FileAnalysis | null>(null)
@@ -127,6 +112,16 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
 
   // Config name
   const [name, setName] = useState(taskName ? `${taskName} Reconciliation` : "")
+
+  // Document descriptions (required per source for AI context)
+  const [sourceADescription, setSourceADescription] = useState("")
+  const [sourceBDescription, setSourceBDescription] = useState("")
+
+  // Extraction hints (for AI training when detection fails or is wrong)
+  const [sourceAHints, setSourceAHints] = useState("")
+  const [sourceBHints, setSourceBHints] = useState("")
+  const [retryingA, setRetryingA] = useState(false)
+  const [retryingB, setRetryingB] = useState(false)
 
   // State
   const [creating, setCreating] = useState(false)
@@ -339,6 +334,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
       // Add database metadata to source configs if applicable
       // Period identifier: find the mapping marked as period identifier
       const periodMapping = mappings.find((m) => m.isPeriodIdentifier)
+      const [fmtA, fmtB] = sourceType.split("_") as [SourceFormat, SourceFormat]
 
       if (sourceAIsDatabase && dbAnalysisA) {
         sourceAConfig.sourceType = "database"
@@ -360,6 +356,24 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
         }
       } else {
         sourceBConfig.sourceType = "file"
+      }
+
+      // Save extraction profiles with document descriptions and hints
+      if (sourceADescription.trim() || sourceAHints.trim()) {
+        sourceAConfig.extractionProfile = {
+          documentDescription: sourceADescription.trim() || undefined,
+          extractionHints: sourceAHints.trim() || undefined,
+          sourceFormat: fmtA,
+          lastUpdated: new Date().toISOString(),
+        }
+      }
+      if (sourceBDescription.trim() || sourceBHints.trim()) {
+        sourceBConfig.extractionProfile = {
+          documentDescription: sourceBDescription.trim() || undefined,
+          extractionHints: sourceBHints.trim() || undefined,
+          sourceFormat: fmtB,
+          lastUpdated: new Date().toISOString(),
+        }
       }
 
       // Create the config (run is triggered separately from the config detail page)
@@ -412,72 +426,72 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
   // ── Render: Step 0 - Source Type ────────────────────────────────────
 
   if (step === "source_type") {
+    const formatIcon = (format: SourceFormat) => {
+      if (format === "pdf") return <FileText className="w-5 h-5" />
+      if (format === "excel") return <FileSpreadsheet className="w-5 h-5" />
+      return <Database className="w-5 h-5" />
+    }
+
+    const formatName = (format: SourceFormat) => {
+      if (format === "pdf") return "PDF"
+      if (format === "excel") return "Excel"
+      return "Database"
+    }
+
     const SOURCE_TYPE_OPTIONS: { value: SourceType; title: string; description: string; icon: React.ReactNode }[] = [
       {
-        value: "document_document",
-        title: "Document vs Document",
-        description: "Reconcile two uploaded files (CSV, Excel, PDF)",
-        icon: <Files className="w-6 h-6" />,
+        value: "excel_pdf",
+        title: "Excel vs PDF",
+        description: "Reconcile an Excel/CSV export against a PDF statement (e.g. AP report vs credit card statement)",
+        icon: <div className="flex items-center gap-1">{formatIcon("excel")}<span className="text-gray-300 text-xs">&times;</span>{formatIcon("pdf")}</div>,
       },
       {
-        value: "database_document",
-        title: "Database vs Document",
-        description: "Reconcile a connected database against an uploaded file",
-        icon: (
-          <div className="flex items-center gap-1">
-            <Database className="w-5 h-5" />
-            <span className="text-gray-300 text-xs">&times;</span>
-            <FileText className="w-5 h-5" />
-          </div>
-        ),
+        value: "excel_excel",
+        title: "Excel vs Excel",
+        description: "Reconcile two Excel or CSV files",
+        icon: <div className="flex items-center gap-1">{formatIcon("excel")}<span className="text-gray-300 text-xs">&times;</span>{formatIcon("excel")}</div>,
+      },
+      {
+        value: "pdf_pdf",
+        title: "PDF vs PDF",
+        description: "Reconcile two PDF documents (e.g. two bank statements)",
+        icon: <div className="flex items-center gap-1">{formatIcon("pdf")}<span className="text-gray-300 text-xs">&times;</span>{formatIcon("pdf")}</div>,
+      },
+      {
+        value: "pdf_excel",
+        title: "PDF vs Excel",
+        description: "Reconcile a PDF document against an Excel/CSV file",
+        icon: <div className="flex items-center gap-1">{formatIcon("pdf")}<span className="text-gray-300 text-xs">&times;</span>{formatIcon("excel")}</div>,
+      },
+      {
+        value: "excel_database",
+        title: "Excel vs Database",
+        description: "Reconcile an Excel/CSV file against a connected database",
+        icon: <div className="flex items-center gap-1">{formatIcon("excel")}<span className="text-gray-300 text-xs">&times;</span>{formatIcon("database")}</div>,
+      },
+      {
+        value: "pdf_database",
+        title: "PDF vs Database",
+        description: "Reconcile a PDF document against a connected database",
+        icon: <div className="flex items-center gap-1">{formatIcon("pdf")}<span className="text-gray-300 text-xs">&times;</span>{formatIcon("database")}</div>,
+      },
+      {
+        value: "database_excel",
+        title: "Database vs Excel",
+        description: "Reconcile a connected database against an Excel/CSV file",
+        icon: <div className="flex items-center gap-1">{formatIcon("database")}<span className="text-gray-300 text-xs">&times;</span>{formatIcon("excel")}</div>,
+      },
+      {
+        value: "database_pdf",
+        title: "Database vs PDF",
+        description: "Reconcile a connected database against a PDF document",
+        icon: <div className="flex items-center gap-1">{formatIcon("database")}<span className="text-gray-300 text-xs">&times;</span>{formatIcon("pdf")}</div>,
       },
       {
         value: "database_database",
         title: "Database vs Database",
         description: "Reconcile two connected databases — required for AI agent automation",
-        icon: (
-          <div className="flex items-center gap-1">
-            <Database className="w-5 h-5" />
-            <span className="text-gray-300 text-xs">&times;</span>
-            <Database className="w-5 h-5" />
-          </div>
-        ),
-      },
-      {
-        value: "excel_excel",
-        title: "Excel vs Excel",
-        description: "Reconcile two Excel files (.xlsx, .xls)",
-        icon: (
-          <div className="flex items-center gap-1">
-            <FileSpreadsheet className="w-5 h-5" />
-            <span className="text-gray-300 text-xs">&times;</span>
-            <FileSpreadsheet className="w-5 h-5" />
-          </div>
-        ),
-      },
-      {
-        value: "excel_pdf",
-        title: "Excel vs PDF",
-        description: "Reconcile an Excel file against a PDF statement",
-        icon: (
-          <div className="flex items-center gap-1">
-            <FileSpreadsheet className="w-5 h-5" />
-            <span className="text-gray-300 text-xs">&times;</span>
-            <FileText className="w-5 h-5" />
-          </div>
-        ),
-      },
-      {
-        value: "excel_database",
-        title: "Excel vs Database",
-        description: "Reconcile an uploaded Excel file against a connected database",
-        icon: (
-          <div className="flex items-center gap-1">
-            <FileSpreadsheet className="w-5 h-5" />
-            <span className="text-gray-300 text-xs">&times;</span>
-            <Database className="w-5 h-5" />
-          </div>
-        ),
+        icon: <div className="flex items-center gap-1">{formatIcon("database")}<span className="text-gray-300 text-xs">&times;</span>{formatIcon("database")}</div>,
       },
     ]
 
@@ -503,6 +517,10 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
                 setDbAnalysisB(null)
                 setSourceALabel("Source A")
                 setSourceBLabel("Source B")
+                setSourceADescription("")
+                setSourceBDescription("")
+                setSourceAHints("")
+                setSourceBHints("")
                 setMappings([])
                 setStep("upload")
               }}
@@ -618,15 +636,9 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
   }
 
   if (step === "upload") {
-    const sourceTypeLabels: Record<SourceType, string> = {
-      document_document: "Document vs Document",
-      database_document: "Database vs Document",
-      database_database: "Database vs Database",
-      excel_excel: "Excel vs Excel",
-      excel_pdf: "Excel vs PDF",
-      excel_database: "Excel vs Database",
-    }
-    const sourceTypeLabel = sourceTypeLabels[sourceType]
+    const [formatA, formatB] = sourceType.split("_") as [SourceFormat, SourceFormat]
+    const fmtName = (f: SourceFormat) => f === "pdf" ? "PDF" : f === "excel" ? "Excel" : "Database"
+    const sourceTypeLabel = `${fmtName(formatA)} vs ${fmtName(formatB)}`
 
     return (
       <div className="max-w-3xl space-y-6">
@@ -712,13 +724,256 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
                 </span>
               </div>
               <Button
-                onClick={generateMappings}
+                onClick={() => setStep("review")}
                 className="bg-orange-500 hover:bg-orange-600 text-white"
               >
-                Map Columns <ArrowRight className="w-4 h-4 ml-2" />
+                Review Extraction <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </div>
           )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── Render: Step 1.5 - Review Extraction ──────────────────────────
+
+  if (step === "review") {
+    const retryWithHints = async (side: "A" | "B") => {
+      const analysis = side === "A" ? sourceA : sourceB
+      if (!analysis) return
+
+      const setter = side === "A" ? setRetryingA : setRetryingB
+      const resultSetter = side === "A" ? setSourceA : setSourceB
+      const description = side === "A" ? sourceADescription : sourceBDescription
+      const hints = side === "A" ? sourceAHints : sourceBHints
+
+      setter(true)
+      setError("")
+
+      try {
+        const formData = new FormData()
+        formData.append("file", analysis.file)
+        if (description) formData.append("documentDescription", description)
+        if (hints) formData.append("extractionHints", hints)
+
+        const res = await fetch("/api/reconciliations/analyze", {
+          method: "POST",
+          body: formData,
+        })
+
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error || "Failed to analyze file")
+        }
+
+        const data = await res.json()
+        resultSetter({
+          fileName: data.fileName,
+          rowCount: data.rowCount,
+          columns: data.columns,
+          warnings: data.warnings || [],
+          file: analysis.file,
+        })
+      } catch (err: any) {
+        setError(err.message)
+      } finally {
+        setter(false)
+      }
+    }
+
+    const ExtractionReview = ({ side, analysis, dbAnalysis }: {
+      side: "A" | "B"
+      analysis: FileAnalysis | null
+      dbAnalysis: DatabaseAnalysis | null
+    }) => {
+      const isDb = side === "A" ? sourceAIsDatabase : sourceBIsDatabase
+      const description = side === "A" ? sourceADescription : sourceBDescription
+      const setDescription = side === "A" ? setSourceADescription : setSourceBDescription
+      const hints = side === "A" ? sourceAHints : sourceBHints
+      const setHints = side === "A" ? setSourceAHints : setSourceBHints
+      const retrying = side === "A" ? retryingA : retryingB
+      const [showTraining, setShowTraining] = useState(false)
+
+      if (isDb && dbAnalysis) {
+        return (
+          <div className="border border-green-200 bg-green-50 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Database className="w-4 h-4 text-green-600" />
+              <span className="text-sm font-medium text-green-800">{dbAnalysis.databaseName}</span>
+            </div>
+            <p className="text-xs text-green-600">{dbAnalysis.rowCount} rows &middot; {dbAnalysis.columns.length} columns</p>
+            <div className="mt-3">
+              <Label className="text-xs text-gray-600">Describe this data source</Label>
+              <Input
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="e.g. SAP AP Aged Payables export, General Ledger check register"
+                className="mt-1 h-8 text-xs"
+              />
+            </div>
+          </div>
+        )
+      }
+
+      if (!analysis) return null
+      const failed = analysis.columns.length === 0
+
+      return (
+        <div className={`border rounded-lg p-4 ${failed ? "border-amber-300 bg-amber-50" : "border-green-200 bg-green-50"}`}>
+          <div className="flex items-center gap-2 mb-1">
+            {failed ? (
+              <AlertCircle className="w-4 h-4 text-amber-500" />
+            ) : (
+              <CheckCircle className="w-4 h-4 text-green-500" />
+            )}
+            <span className={`text-sm font-medium ${failed ? "text-amber-800" : "text-green-800"}`}>
+              {analysis.fileName}
+            </span>
+          </div>
+
+          {failed ? (
+            <p className="text-xs text-amber-700 mb-3">
+              AI couldn&apos;t detect tables in this document. Describe the document below to help.
+            </p>
+          ) : (
+            <>
+              <p className="text-xs text-green-600 mb-2">
+                {analysis.rowCount} rows &middot; {analysis.columns.length} columns detected
+              </p>
+              {/* Sample data preview */}
+              <div className="mb-3 overflow-x-auto">
+                <table className="w-full text-[10px] border-collapse">
+                  <thead>
+                    <tr>
+                      {analysis.columns.slice(0, 6).map((col) => (
+                        <th key={col.key} className="text-left px-1.5 py-1 bg-green-100 text-green-700 font-medium border-b border-green-200">
+                          {col.label}
+                          <span className="ml-1 text-green-500">({col.suggestedType})</span>
+                        </th>
+                      ))}
+                      {analysis.columns.length > 6 && (
+                        <th className="px-1.5 py-1 bg-green-100 text-green-500 border-b border-green-200">
+                          +{analysis.columns.length - 6} more
+                        </th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[0, 1, 2].map((rowIdx) => (
+                      <tr key={rowIdx}>
+                        {analysis.columns.slice(0, 6).map((col) => (
+                          <td key={col.key} className="px-1.5 py-0.5 text-gray-600 border-b border-green-100 truncate max-w-[120px]">
+                            {col.sampleValues[rowIdx] || "—"}
+                          </td>
+                        ))}
+                        {analysis.columns.length > 6 && <td className="px-1.5 py-0.5 text-gray-400 border-b border-green-100">...</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {!showTraining && (
+                <button
+                  onClick={() => setShowTraining(true)}
+                  className="text-xs text-orange-500 hover:text-orange-600 underline"
+                >
+                  Detection wrong? Edit extraction hints
+                </button>
+              )}
+            </>
+          )}
+
+          {/* Document description — always shown */}
+          <div className="mt-3 space-y-3">
+            <div>
+              <Label className="text-xs text-gray-600">Describe this document *</Label>
+              <Input
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="e.g. JPM corporate credit card statement, Chase bank statement, AP Aged Payables report"
+                className="mt-1 h-8 text-xs"
+              />
+            </div>
+
+            {/* Training panel — shown when detection failed or user wants to edit */}
+            {(failed || showTraining) && (
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-xs text-gray-600">Extraction hints for AI</Label>
+                  <textarea
+                    value={hints}
+                    onChange={(e) => setHints(e.target.value)}
+                    placeholder={"Help the AI find the right data. Examples:\n• Transactions start on page 2 in Purchasing Activity and Travel Activity sections\n• Each cardholder has their own section with separate tables\n• Ignore the summary section on page 1"}
+                    className="w-full h-20 mt-1 text-xs border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 placeholder:text-gray-300"
+                  />
+                </div>
+                <Button
+                  onClick={() => retryWithHints(side)}
+                  disabled={retrying || (!description && !hints)}
+                  size="sm"
+                  className="bg-orange-500 hover:bg-orange-600 text-white text-xs"
+                >
+                  {retrying ? (
+                    <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Re-analyzing...</>
+                  ) : (
+                    <><Sparkles className="w-3 h-3 mr-1" /> Retry with AI hints</>
+                  )}
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    const allDescribed = (sourceAIsDatabase || sourceADescription.trim().length > 0) &&
+                          (sourceBIsDatabase || sourceBDescription.trim().length > 0)
+    const anyFailed = (!sourceAIsDatabase && sourceA && sourceA.columns.length === 0) ||
+                       (!sourceBIsDatabase && sourceB && sourceB.columns.length === 0)
+
+    return (
+      <div className="max-w-3xl space-y-6">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Review Extraction</h3>
+          <p className="text-sm text-gray-500">
+            Verify what AI detected from your files and describe each document to improve parsing accuracy.
+            {anyFailed && " For documents that failed detection, provide hints to help the AI."}
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Source A — Source of Truth</h4>
+            <ExtractionReview side="A" analysis={sourceA} dbAnalysis={dbAnalysisA} />
+          </div>
+          <div>
+            <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Source B — Comparison</h4>
+            <ExtractionReview side="B" analysis={sourceB} dbAnalysis={dbAnalysisB} />
+          </div>
+        </div>
+
+        {error && (
+          <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-red-700">{error}</p>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between pt-2">
+          <button
+            onClick={() => setStep("upload")}
+            className="text-sm text-gray-500 hover:text-gray-700"
+          >
+            &larr; Back to upload
+          </button>
+          <Button
+            onClick={generateMappings}
+            disabled={!allDescribed || anyFailed}
+            className="bg-orange-500 hover:bg-orange-600 text-white"
+          >
+            {anyFailed ? "Fix detection above first" : "Map Columns"} <ArrowRight className="w-4 h-4 ml-2" />
+          </Button>
         </div>
       </div>
     )
@@ -952,10 +1207,10 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
         {/* Actions */}
         <div className="flex items-center justify-between pt-2">
           <button
-            onClick={() => setStep("upload")}
+            onClick={() => setStep("review")}
             className="text-sm text-gray-500 hover:text-gray-700"
           >
-            &larr; Back to sources
+            &larr; Back to review
           </button>
           <Button
             onClick={handleCreate}

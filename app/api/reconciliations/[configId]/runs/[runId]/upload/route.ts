@@ -92,7 +92,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       buffer,
       file.name,
       sourceConfig?.columns?.length > 0 ? sourceConfig : undefined,
-      "full" // Need all rows for actual reconciliation
+      "full", // Need all rows for actual reconciliation
+      sourceConfig?.extractionProfile // Pass extraction profile even if no column mapping yet
     )
 
     // Store file in blob storage

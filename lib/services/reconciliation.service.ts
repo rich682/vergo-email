@@ -12,6 +12,15 @@ export interface SourceColumnDef {
   type: "date" | "amount" | "text" | "reference"
 }
 
+export interface ExtractionProfile {
+  documentDescription?: string    // "JPM corporate credit card statement"
+  extractionHints?: string        // "Transactions in Purchasing/Travel Activity sections, page 2+"
+  sourceFormat?: "pdf" | "excel" | "database"
+  expectedColumns?: { name: string; type: string }[]
+  sampleExtraction?: Record<string, any>[]
+  lastUpdated?: string
+}
+
 export interface SourceConfig {
   label: string
   columns: SourceColumnDef[]
@@ -20,6 +29,8 @@ export interface SourceConfig {
   databaseId?: string
   dateColumnKey?: string   // Period filtering column
   cadence?: string         // "daily" | "monthly" | "quarterly" | "annual"
+  // AI extraction profile — document description and parsing hints
+  extractionProfile?: ExtractionProfile
 }
 
 export interface MatchingRules {

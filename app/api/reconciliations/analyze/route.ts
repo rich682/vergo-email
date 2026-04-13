@@ -8,6 +8,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { ReconciliationFileParserService } from "@/lib/services/reconciliation-file-parser.service"
 import { canPerformAction } from "@/lib/permissions"
+import type { ExtractionProfile } from "@/lib/services/reconciliation.service"
 
 // Allow up to 60s for PDF AI extraction
 export const maxDuration = 60
@@ -58,11 +59,24 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
+    // Build extraction profile from optional form fields (used for retry-with-hints)
+    const documentDescription = formData.get("documentDescription") as string | null
+    const extractionHints = formData.get("extractionHints") as string | null
+    let extractionProfile: ExtractionProfile | undefined
+    if (documentDescription || extractionHints) {
+      extractionProfile = {
+        ...(documentDescription && { documentDescription }),
+        ...(extractionHints && { extractionHints }),
+      }
+    }
+
     // Parse without any column config -- pure auto-detection
     const parseResult = await ReconciliationFileParserService.parseFile(
       buffer,
       file.name,
-      undefined // no source config -- auto-detect everything
+      undefined, // no source config -- auto-detect everything
+      "detect",
+      extractionProfile
     )
 
     // AI-detect column types from the data
