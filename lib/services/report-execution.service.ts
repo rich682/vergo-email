@@ -1043,8 +1043,16 @@ export class ReportExecutionService {
           const refRowValues = refCache[cacheKey]
           if (refRowValues === null) {
             diagnostics.warnings.push(
-              `Import "${fr.refRowLabel}" from "${fr.refReportName}": no generated data found for period "${currentPeriodKey}"`
+              `Import "${fr.refRowLabel}" from "${fr.refReportName}": no generated report snapshot found. Generate the source report first.`
             )
+          } else {
+            // Check if all values are null — likely a stale snapshot
+            const hasAnyValue = Object.values(refRowValues).some(v => v !== null)
+            if (!hasAnyValue) {
+              diagnostics.warnings.push(
+                `Import "${fr.refRowLabel}" from "${fr.refReportName}": row exists in snapshot but all values are null. Try regenerating the source report.`
+              )
+            }
           }
 
           if (fr.refColumnKey && refRowValues) {
