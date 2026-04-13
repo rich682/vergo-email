@@ -447,12 +447,17 @@ export class ReportGenerationService {
     periodKey: string,
   ): Promise<Record<string, number | null> | null> {
     // Find the most recent generated report matching the name + period
+    // If periodKey is empty (common for accounting layout previews), skip period filter
+    // and just grab the most recent snapshot
+    const where: any = {
+      organizationId,
+      reportDefinition: { name: reportName },
+    }
+    if (periodKey) {
+      where.periodKey = periodKey
+    }
     const generated = await prismaAny.generatedReport.findFirst({
-      where: {
-        organizationId,
-        periodKey,
-        reportDefinition: { name: reportName },
-      },
+      where,
       orderBy: { generatedAt: "desc" },
       select: { data: true },
     })
