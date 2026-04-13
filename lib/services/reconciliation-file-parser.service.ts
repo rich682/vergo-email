@@ -713,7 +713,7 @@ Return JSON:
     const profileContext = this.buildProfileContext(extractionProfile)
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -793,7 +793,7 @@ Return JSON:
     const profileContext = this.buildProfileContext(extractionProfile)
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
