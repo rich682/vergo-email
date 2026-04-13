@@ -446,9 +446,27 @@ export class ReportGenerationService {
     rowLabel: string,
     periodKey: string,
   ): Promise<Record<string, number | null> | null> {
-    // Find the most recent generated report matching the name + period
-    // If periodKey is empty (common for accounting layout previews), skip period filter
-    // and just grab the most recent snapshot
+    // Try snapshot first, fall back to live execution if snapshot is missing or stale
+    const values = await this.getRowValuesFromSnapshot(organizationId, reportName, rowLabel, periodKey)
+    if (values !== null) {
+      // Check if all values are null (stale snapshot) — fall back to live
+      const hasAnyValue = Object.values(values).some(v => v !== null)
+      if (hasAnyValue) return values
+    }
+
+    // Fallback: execute the source report live to get current values
+    return this.getRowValuesFromLiveExecution(organizationId, reportName, rowLabel)
+  }
+
+  /**
+   * Look up row values from a generated snapshot
+   */
+  private static async getRowValuesFromSnapshot(
+    organizationId: string,
+    reportName: string,
+    rowLabel: string,
+    periodKey: string,
+  ): Promise<Record<string, number | null> | null> {
     const where: any = {
       organizationId,
       reportDefinition: { name: reportName },
@@ -467,13 +485,11 @@ export class ReportGenerationService {
     const data = generated.data as GeneratedReportData
     if (!data?.table?.rows) return null
 
-    // Find the row with matching _label
     const row = data.table.rows.find(
       (r: Record<string, unknown>) => r._label === rowLabel
     )
     if (!row) return null
 
-    // Extract numeric values for each column (excluding metadata keys starting with _)
     const values: Record<string, number | null> = {}
     for (const [key, val] of Object.entries(row)) {
       if (key.startsWith("_")) continue
@@ -481,6 +497,48 @@ export class ReportGenerationService {
     }
 
     return values
+  }
+
+  /**
+   * Execute a report live and extract row values. Used as fallback when
+   * no generated snapshot exists or snapshot has stale/null values.
+   */
+  private static async getRowValuesFromLiveExecution(
+    organizationId: string,
+    reportName: string,
+    rowLabel: string,
+  ): Promise<Record<string, number | null> | null> {
+    try {
+      // Find the report definition by name
+      const reportDef = await prismaAny.reportDefinition.findFirst({
+        where: { organizationId, name: reportName },
+        select: { id: true },
+      })
+      if (!reportDef) return null
+
+      // Execute live preview (no period filter for accounting layout)
+      const result = await ReportExecutionService.executePreview({
+        reportDefinitionId: reportDef.id,
+        organizationId,
+      })
+
+      if (!result?.table?.rows) return null
+
+      const row = result.table.rows.find(
+        (r: Record<string, unknown>) => r._label === rowLabel
+      )
+      if (!row) return null
+
+      const values: Record<string, number | null> = {}
+      for (const [key, val] of Object.entries(row)) {
+        if (key.startsWith("_")) continue
+        values[key] = typeof val === "number" ? val : null
+      }
+      return values
+    } catch (error) {
+      console.error(`[CrossRef] Live execution fallback failed for "${reportName}":`, error)
+      return null
+    }
   }
 
   /**
