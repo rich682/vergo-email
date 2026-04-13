@@ -2736,6 +2736,7 @@ function AccountingFormulaRowModal({
   const [isBold, setIsBold] = useState(true)
   const [separatorAbove, setSeparatorAbove] = useState(true)
   const [referenceableReports, setReferenceableReports] = useState<ReferenceableReport[]>([])
+  const [selectedRefReportId, setSelectedRefReportId] = useState<string>("")
 
   useEffect(() => {
     if (open) {
@@ -2751,12 +2752,15 @@ function AccountingFormulaRowModal({
         setSeparatorAbove(true)
       }
       // Fetch referenceable rows from other reports
+      setSelectedRefReportId("")
       fetch(`/api/reports/referenceable-rows?excludeId=${reportId}`)
         .then(res => res.json())
         .then(data => setReferenceableReports(data.reports || []))
         .catch(() => setReferenceableReports([]))
     }
   }, [open, editing, reportId])
+
+  const selectedRefReport = referenceableReports.find(r => r.id === selectedRefReportId) || null
 
   const handleSave = () => {
     if (!label.trim() || !expression.trim()) return
@@ -2833,25 +2837,34 @@ function AccountingFormulaRowModal({
               ))}
             </div>
             {referenceableReports.length > 0 && (
-              <div className="space-y-1.5 pt-1.5 border-t border-gray-100">
+              <div className="space-y-2 pt-2 border-t border-gray-100">
                 <p className="text-[10px] font-medium text-blue-600">From Other Reports</p>
-                {referenceableReports.map(report => (
-                  <div key={report.id}>
-                    <p className="text-[10px] text-gray-500 mb-0.5">{report.name}</p>
-                    <div className="flex flex-wrap gap-1">
-                      {report.rows.map(row => (
-                        <button
-                          key={`${report.id}-${row.label}`}
-                          type="button"
-                          className="text-[10px] px-1.5 py-0.5 bg-blue-50 hover:bg-blue-100 rounded text-blue-700"
-                          onClick={() => setExpression(prev => prev + `REF("${report.name}", "${row.label}")`)}
-                        >
-                          {row.label}
-                        </button>
-                      ))}
-                    </div>
+                <Select value={selectedRefReportId} onValueChange={setSelectedRefReportId}>
+                  <SelectTrigger className="h-7 text-xs">
+                    <SelectValue placeholder="Select a report..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {referenceableReports.map(report => (
+                      <SelectItem key={report.id} value={report.id} className="text-xs">
+                        {report.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedRefReport && (
+                  <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+                    {selectedRefReport.rows.map(row => (
+                      <button
+                        key={row.label}
+                        type="button"
+                        className="text-[10px] px-1.5 py-0.5 bg-blue-50 hover:bg-blue-100 rounded text-blue-700"
+                        onClick={() => setExpression(prev => prev + `REF("${selectedRefReport.name}", "${row.label}")`)}
+                      >
+                        {row.label}
+                      </button>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
             )}
           </div>
