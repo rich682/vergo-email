@@ -132,7 +132,7 @@ export class ReconciliationFileParserService {
               row[betterHeaders[j]] = val !== undefined ? val : ""
               if (val !== undefined && val !== "" && val !== null) hasData++
             }
-            if (hasData >= 2) rows.push(row) // Require at least 2 non-empty cells
+            if (hasData >= 3) rows.push(row) // Require 3+ non-empty cells to filter separator rows
           }
           return {
             rows,
@@ -155,7 +155,7 @@ export class ReconciliationFileParserService {
         row[headers[j]] = val !== undefined ? val : ""
         if (val !== undefined && val !== "" && val !== null) hasData++
       }
-      if (hasData >= 2) rows.push(row) // Require at least 2 non-empty cells
+      if (hasData >= 3) rows.push(row) // Require 3+ non-empty cells to filter separator rows
     }
 
     const detectedColumns = headers.map((label) => ({

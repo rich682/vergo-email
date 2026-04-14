@@ -139,11 +139,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 log("PDF text extraction", "error", "Not enough text extracted from PDF")
                 rowsB = []
               } else {
-                // Use column definitions from config (set during setup wizard)
-                const knownCols = sourceBConfig.columns?.map((c: any) => c.label) || []
+                // Use the PDF's OWN column names (key), not the mapped display labels
+                const knownCols = sourceBConfig.columns?.map((c: any) => c.key) || []
 
-                // Get sample rows from the detect-mode analysis (stored as sampleValues on columns)
-                // Reconstruct 3 example rows from the column sample values
+                // Get sample rows using the PDF's own column keys
                 const sampleRows: Record<string, string>[] = []
                 for (let i = 0; i < 3; i++) {
                   const row: Record<string, string> = {}
@@ -151,7 +150,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                   for (const col of (sourceBConfig.columns || []) as any[]) {
                     const samples = col.sampleValues || []
                     if (samples[i]) {
-                      row[col.label] = samples[i]
+                      row[col.key] = samples[i] // Use key (PDF column name), not label
                       hasData = true
                     }
                   }
