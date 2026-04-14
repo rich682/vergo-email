@@ -136,12 +136,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 log("PDF text extraction", "error", "Not enough text extracted from PDF")
                 rowsB = []
               } else {
-                log("AI extracting rows", "progress", `Sending ${Math.min(pdfText.length, 30000)} chars to gpt-4o-mini...`)
+                // Truncate aggressively — 30K chars is too much for gpt-4o-mini full extraction
+                // Keep only 12K chars which is enough for ~100 transactions
+                const maxChars = 12000
+                const truncatedText = pdfText.length > maxChars ? pdfText.slice(0, maxChars) + "\n...(truncated)" : pdfText
+                log("AI extracting rows", "progress", `Sending ${truncatedText.length} chars to gpt-4o-mini...`)
                 const startTime = Date.now()
 
                 const { getOpenAIClient } = await import("@/lib/utils/openai-client")
                 const openai = getOpenAIClient()
-                const truncatedText = pdfText.length > 30000 ? pdfText.slice(0, 30000) + "\n...(truncated)" : pdfText
 
                 // Known columns from config
                 const knownCols = sourceBConfig.columns?.map((c: any) => c.label) || []
@@ -155,13 +158,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                     messages: [
                       {
                         role: "system",
-                        content: `You are a document parser. Extract ALL rows from the data table as JSON.\n${columnInstruction}\n\nRules:\n- Find the main DATA TABLE (transactions, line items)\n- COMBINE all sections into one table\n- Look through ALL pages\n- Extract EVERY row\n- Parse amounts as numbers, dates in original format\n- IGNORE summaries, footers, headers\n\nReturn JSON: { "columns": [...], "rows": [{...}, ...] }`,
+                        content: `You are a document parser. Extract ALL transaction rows as JSON.\n${columnInstruction}\n\nRules:\n- Find ALL transaction rows (purchases, payments, credits)\n- COMBINE all sections (different cardholders, activity types) into one table\n- Extract EVERY transaction row\n- Parse amounts as numbers, dates in original format\n- IGNORE account summaries, totals, headers, footers\n\nReturn JSON: { "columns": [...], "rows": [{...}, ...] }`,
                       },
-                      { role: "user", content: `Extract ALL rows:\n\n${truncatedText}` },
+                      { role: "user", content: `Extract ALL transaction rows:\n\n${truncatedText}` },
                     ],
                     response_format: { type: "json_object" },
                     temperature: 0.1,
-                    max_tokens: 8000,
+                    max_tokens: 4000,
                   })
 
                   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
@@ -172,7 +175,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                   } else {
                     const parsed = JSON.parse(content)
                     rowsB = parsed.rows || []
-                    log("AI extracting rows", "done", `${rowsB.length} rows extracted in ${elapsed}s (${(content.length / 1024).toFixed(1)}KB)`)
+                    log("AI extracting rows", "done", `${rowsB.length} rows in ${elapsed}s`)
                   }
                 } catch (aiErr: any) {
                   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
