@@ -459,6 +459,7 @@ export default function ReconciliationDetailPage() {
       )}
 
       {/* Generate Test — always available */}
+      {/* New Test Run — uses standard upload + match endpoints */}
       {canManage && !generatingTest && config.runs.length > 0 && (
         <div className="flex items-center gap-3">
           <form
@@ -474,41 +475,63 @@ export default function ReconciliationDetailPage() {
               setGeneratingTest(true)
               setGenerateError(null)
               setGenerateLogs([])
-              try {
-                const res = await fetch(`/api/reconciliations/${configId}/generate-test`, {
-                  method: "POST",
-                  body: formData,
+
+              const addLog = (step: string, status: string, detail?: string) => {
+                setGenerateLogs((prev) => {
+                  const existing = prev.findIndex((p) => p.step === step)
+                  if (existing >= 0) { const u = [...prev]; u[existing] = { step, status, detail }; return u }
+                  return [...prev, { step, status, detail }]
                 })
-                if (!res.ok) {
-                  const data = await res.json().catch(() => ({}))
-                  throw new Error(data.error || `Test run failed (${res.status})`)
+              }
+
+              try {
+                // Step 1: Create run
+                addLog("Creating run", "progress")
+                const createRes = await fetch(`/api/reconciliations/${configId}/generate-test`, { method: "POST" })
+                if (!createRes.ok) throw new Error((await createRes.json().catch(() => ({}))).error || "Failed to create run")
+                const { runId } = await createRes.json()
+                addLog("Creating run", "done", runId)
+
+                // Step 2: Upload Source A via standard endpoint
+                addLog("Uploading Source A", "progress", fileA.name)
+                const fdA = new FormData()
+                fdA.append("file", fileA)
+                fdA.append("source", "A")
+                const uploadA = await fetch(`/api/reconciliations/${configId}/runs/${runId}/upload`, { method: "POST", body: fdA })
+                if (!uploadA.ok) {
+                  const err = await uploadA.json().catch(() => ({}))
+                  throw new Error(err.error || "Failed to upload Source A")
                 }
-                const reader = res.body?.getReader()
-                const decoder = new TextDecoder()
-                let buffer = ""
-                if (reader) {
-                  while (true) {
-                    const { done, value } = await reader.read()
-                    if (done) break
-                    buffer += decoder.decode(value, { stream: true })
-                    const lines = buffer.split("\n")
-                    buffer = lines.pop() || ""
-                    for (const line of lines) {
-                      if (!line.trim()) continue
-                      try {
-                        const logEntry = JSON.parse(line)
-                        setGenerateLogs((prev) => {
-                          const existing = prev.findIndex((p) => p.step === logEntry.step)
-                          if (existing >= 0) { const updated = [...prev]; updated[existing] = logEntry; return updated }
-                          return [...prev, logEntry]
-                        })
-                        if (logEntry.status === "error") setGenerateError(logEntry.detail || "Unknown error")
-                      } catch { /* skip */ }
-                    }
-                  }
+                const resA = await uploadA.json()
+                addLog("Uploading Source A", "done", `${resA.rowCount} rows`)
+
+                // Step 3: Upload Source B via standard endpoint
+                addLog("Uploading Source B", "progress", `${fileB.name} (PDF may take 1-2 min)`)
+                const fdB = new FormData()
+                fdB.append("file", fileB)
+                fdB.append("source", "B")
+                const uploadB = await fetch(`/api/reconciliations/${configId}/runs/${runId}/upload`, { method: "POST", body: fdB })
+                if (!uploadB.ok) {
+                  const err = await uploadB.json().catch(() => ({}))
+                  throw new Error(err.error || "Failed to upload Source B")
                 }
+                const resB = await uploadB.json()
+                addLog("Uploading Source B", "done", `${resB.rowCount} rows`)
+
+                // Step 4: Run matching
+                addLog("Running matching", "progress", `${resA.rowCount} vs ${resB.rowCount} rows`)
+                const matchRes = await fetch(`/api/reconciliations/${configId}/runs/${runId}/match`, { method: "POST" })
+                if (!matchRes.ok) {
+                  const err = await matchRes.json().catch(() => ({}))
+                  throw new Error(err.error || "Matching failed")
+                }
+                const matchData = await matchRes.json()
+                addLog("Running matching", "done", `${matchData.matchedCount} matched, ${matchData.exceptionCount} exceptions`)
+
+                addLog("Complete", "done")
                 await fetchConfig()
               } catch (err: any) {
+                addLog("Error", "error", err.message)
                 setGenerateError(err.message)
               } finally {
                 setGeneratingTest(false)
@@ -535,7 +558,7 @@ export default function ReconciliationDetailPage() {
         </div>
       )}
 
-      {/* Streaming logs for in-progress test */}
+      {/* Progress logs for in-progress test */}
       {generatingTest && (
         <div className="border rounded-lg p-4 bg-gray-50 space-y-1.5">
           {generateLogs.map((logEntry, i) => (
@@ -694,21 +717,19 @@ export default function ReconciliationDetailPage() {
 
             {generatingTest ? (
               <div className="py-4 space-y-2">
-                {generateLogs.map((log, i) => (
+                {generateLogs.map((logEntry, i) => (
                   <div key={i} className="flex items-center gap-2 text-xs">
-                    {log.status === "progress" ? (
+                    {logEntry.status === "progress" ? (
                       <Loader2 className="w-3 h-3 animate-spin text-orange-500 flex-shrink-0" />
-                    ) : log.status === "done" ? (
+                    ) : logEntry.status === "done" ? (
                       <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
                     ) : (
                       <AlertTriangle className="w-3 h-3 text-red-500 flex-shrink-0" />
                     )}
-                    <span className={log.status === "error" ? "text-red-600" : log.status === "done" ? "text-gray-600" : "text-orange-600"}>
-                      {log.step}
+                    <span className={logEntry.status === "error" ? "text-red-600" : logEntry.status === "done" ? "text-gray-600" : "text-orange-600"}>
+                      {logEntry.step}
                     </span>
-                    {log.detail && (
-                      <span className="text-gray-400">{log.detail}</span>
-                    )}
+                    {logEntry.detail && <span className="text-gray-400">{logEntry.detail}</span>}
                   </div>
                 ))}
               </div>
@@ -717,70 +738,59 @@ export default function ReconciliationDetailPage() {
                 onSubmit={async (e) => {
                   e.preventDefault()
                   const formData = new FormData(e.currentTarget)
-
                   const fileA = formData.get("sourceA") as File | null
                   const fileB = formData.get("sourceB") as File | null
                   if (!fileA?.size || !fileB?.size) {
                     setGenerateError("Please select both source files")
                     return
                   }
-
                   setGeneratingTest(true)
                   setGenerateError(null)
                   setGenerateLogs([])
 
-                  try {
-                    const res = await fetch(`/api/reconciliations/${configId}/generate-test`, {
-                      method: "POST",
-                      body: formData,
+                  const addLog = (step: string, status: string, detail?: string) => {
+                    setGenerateLogs((prev) => {
+                      const existing = prev.findIndex((p) => p.step === step)
+                      if (existing >= 0) { const u = [...prev]; u[existing] = { step, status, detail }; return u }
+                      return [...prev, { step, status, detail }]
                     })
+                  }
 
-                    if (!res.ok) {
-                      // Non-streaming error (auth, validation)
-                      const data = await res.json().catch(() => ({}))
-                      throw new Error(data.error || `Test run failed (${res.status})`)
-                    }
+                  try {
+                    addLog("Creating run", "progress")
+                    const createRes = await fetch(`/api/reconciliations/${configId}/generate-test`, { method: "POST" })
+                    if (!createRes.ok) throw new Error((await createRes.json().catch(() => ({}))).error || "Failed to create run")
+                    const { runId } = await createRes.json()
+                    addLog("Creating run", "done", runId)
 
-                    // Read streaming logs
-                    const reader = res.body?.getReader()
-                    const decoder = new TextDecoder()
-                    let buffer = ""
+                    addLog("Uploading Source A", "progress", fileA.name)
+                    const fdA = new FormData()
+                    fdA.append("file", fileA)
+                    fdA.append("source", "A")
+                    const uploadA = await fetch(`/api/reconciliations/${configId}/runs/${runId}/upload`, { method: "POST", body: fdA })
+                    if (!uploadA.ok) throw new Error((await uploadA.json().catch(() => ({}))).error || "Failed to upload Source A")
+                    const resA = await uploadA.json()
+                    addLog("Uploading Source A", "done", `${resA.rowCount} rows`)
 
-                    if (reader) {
-                      while (true) {
-                        const { done, value } = await reader.read()
-                        if (done) break
-                        buffer += decoder.decode(value, { stream: true })
+                    addLog("Uploading Source B", "progress", `${fileB.name} (PDF may take 1-2 min)`)
+                    const fdB = new FormData()
+                    fdB.append("file", fileB)
+                    fdB.append("source", "B")
+                    const uploadB = await fetch(`/api/reconciliations/${configId}/runs/${runId}/upload`, { method: "POST", body: fdB })
+                    if (!uploadB.ok) throw new Error((await uploadB.json().catch(() => ({}))).error || "Failed to upload Source B")
+                    const resB = await uploadB.json()
+                    addLog("Uploading Source B", "done", `${resB.rowCount} rows`)
 
-                        // Parse complete lines
-                        const lines = buffer.split("\n")
-                        buffer = lines.pop() || "" // keep incomplete line in buffer
-                        for (const line of lines) {
-                          if (!line.trim()) continue
-                          try {
-                            const log = JSON.parse(line)
-                            setGenerateLogs((prev) => {
-                              // Update existing step or add new
-                              const existing = prev.findIndex((p) => p.step === log.step)
-                              if (existing >= 0) {
-                                const updated = [...prev]
-                                updated[existing] = log
-                                return updated
-                              }
-                              return [...prev, log]
-                            })
-                            if (log.status === "error") {
-                              setGenerateError(log.detail || "Unknown error")
-                            }
-                          } catch {
-                            // skip malformed lines
-                          }
-                        }
-                      }
-                    }
+                    addLog("Running matching", "progress")
+                    const matchRes = await fetch(`/api/reconciliations/${configId}/runs/${runId}/match`, { method: "POST" })
+                    if (!matchRes.ok) throw new Error((await matchRes.json().catch(() => ({}))).error || "Matching failed")
+                    const matchData = await matchRes.json()
+                    addLog("Running matching", "done", `${matchData.matchedCount} matched, ${matchData.exceptionCount} exceptions`)
 
+                    addLog("Complete", "done")
                     await fetchConfig()
                   } catch (err: any) {
+                    addLog("Error", "error", err.message)
                     setGenerateError(err.message)
                   } finally {
                     setGeneratingTest(false)
@@ -796,16 +806,8 @@ export default function ReconciliationDetailPage() {
                     <label className="flex items-center gap-2 h-10 px-3 border border-gray-200 rounded-lg cursor-pointer hover:border-orange-300 hover:bg-orange-50/30 transition-colors">
                       <Upload className="w-4 h-4 text-gray-400 flex-shrink-0" />
                       <span className="text-xs text-gray-500 truncate flex-1" id="labelA">Choose file...</span>
-                      <input
-                        type="file"
-                        name="sourceA"
-                        accept=".csv,.xlsx,.xls,.pdf"
-                        className="hidden"
-                        onChange={(e) => {
-                          const lbl = document.getElementById("labelA")
-                          if (lbl) lbl.textContent = e.target.files?.[0]?.name || "Choose file..."
-                        }}
-                      />
+                      <input type="file" name="sourceA" accept=".csv,.xlsx,.xls,.pdf" className="hidden"
+                        onChange={(e) => { const l = document.getElementById("labelA"); if (l) l.textContent = e.target.files?.[0]?.name || "Choose file..." }} />
                     </label>
                   </div>
                   <div>
@@ -815,26 +817,14 @@ export default function ReconciliationDetailPage() {
                     <label className="flex items-center gap-2 h-10 px-3 border border-gray-200 rounded-lg cursor-pointer hover:border-orange-300 hover:bg-orange-50/30 transition-colors">
                       <Upload className="w-4 h-4 text-gray-400 flex-shrink-0" />
                       <span className="text-xs text-gray-500 truncate flex-1" id="labelB">Choose file...</span>
-                      <input
-                        type="file"
-                        name="sourceB"
-                        accept=".csv,.xlsx,.xls,.pdf"
-                        className="hidden"
-                        onChange={(e) => {
-                          const lbl = document.getElementById("labelB")
-                          if (lbl) lbl.textContent = e.target.files?.[0]?.name || "Choose file..."
-                        }}
-                      />
+                      <input type="file" name="sourceB" accept=".csv,.xlsx,.xls,.pdf" className="hidden"
+                        onChange={(e) => { const l = document.getElementById("labelB"); if (l) l.textContent = e.target.files?.[0]?.name || "Choose file..." }} />
                     </label>
                   </div>
                 </div>
                 <div className="text-center pt-1">
-                  <Button
-                    type="submit"
-                    className="bg-orange-500 hover:bg-orange-600 text-white px-6"
-                  >
-                    <Play className="w-4 h-4 mr-2" />
-                    Generate Test
+                  <Button type="submit" className="bg-orange-500 hover:bg-orange-600 text-white px-6">
+                    <Play className="w-4 h-4 mr-2" /> Generate Test
                   </Button>
                 </div>
               </form>
