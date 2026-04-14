@@ -458,6 +458,107 @@ export default function ReconciliationDetailPage() {
         </section>
       )}
 
+      {/* Generate Test — always available */}
+      {canManage && !generatingTest && config.runs.length > 0 && (
+        <div className="flex items-center gap-3">
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault()
+              const formData = new FormData(e.currentTarget)
+              const fileA = formData.get("sourceA") as File | null
+              const fileB = formData.get("sourceB") as File | null
+              if (!fileA?.size || !fileB?.size) {
+                setGenerateError("Please select both source files")
+                return
+              }
+              setGeneratingTest(true)
+              setGenerateError(null)
+              setGenerateLogs([])
+              try {
+                const res = await fetch(`/api/reconciliations/${configId}/generate-test`, {
+                  method: "POST",
+                  body: formData,
+                })
+                if (!res.ok) {
+                  const data = await res.json().catch(() => ({}))
+                  throw new Error(data.error || `Test run failed (${res.status})`)
+                }
+                const reader = res.body?.getReader()
+                const decoder = new TextDecoder()
+                let buffer = ""
+                if (reader) {
+                  while (true) {
+                    const { done, value } = await reader.read()
+                    if (done) break
+                    buffer += decoder.decode(value, { stream: true })
+                    const lines = buffer.split("\n")
+                    buffer = lines.pop() || ""
+                    for (const line of lines) {
+                      if (!line.trim()) continue
+                      try {
+                        const logEntry = JSON.parse(line)
+                        setGenerateLogs((prev) => {
+                          const existing = prev.findIndex((p) => p.step === logEntry.step)
+                          if (existing >= 0) { const updated = [...prev]; updated[existing] = logEntry; return updated }
+                          return [...prev, logEntry]
+                        })
+                        if (logEntry.status === "error") setGenerateError(logEntry.detail || "Unknown error")
+                      } catch { /* skip */ }
+                    }
+                  }
+                }
+                await fetchConfig()
+              } catch (err: any) {
+                setGenerateError(err.message)
+              } finally {
+                setGeneratingTest(false)
+              }
+            }}
+            className="flex items-center gap-2"
+          >
+            <label className="flex items-center gap-1.5 h-8 px-3 border border-gray-200 rounded-lg cursor-pointer hover:border-orange-300 text-xs text-gray-500">
+              <Upload className="w-3.5 h-3.5" />
+              <span id="newLabelA">{config.sourceAConfig.label}</span>
+              <input type="file" name="sourceA" accept=".csv,.xlsx,.xls,.pdf" className="hidden"
+                onChange={(e) => { const l = document.getElementById("newLabelA"); if (l) l.textContent = e.target.files?.[0]?.name || config.sourceAConfig.label }} />
+            </label>
+            <label className="flex items-center gap-1.5 h-8 px-3 border border-gray-200 rounded-lg cursor-pointer hover:border-orange-300 text-xs text-gray-500">
+              <Upload className="w-3.5 h-3.5" />
+              <span id="newLabelB">{config.sourceBConfig.label}</span>
+              <input type="file" name="sourceB" accept=".csv,.xlsx,.xls,.pdf" className="hidden"
+                onChange={(e) => { const l = document.getElementById("newLabelB"); if (l) l.textContent = e.target.files?.[0]?.name || config.sourceBConfig.label }} />
+            </label>
+            <Button type="submit" size="sm" className="bg-orange-500 hover:bg-orange-600 text-white text-xs">
+              <Play className="w-3.5 h-3.5 mr-1" /> New Test Run
+            </Button>
+          </form>
+        </div>
+      )}
+
+      {/* Streaming logs for in-progress test */}
+      {generatingTest && (
+        <div className="border rounded-lg p-4 bg-gray-50 space-y-1.5">
+          {generateLogs.map((logEntry, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs">
+              {logEntry.status === "progress" ? (
+                <Loader2 className="w-3 h-3 animate-spin text-orange-500 flex-shrink-0" />
+              ) : logEntry.status === "done" ? (
+                <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
+              ) : (
+                <AlertTriangle className="w-3 h-3 text-red-500 flex-shrink-0" />
+              )}
+              <span className={logEntry.status === "error" ? "text-red-600" : logEntry.status === "done" ? "text-gray-600" : "text-orange-600"}>
+                {logEntry.step}
+              </span>
+              {logEntry.detail && <span className="text-gray-400 truncate">{logEntry.detail}</span>}
+            </div>
+          ))}
+          {generateError && (
+            <div className="mt-2 px-3 py-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">{generateError}</div>
+          )}
+        </div>
+      )}
+
       {/* Run History */}
       {config.runs.length > 0 && config.runs.length > 1 && (
         <section className="border rounded-lg overflow-hidden">
