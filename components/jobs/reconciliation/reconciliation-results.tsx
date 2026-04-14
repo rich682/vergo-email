@@ -69,7 +69,7 @@ function formatCellValue(value: any): string {
   if (value === null || value === undefined || value === "") return "—"
   if (typeof value === "number") {
     if (Number.isFinite(value) && (value % 1 !== 0 || Math.abs(value) > 100)) {
-      return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value)
+      return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
     }
     return value.toLocaleString()
   }
@@ -509,12 +509,21 @@ export function ReconciliationResults({
 // ── Shared table header helper ──────────────────────────────────────────
 
 function ColHeader({ label, isLast, className }: { label: string; isLast?: boolean; className?: string }) {
+  // Size columns based on data type keywords
+  const lbl = label.toLowerCase()
+  const isDate = lbl.includes("date") || lbl.includes("posted") || lbl.includes("tran")
+  const isAmount = lbl.includes("amount") || lbl.includes("total") || lbl.includes("balance") || lbl.includes("debit") || lbl.includes("credit")
+  const isDescription = lbl.includes("desc") || lbl.includes("merchant") || lbl.includes("payee") || lbl.includes("memo") || lbl.includes("transaction desc")
+  const isRef = lbl.includes("ref") || lbl.includes("number") || lbl.includes("invoice") || lbl.includes("check")
+
+  const minWidth = isDescription ? 200 : isRef ? 160 : isAmount ? 120 : isDate ? 110 : 120
+
   return (
     <th
-      className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
+      className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap ${
         isLast ? "border-r border-gray-300" : ""
-      } ${className || ""}`}
-      style={{ minWidth: 80 }}
+      } ${isAmount ? "text-right" : ""} ${className || ""}`}
+      style={{ minWidth }}
     >
       {label.replace(/_/g, " ")}
     </th>

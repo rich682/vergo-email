@@ -126,13 +126,13 @@ export class ReconciliationFileParserService {
           const rows: Record<string, any>[] = []
           for (let i = r + 1; i < jsonData.length; i++) {
             const row: Record<string, any> = {}
-            let hasData = false
+            let hasData = 0
             for (let j = 0; j < betterHeaders.length; j++) {
               const val = jsonData[i]?.[j]
               row[betterHeaders[j]] = val !== undefined ? val : ""
-              if (val !== undefined && val !== "" && val !== null) hasData = true
+              if (val !== undefined && val !== "" && val !== null) hasData++
             }
-            if (hasData) rows.push(row)
+            if (hasData >= 2) rows.push(row) // Require at least 2 non-empty cells
           }
           return {
             rows,
@@ -149,13 +149,13 @@ export class ReconciliationFileParserService {
     const rows: Record<string, any>[] = []
     for (let i = headerRowIdx + 1; i < jsonData.length; i++) {
       const row: Record<string, any> = {}
-      let hasData = false
+      let hasData = 0
       for (let j = 0; j < headers.length; j++) {
         const val = jsonData[i]?.[j]
         row[headers[j]] = val !== undefined ? val : ""
-        if (val !== undefined && val !== "" && val !== null) hasData = true
+        if (val !== undefined && val !== "" && val !== null) hasData++
       }
-      if (hasData) rows.push(row)
+      if (hasData >= 2) rows.push(row) // Require at least 2 non-empty cells
     }
 
     const detectedColumns = headers.map((label) => ({

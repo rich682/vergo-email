@@ -431,9 +431,9 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
           sourceAConfig,
           sourceBConfig,
           matchingRules: {
-            amountMatch: "exact",
-            amountTolerance: 0,
-            dateWindowDays: 0,
+            amountMatch: "tolerance",
+            amountTolerance: 0.01,
+            dateWindowDays: 3,
             fuzzyDescription: true,
           },
           ...(matchingGuidelines.trim() && { matchingGuidelines: matchingGuidelines.trim() }),

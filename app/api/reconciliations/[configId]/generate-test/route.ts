@@ -266,7 +266,7 @@ Rules:
             finalRowsB,
             sourceAConfig,
             sourceBConfig,
-            matchingRules || { amountMatch: "exact", dateWindowDays: 0, fuzzyDescription: true },
+            matchingRules || { amountMatch: "tolerance", amountTolerance: 0.01, dateWindowDays: 3, fuzzyDescription: true },
             matchingGuidelines?.guidelines || undefined,
             learnedContext?.patterns || [],
           )
