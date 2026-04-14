@@ -16,6 +16,8 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
+  Play,
+  Upload,
 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
 import { Button } from "@/components/ui/button"
@@ -160,6 +162,10 @@ export default function ReconciliationDetailPage() {
   // Delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+
+  // Generate test run
+  const [generatingTest, setGeneratingTest] = useState(false)
+  const [generateError, setGenerateError] = useState<string | null>(null)
 
   const fetchConfig = useCallback(async () => {
     try {
@@ -569,12 +575,115 @@ export default function ReconciliationDetailPage() {
       {/* Empty state — no runs at all */}
       {config.runs.length === 0 && (
         <section className="border rounded-lg overflow-hidden">
-          <div className="text-center py-10">
-            <Clock className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-            <p className="text-sm text-gray-500">No runs yet</p>
-            <p className="text-xs text-gray-400 mt-1">
-              Link this reconciliation to a task and run it to see results here.
+          <div className="text-center py-10 px-6">
+            <Play className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+            <p className="text-sm font-medium text-gray-700 mb-1">Generate a Test Run</p>
+            <p className="text-xs text-gray-400 mb-5 max-w-md mx-auto">
+              Upload your source files to run a test reconciliation. AI will parse, match, and classify exceptions.
+              PDF processing may take 1-2 minutes.
             </p>
+
+            {generateError && (
+              <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 max-w-md mx-auto text-left">
+                {generateError}
+              </div>
+            )}
+
+            {generatingTest ? (
+              <div className="flex items-center justify-center gap-2 text-sm text-orange-600">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Running test reconciliation...
+              </div>
+            ) : (
+              <div className="space-y-3 max-w-lg mx-auto">
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault()
+                    const form = e.currentTarget
+                    const formData = new FormData(form)
+
+                    // Validate files
+                    const fileA = formData.get("sourceA") as File | null
+                    const fileB = formData.get("sourceB") as File | null
+                    if (!fileA?.size || !fileB?.size) {
+                      setGenerateError("Please select both source files")
+                      return
+                    }
+
+                    setGeneratingTest(true)
+                    setGenerateError(null)
+
+                    try {
+                      const res = await fetch(`/api/reconciliations/${configId}/generate-test`, {
+                        method: "POST",
+                        body: formData,
+                      })
+
+                      if (!res.ok) {
+                        const data = await res.json().catch(() => ({}))
+                        throw new Error(data.error || `Test run failed (${res.status})`)
+                      }
+
+                      // Refresh the page data to show the new run
+                      await fetchConfig()
+                    } catch (err: any) {
+                      setGenerateError(err.message)
+                    } finally {
+                      setGeneratingTest(false)
+                    }
+                  }}
+                  className="space-y-3"
+                >
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1 text-left">
+                        Source A — {config.sourceAConfig.label}
+                      </label>
+                      <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-orange-300 hover:bg-orange-50/30 transition-colors">
+                        <Upload className="w-4 h-4 text-gray-400" />
+                        <span className="text-xs text-gray-500 truncate" id="labelA">Choose file</span>
+                        <input
+                          type="file"
+                          name="sourceA"
+                          accept=".csv,.xlsx,.xls,.pdf"
+                          className="hidden"
+                          onChange={(e) => {
+                            const lbl = document.getElementById("labelA")
+                            if (lbl) lbl.textContent = e.target.files?.[0]?.name || "Choose file"
+                          }}
+                        />
+                      </label>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1 text-left">
+                        Source B — {config.sourceBConfig.label}
+                      </label>
+                      <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-orange-300 hover:bg-orange-50/30 transition-colors">
+                        <Upload className="w-4 h-4 text-gray-400" />
+                        <span className="text-xs text-gray-500 truncate" id="labelB">Choose file</span>
+                        <input
+                          type="file"
+                          name="sourceB"
+                          accept=".csv,.xlsx,.xls,.pdf"
+                          className="hidden"
+                          onChange={(e) => {
+                            const lbl = document.getElementById("labelB")
+                            if (lbl) lbl.textContent = e.target.files?.[0]?.name || "Choose file"
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                  <Button
+                    type="submit"
+                    className="bg-orange-500 hover:bg-orange-600 text-white"
+                  >
+                    <Play className="w-4 h-4 mr-2" />
+                    Generate Test
+                  </Button>
+                </form>
+              </div>
+            )}
           </div>
         </section>
       )}
