@@ -3,8 +3,8 @@
     "app/api/**/*.ts": {
       "maxDuration": 30
     },
-    "app/api/reconciliations/analyze/*.ts": {
-      "maxDuration": 60
+    "app/api/reconciliations/**/*.ts": {
+      "maxDuration": 300
     },
     "app/api/analysis/conversations/*/messages/*.ts": {
       "maxDuration": 120
