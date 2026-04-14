@@ -120,14 +120,77 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             rowsB = JSON.parse(preParsedB)
             log("Loading Source B", "done", `${rowsB.length} rows from cache`)
           } else {
-            log("Parsing Source B", "progress", fileB.name)
-            const parseB = await ReconciliationFileParserService.parseFile(
-              bufferB, fileB.name,
-              sourceBConfig.columns?.length > 0 ? sourceBConfig : undefined,
-              "full", sourceBConfig.extractionProfile
-            )
-            rowsB = parseB.rows
-            log("Parsing Source B", "done", `${parseB.rowCount} rows, ${parseB.detectedColumns.length} columns`)
+            const ext = fileB.name.toLowerCase().split(".").pop() || ""
+            const isPdf = ext === "pdf"
+
+            if (isPdf) {
+              // For PDF: do text extraction first, then AI parse — with detailed logging
+              log("Extracting PDF text", "progress", fileB.name)
+              const { extractText } = await import("unpdf")
+              const pdfData = new Uint8Array(bufferB)
+              const textResult = await extractText(pdfData)
+              const pdfText = (textResult.text || []).join("\n--- PAGE BREAK ---\n")
+              log("Extracting PDF text", "done", `${pdfText.length} chars extracted`)
+
+              if (pdfText.length < 20) {
+                log("PDF text extraction", "error", "Not enough text extracted from PDF")
+                rowsB = []
+              } else {
+                log("AI extracting rows", "progress", `Sending ${Math.min(pdfText.length, 30000)} chars to gpt-4o-mini...`)
+                const startTime = Date.now()
+
+                const { getOpenAIClient } = await import("@/lib/utils/openai-client")
+                const openai = getOpenAIClient()
+                const truncatedText = pdfText.length > 30000 ? pdfText.slice(0, 30000) + "\n...(truncated)" : pdfText
+
+                // Known columns from config
+                const knownCols = sourceBConfig.columns?.map((c: any) => c.label) || []
+                const columnInstruction = knownCols.length > 0
+                  ? `The columns are: ${JSON.stringify(knownCols)}. Use exactly these column names.`
+                  : `Detect column names from the document.`
+
+                try {
+                  const completion = await openai.chat.completions.create({
+                    model: "gpt-4o-mini",
+                    messages: [
+                      {
+                        role: "system",
+                        content: `You are a document parser. Extract ALL rows from the data table as JSON.\n${columnInstruction}\n\nRules:\n- Find the main DATA TABLE (transactions, line items)\n- COMBINE all sections into one table\n- Look through ALL pages\n- Extract EVERY row\n- Parse amounts as numbers, dates in original format\n- IGNORE summaries, footers, headers\n\nReturn JSON: { "columns": [...], "rows": [{...}, ...] }`,
+                      },
+                      { role: "user", content: `Extract ALL rows:\n\n${truncatedText}` },
+                    ],
+                    response_format: { type: "json_object" },
+                    temperature: 0.1,
+                    max_tokens: 8000,
+                  })
+
+                  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+                  const content = completion.choices[0]?.message?.content
+                  if (!content) {
+                    log("AI extracting rows", "error", `Empty response after ${elapsed}s`)
+                    rowsB = []
+                  } else {
+                    const parsed = JSON.parse(content)
+                    rowsB = parsed.rows || []
+                    log("AI extracting rows", "done", `${rowsB.length} rows extracted in ${elapsed}s (${(content.length / 1024).toFixed(1)}KB)`)
+                  }
+                } catch (aiErr: any) {
+                  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+                  log("AI extracting rows", "error", `${aiErr.message} (after ${elapsed}s)`)
+                  rowsB = []
+                }
+              }
+            } else {
+              // For Excel/CSV: instant parsing, no AI needed
+              log("Parsing Source B", "progress", fileB.name)
+              const parseB = await ReconciliationFileParserService.parseFile(
+                bufferB, fileB.name,
+                sourceBConfig.columns?.length > 0 ? sourceBConfig : undefined,
+                "full", sourceBConfig.extractionProfile
+              )
+              rowsB = parseB.rows
+              log("Parsing Source B", "done", `${parseB.rowCount} rows, ${parseB.detectedColumns.length} columns`)
+            }
           }
 
           log("Storing Source B", "progress")
