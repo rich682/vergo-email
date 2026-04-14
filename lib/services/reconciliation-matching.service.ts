@@ -91,10 +91,27 @@ function parseDate(value: any): Date | null {
   const str = String(value).trim()
   if (!str) return null
 
-  // MM/DD/YYYY or MM-DD-YYYY
+  const currentYear = new Date().getFullYear()
+
+  // MM/DD/YYYY or MM-DD-YYYY (4-digit year)
   let m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/)
   if (m) {
     const d = new Date(parseInt(m[3]), parseInt(m[1]) - 1, parseInt(m[2]))
+    if (!isNaN(d.getTime())) return d
+  }
+
+  // MM/DD/YY or MM-DD-YY (2-digit year — assume 2000s)
+  m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/)
+  if (m) {
+    const year = 2000 + parseInt(m[3])
+    const d = new Date(year, parseInt(m[1]) - 1, parseInt(m[2]))
+    if (!isNaN(d.getTime())) return d
+  }
+
+  // MM-DD or MM/DD (no year — assume current year)
+  m = str.match(/^(\d{1,2})[\/\-](\d{1,2})$/)
+  if (m) {
+    const d = new Date(currentYear, parseInt(m[1]) - 1, parseInt(m[2]))
     if (!isNaN(d.getTime())) return d
   }
 

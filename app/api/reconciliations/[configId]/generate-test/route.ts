@@ -254,6 +254,23 @@ Rules:
         const finalRowsA = (updatedRun?.sourceARows as any) || []
         const finalRowsB = (updatedRun?.sourceBRows as any) || []
 
+        // Diagnostic: show data shapes, column keys, and sample values
+        const configColsA = (sourceAConfig.columns || []).map((c: any) => `${c.key}(${c.type})`)
+        const configColsB = (sourceBConfig.columns || []).map((c: any) => `${c.key}(${c.type})`)
+        log("Data diagnostic", "done", `Config A cols: [${configColsA.join(", ")}]`)
+        log("Data diagnostic", "done", `Config B cols: [${configColsB.join(", ")}]`)
+
+        if (finalRowsA.length > 0) {
+          const sampleA = finalRowsA[0]
+          const keysA = Object.keys(sampleA).slice(0, 8)
+          log("Source A sample", "done", `Keys: [${keysA.join(", ")}] | Row: ${JSON.stringify(sampleA).slice(0, 200)}`)
+        }
+        if (finalRowsB.length > 0) {
+          const sampleB = finalRowsB[0]
+          const keysB = Object.keys(sampleB).slice(0, 8)
+          log("Source B sample", "done", `Keys: [${keysB.join(", ")}] | Row: ${JSON.stringify(sampleB).slice(0, 200)}`)
+        }
+
         if (Array.isArray(finalRowsA) && finalRowsA.length > 0 && Array.isArray(finalRowsB) && finalRowsB.length > 0) {
           log("Running AI matching", "progress", `${finalRowsA.length} vs ${finalRowsB.length} rows`)
 
