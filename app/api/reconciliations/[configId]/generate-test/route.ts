@@ -136,18 +136,54 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 log("PDF text extraction", "error", "Not enough text extracted from PDF")
                 rowsB = []
               } else {
-                // Truncate aggressively — 30K chars is too much for gpt-4o-mini full extraction
-                // Keep only 12K chars which is enough for ~100 transactions
-                const maxChars = 12000
-                const truncatedText = pdfText.length > maxChars ? pdfText.slice(0, maxChars) + "\n...(truncated)" : pdfText
-                log("AI extracting rows", "progress", `Sending ${truncatedText.length} chars to gpt-4o-mini...`)
+                // Filter PDF text to only lines likely containing transaction data
+                // using known column values/patterns to identify relevant sections
+                const knownCols = sourceBConfig.columns?.map((c: any) => c.label) || []
+                const lines = pdfText.split("\n")
+                const relevantLines: string[] = []
+                let inDataSection = false
+
+                for (const line of lines) {
+                  const trimmed = line.trim()
+                  if (!trimmed || trimmed === "--- PAGE BREAK ---") {
+                    if (trimmed === "--- PAGE BREAK ---") relevantLines.push(trimmed)
+                    continue
+                  }
+
+                  // Detect data section markers (common in credit card / bank statements)
+                  const sectionMarkers = ["activity", "transaction", "purchasing", "travel", "payment", "detail"]
+                  if (sectionMarkers.some((m) => trimmed.toLowerCase().includes(m))) {
+                    inDataSection = true
+                    relevantLines.push(trimmed)
+                    continue
+                  }
+
+                  // Skip obvious non-data lines (summaries, account info)
+                  const skipMarkers = ["total activity", "account number", "credit limit", "available credit", "payment due", "new balance", "previous balance", "accounting code"]
+                  if (skipMarkers.some((m) => trimmed.toLowerCase().includes(m))) continue
+
+                  // Keep lines that look like transaction data:
+                  // - Contains a date pattern (MM-DD, MM/DD, etc.)
+                  // - Contains a dollar amount
+                  // - Contains a long reference number
+                  const hasDate = /\d{2}[-\/]\d{2}/.test(trimmed)
+                  const hasAmount = /\d+\.\d{2}/.test(trimmed)
+                  const hasRefNum = /\d{10,}/.test(trimmed)
+
+                  if (hasDate || hasAmount || hasRefNum || inDataSection) {
+                    relevantLines.push(trimmed)
+                  }
+                }
+
+                const filteredText = relevantLines.join("\n")
+                // Use filtered text if it has meaningful content, otherwise fall back to truncated raw
+                const textToSend = filteredText.length > 200 ? filteredText : (pdfText.length > 15000 ? pdfText.slice(0, 15000) : pdfText)
+                log("AI extracting rows", "progress", `Sending ${textToSend.length} chars (filtered from ${pdfText.length}) to gpt-4o-mini...`)
                 const startTime = Date.now()
 
                 const { getOpenAIClient } = await import("@/lib/utils/openai-client")
                 const openai = getOpenAIClient()
 
-                // Known columns from config
-                const knownCols = sourceBConfig.columns?.map((c: any) => c.label) || []
                 const columnInstruction = knownCols.length > 0
                   ? `The columns are: ${JSON.stringify(knownCols)}. Use exactly these column names.`
                   : `Detect column names from the document.`
@@ -160,7 +196,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                         role: "system",
                         content: `You are a document parser. Extract ALL transaction rows as JSON.\n${columnInstruction}\n\nRules:\n- Find ALL transaction rows (purchases, payments, credits)\n- COMBINE all sections (different cardholders, activity types) into one table\n- Extract EVERY transaction row\n- Parse amounts as numbers, dates in original format\n- IGNORE account summaries, totals, headers, footers\n\nReturn JSON: { "columns": [...], "rows": [{...}, ...] }`,
                       },
-                      { role: "user", content: `Extract ALL transaction rows:\n\n${truncatedText}` },
+                      { role: "user", content: `Extract ALL transaction rows:\n\n${textToSend}` },
                     ],
                     response_format: { type: "json_object" },
                     temperature: 0.1,
