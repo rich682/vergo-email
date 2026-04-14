@@ -100,26 +100,49 @@ export class ReconciliationFileParserService {
     if (jsonData.length < 2) throw new Error("File has no data rows")
 
     // Detect the header row — many accounting exports have headers in row 2+
-    let headerRowIdx = 0
-    for (let r = 0; r < Math.min(jsonData.length, 5); r++) {
-      const row = jsonData[r] || []
-      const nonEmpty = row.filter((v: any) => v !== undefined && v !== null && String(v).trim() !== "").length
-      const total = row.length
-      if (total > 0 && nonEmpty / total > 0.5) {
-        const allStrings = row.every((v: any) => {
-          if (v === undefined || v === null || String(v).trim() === "") return true
-          return typeof v === "string" && isNaN(Number(v))
-        })
-        if (allStrings) {
-          headerRowIdx = r
-          break
-        }
-      }
-    }
+    // Score each of the first 10 rows by how "header-like" it is
+    const headerRowIdx = this.detectHeaderRow(jsonData)
 
     const headers = (jsonData[headerRowIdx] || []).map((h: any, idx: number) =>
       h ? String(h).trim() : `Column${idx + 1}`
     )
+
+    // Count how many are still generic (ColumnN) — if too many, this wasn't a good header row
+    const genericCount = headers.filter((h) => /^Column\d+$/.test(h)).length
+    const totalCols = headers.length
+
+    // If >60% of columns are generic and we're on row 0, scan a few more rows for better headers
+    if (genericCount / totalCols > 0.6 && headerRowIdx === 0) {
+      for (let r = 1; r < Math.min(jsonData.length, 10); r++) {
+        const candidateHeaders = (jsonData[r] || []).map((h: any, idx: number) =>
+          h ? String(h).trim() : `Column${idx + 1}`
+        )
+        const candidateGeneric = candidateHeaders.filter((h) => /^Column\d+$/.test(h)).length
+        if (candidateGeneric < genericCount) {
+          // This row has more real column names — use it instead
+          const betterHeaders = candidateHeaders
+          const rows: Record<string, any>[] = []
+          for (let i = r + 1; i < jsonData.length; i++) {
+            const row: Record<string, any> = {}
+            let hasData = false
+            for (let j = 0; j < betterHeaders.length; j++) {
+              const val = jsonData[i]?.[j]
+              row[betterHeaders[j]] = val !== undefined ? val : ""
+              if (val !== undefined && val !== "" && val !== null) hasData = true
+            }
+            if (hasData) rows.push(row)
+          }
+          return {
+            rows,
+            detectedColumns: betterHeaders.map((label) => ({
+              key: label,
+              label,
+              sampleValues: rows.slice(0, 3).map((r) => String(r[label] ?? "")),
+            })),
+          }
+        }
+      }
+    }
 
     const rows: Record<string, any>[] = []
     for (let i = headerRowIdx + 1; i < jsonData.length; i++) {
@@ -140,6 +163,37 @@ export class ReconciliationFileParserService {
     }))
 
     return { rows, detectedColumns }
+  }
+
+  /**
+   * Find the best header row in an Excel sheet.
+   * Scores each row by: number of non-empty string cells that look like column names.
+   */
+  private static detectHeaderRow(jsonData: any[][]): number {
+    let bestRow = 0
+    let bestScore = 0
+
+    for (let r = 0; r < Math.min(jsonData.length, 10); r++) {
+      const row = jsonData[r] || []
+      let score = 0
+
+      for (const cell of row) {
+        if (cell === undefined || cell === null || String(cell).trim() === "") continue
+        const val = String(cell).trim()
+        // String values that aren't pure numbers or dates are header-like
+        if (typeof cell === "string" && isNaN(Number(val)) && val.length > 0 && val.length < 60) {
+          score++
+        }
+      }
+
+      // Prefer rows with more named columns
+      if (score > bestScore) {
+        bestScore = score
+        bestRow = r
+      }
+    }
+
+    return bestRow
   }
 
   /**
