@@ -166,6 +166,7 @@ export default function ReconciliationDetailPage() {
   // Generate test run
   const [generatingTest, setGeneratingTest] = useState(false)
   const [generateError, setGenerateError] = useState<string | null>(null)
+  const [generateLogs, setGenerateLogs] = useState<{ step: string; status: string; detail?: string }[]>([])
 
   const fetchConfig = useCallback(async () => {
     try {
@@ -591,9 +592,24 @@ export default function ReconciliationDetailPage() {
             )}
 
             {generatingTest ? (
-              <div className="flex items-center justify-center gap-2 py-6 text-sm text-orange-600">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Running test reconciliation — this may take a few minutes...
+              <div className="py-4 space-y-2">
+                {generateLogs.map((log, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    {log.status === "progress" ? (
+                      <Loader2 className="w-3 h-3 animate-spin text-orange-500 flex-shrink-0" />
+                    ) : log.status === "done" ? (
+                      <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-3 h-3 text-red-500 flex-shrink-0" />
+                    )}
+                    <span className={log.status === "error" ? "text-red-600" : log.status === "done" ? "text-gray-600" : "text-orange-600"}>
+                      {log.step}
+                    </span>
+                    {log.detail && (
+                      <span className="text-gray-400">{log.detail}</span>
+                    )}
+                  </div>
+                ))}
               </div>
             ) : (
               <form
@@ -610,6 +626,7 @@ export default function ReconciliationDetailPage() {
 
                   setGeneratingTest(true)
                   setGenerateError(null)
+                  setGenerateLogs([])
 
                   try {
                     const res = await fetch(`/api/reconciliations/${configId}/generate-test`, {
@@ -618,8 +635,47 @@ export default function ReconciliationDetailPage() {
                     })
 
                     if (!res.ok) {
+                      // Non-streaming error (auth, validation)
                       const data = await res.json().catch(() => ({}))
                       throw new Error(data.error || `Test run failed (${res.status})`)
+                    }
+
+                    // Read streaming logs
+                    const reader = res.body?.getReader()
+                    const decoder = new TextDecoder()
+                    let buffer = ""
+
+                    if (reader) {
+                      while (true) {
+                        const { done, value } = await reader.read()
+                        if (done) break
+                        buffer += decoder.decode(value, { stream: true })
+
+                        // Parse complete lines
+                        const lines = buffer.split("\n")
+                        buffer = lines.pop() || "" // keep incomplete line in buffer
+                        for (const line of lines) {
+                          if (!line.trim()) continue
+                          try {
+                            const log = JSON.parse(line)
+                            setGenerateLogs((prev) => {
+                              // Update existing step or add new
+                              const existing = prev.findIndex((p) => p.step === log.step)
+                              if (existing >= 0) {
+                                const updated = [...prev]
+                                updated[existing] = log
+                                return updated
+                              }
+                              return [...prev, log]
+                            })
+                            if (log.status === "error") {
+                              setGenerateError(log.detail || "Unknown error")
+                            }
+                          } catch {
+                            // skip malformed lines
+                          }
+                        }
+                      }
                     }
 
                     await fetchConfig()
