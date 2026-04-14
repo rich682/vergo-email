@@ -76,58 +76,53 @@ export class ReconciliationFileParserService {
   /** Parse Excel file into rows */
   private static parseExcel(buffer: Buffer): { rows: Record<string, any>[]; detectedColumns: any[] } {
     const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true })
-    const sheetName = workbook.SheetNames[0]
-    if (!sheetName) throw new Error("Excel file has no sheets")
-
-    const worksheet = workbook.Sheets[sheetName]
-    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }) as any[][]
-
-    if (jsonData.length < 2) throw new Error("File has no data rows (needs at least a header row and one data row)")
-
-    // First row = headers
-    const headers = (jsonData[0] || []).map((h: any, idx: number) =>
-      h ? String(h).trim() : `Column${idx + 1}`
-    )
-
-    const rows: Record<string, any>[] = []
-    for (let i = 1; i < jsonData.length; i++) {
-      const row: Record<string, any> = {}
-      let hasData = false
-      for (let j = 0; j < headers.length; j++) {
-        const val = jsonData[i]?.[j]
-        row[headers[j]] = val !== undefined ? val : ""
-        if (val !== undefined && val !== "" && val !== null) hasData = true
-      }
-      if (hasData) rows.push(row)
-    }
-
-    const detectedColumns = headers.map((label) => ({
-      key: label,
-      label,
-      sampleValues: rows.slice(0, 3).map((r) => String(r[label] ?? "")),
-    }))
-
-    return { rows, detectedColumns }
+    return this.parseExcelWorkbook(workbook)
   }
 
-  /** Parse CSV file into rows */
+  /** Parse CSV file into rows (uses same logic as Excel) */
   private static parseCsv(buffer: Buffer): { rows: Record<string, any>[]; detectedColumns: any[] } {
-    // xlsx can parse CSV too
+    // xlsx can parse CSV too — reuse the same smart header detection
     const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true })
     const sheetName = workbook.SheetNames[0]
     if (!sheetName) throw new Error("CSV file is empty")
+    // Delegate to parseExcel which handles header row detection
+    return this.parseExcelWorkbook(workbook)
+  }
+
+  /** Shared workbook parser with smart header row detection */
+  private static parseExcelWorkbook(workbook: XLSX.WorkBook): { rows: Record<string, any>[]; detectedColumns: any[] } {
+    const sheetName = workbook.SheetNames[0]
+    if (!sheetName) throw new Error("File has no sheets")
 
     const worksheet = workbook.Sheets[sheetName]
     const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }) as any[][]
 
     if (jsonData.length < 2) throw new Error("File has no data rows")
 
-    const headers = (jsonData[0] || []).map((h: any, idx: number) =>
+    // Detect the header row — many accounting exports have headers in row 2+
+    let headerRowIdx = 0
+    for (let r = 0; r < Math.min(jsonData.length, 5); r++) {
+      const row = jsonData[r] || []
+      const nonEmpty = row.filter((v: any) => v !== undefined && v !== null && String(v).trim() !== "").length
+      const total = row.length
+      if (total > 0 && nonEmpty / total > 0.5) {
+        const allStrings = row.every((v: any) => {
+          if (v === undefined || v === null || String(v).trim() === "") return true
+          return typeof v === "string" && isNaN(Number(v))
+        })
+        if (allStrings) {
+          headerRowIdx = r
+          break
+        }
+      }
+    }
+
+    const headers = (jsonData[headerRowIdx] || []).map((h: any, idx: number) =>
       h ? String(h).trim() : `Column${idx + 1}`
     )
 
     const rows: Record<string, any>[] = []
-    for (let i = 1; i < jsonData.length; i++) {
+    for (let i = headerRowIdx + 1; i < jsonData.length; i++) {
       const row: Record<string, any> = {}
       let hasData = false
       for (let j = 0; j < headers.length; j++) {

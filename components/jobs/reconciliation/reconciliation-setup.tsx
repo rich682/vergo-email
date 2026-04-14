@@ -199,16 +199,16 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
 
   // ── Auto-generate mappings when both sources are ready ────────────
 
-  const generateMappings = useCallback(() => {
+  const generateMappings = useCallback(async () => {
     const colsA = getSourceAColumns()
     const colsB = getSourceBColumns()
     if (colsA.length === 0 || colsB.length === 0) return
 
+    // Step 1: Try heuristic label matching
     const newMappings: ColumnMapping[] = []
     const usedB = new Set<string>()
 
     for (const colA of colsA) {
-      // Try to find matching column in B by label similarity
       let bestMatch: DetectedColumn | null = null
       let bestScore = 0
       let bestLabelScore = 0
@@ -216,7 +216,6 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
       for (const colB of colsB) {
         if (usedB.has(colB.key)) continue
 
-        // Label similarity scoring
         let labelScore = 0
         if (colA.label === colB.label) labelScore = 100
         else if (colA.label.toLowerCase() === colB.label.toLowerCase()) labelScore = 80
@@ -225,14 +224,12 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
           colB.label.toLowerCase().includes(colA.label.toLowerCase())
         ) labelScore = 50
 
-        // Type bonus (only applies on top of label match)
         let typeBonus = 0
         if (colA.suggestedType === colB.suggestedType) {
           typeBonus = (colA.suggestedType === "date" || colA.suggestedType === "amount") ? 30 : 15
         }
 
         const score = labelScore + typeBonus
-
         if (score > bestScore) {
           bestScore = score
           bestLabelScore = labelScore
@@ -240,7 +237,6 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
         }
       }
 
-      // Require meaningful label similarity — type-only matches are not enough
       if (bestMatch && bestLabelScore >= 50) {
         usedB.add(bestMatch.key)
         newMappings.push({
@@ -252,9 +248,42 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
       }
     }
 
+    // Step 2: If heuristic found few/no mappings, use AI suggest-mappings
+    if (newMappings.length < 2) {
+      try {
+        setError("")
+        const res = await fetch("/api/reconciliations/suggest-mappings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sourceA: { label: sourceALabel, columns: colsA },
+            sourceB: { label: sourceBLabel, columns: colsB },
+          }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          const aiMappings: ColumnMapping[] = (data.mappings || [])
+            .filter((m: any) => m.sourceAKey && m.sourceBKey)
+            .map((m: any) => ({
+              sourceAKey: m.sourceAKey,
+              sourceBKey: m.sourceBKey,
+              type: m.type || "text",
+              label: m.label || colsA.find((c) => c.key === m.sourceAKey)?.label || m.sourceAKey,
+            }))
+          if (aiMappings.length > 0) {
+            setMappings(aiMappings)
+            setStep("map")
+            return
+          }
+        }
+      } catch {
+        // AI mapping failed, fall through to heuristic results
+      }
+    }
+
     setMappings(newMappings)
     setStep("map")
-  }, [sourceA, sourceB, dbAnalysisA, dbAnalysisB, sourceType]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sourceA, sourceB, dbAnalysisA, dbAnalysisB, sourceType, sourceALabel, sourceBLabel]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Mapping helpers ────────────────────────────────────────────────
 
@@ -276,7 +305,10 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
 
   const updateMappingBKey = (index: number, newBKey: string) => {
     const updated = [...mappings]
-    updated[index] = { ...updated[index], sourceBKey: newBKey }
+    const colB = getSourceBColumns().find((c) => c.key === newBKey)
+    // Auto-update type to match the B column's detected type if it's more specific
+    const newType = colB?.suggestedType && colB.suggestedType !== "text" ? colB.suggestedType : updated[index].type
+    updated[index] = { ...updated[index], sourceBKey: newBKey, type: newType }
     setMappings(updated)
   }
 
