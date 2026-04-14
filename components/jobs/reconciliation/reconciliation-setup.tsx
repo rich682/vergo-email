@@ -211,32 +211,37 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
       // Try to find matching column in B by label similarity
       let bestMatch: DetectedColumn | null = null
       let bestScore = 0
+      let bestLabelScore = 0
 
       for (const colB of colsB) {
         if (usedB.has(colB.key)) continue
 
-        // Score: exact label match = 100, case-insensitive = 80, contains = 50
-        let score = 0
-        if (colA.label === colB.label) score = 100
-        else if (colA.label.toLowerCase() === colB.label.toLowerCase()) score = 80
+        // Label similarity scoring
+        let labelScore = 0
+        if (colA.label === colB.label) labelScore = 100
+        else if (colA.label.toLowerCase() === colB.label.toLowerCase()) labelScore = 80
         else if (
           colA.label.toLowerCase().includes(colB.label.toLowerCase()) ||
           colB.label.toLowerCase().includes(colA.label.toLowerCase())
-        ) score = 50
+        ) labelScore = 50
 
-        // Bonus for same suggested type — date and amount get a higher boost
-        // so columns like "invoice_date" and "post_date" still auto-map
+        // Type bonus (only applies on top of label match)
+        let typeBonus = 0
         if (colA.suggestedType === colB.suggestedType) {
-          score += (colA.suggestedType === "date" || colA.suggestedType === "amount") ? 55 : 30
+          typeBonus = (colA.suggestedType === "date" || colA.suggestedType === "amount") ? 30 : 15
         }
+
+        const score = labelScore + typeBonus
 
         if (score > bestScore) {
           bestScore = score
+          bestLabelScore = labelScore
           bestMatch = colB
         }
       }
 
-      if (bestMatch && bestScore >= 50) {
+      // Require meaningful label similarity — type-only matches are not enough
+      if (bestMatch && bestLabelScore >= 50) {
         usedB.add(bestMatch.key)
         newMappings.push({
           sourceAKey: colA.key,
@@ -1040,132 +1045,112 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
             </p>
           </div>
 
-          <div className="space-y-2">
-            {/* Header */}
-            <div className="grid grid-cols-[1fr_32px_1fr_100px_120px_32px] gap-2 items-center px-2">
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">{sourceALabel}</span>
-              <span />
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">{sourceBLabel}</span>
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            {/* Table header */}
+            <div className="grid grid-cols-[1fr_1fr_100px_32px] bg-gray-50 border-b border-gray-200 px-3 py-2">
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">{sourceALabel || "Source A"}</span>
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">{sourceBLabel || "Source B"}</span>
               <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Type</span>
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Period ID</span>
               <span />
             </div>
 
-            {mappings.map((mapping, i) => (
-              <div
-                key={i}
-                className="grid grid-cols-[1fr_32px_1fr_100px_120px_32px] gap-2 items-center bg-gray-50 rounded-lg px-2 py-1.5"
-              >
-                {/* Source A column */}
-                <div>
-                  <Select
-                    value={mapping.sourceAKey}
-                    onValueChange={(v) => {
-                      const updated = [...mappings]
-                      const col = colsA.find((c) => c.key === v)
-                      updated[i] = { ...updated[i], sourceAKey: v, label: col?.label || v }
-                      setMappings(updated)
-                    }}
-                  >
-                    <SelectTrigger className="h-7 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {colsA.map((col) => (
-                        <SelectItem key={col.key} value={col.key}>
-                          {col.label}
-                          {col.sampleValues[0] && (
-                            <span className="ml-1 text-gray-400">({col.sampleValues[0]})</span>
-                          )}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+            {mappings.map((mapping, i) => {
+              const colA = colsA.find((c) => c.key === mapping.sourceAKey)
+              const colB = colsB.find((c) => c.key === mapping.sourceBKey)
 
-                {/* Arrow */}
-                <div className="flex justify-center">
-                  <Link2 className="w-3.5 h-3.5 text-gray-400" />
-                </div>
-
-                {/* Source B column */}
-                <div>
-                  <Select value={mapping.sourceBKey} onValueChange={(v) => updateMappingBKey(i, v)}>
-                    <SelectTrigger className="h-7 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {colsB.map((col) => (
-                        <SelectItem key={col.key} value={col.key}>
-                          {col.label}
-                          {col.sampleValues[0] && (
-                            <span className="ml-1 text-gray-400">({col.sampleValues[0]})</span>
-                          )}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Type */}
-                <Select value={mapping.type} onValueChange={(v) => updateMappingType(i, v as any)}>
-                  <SelectTrigger className="h-7 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="date">Date</SelectItem>
-                    <SelectItem value="amount">Amount</SelectItem>
-                    <SelectItem value="text">Text</SelectItem>
-                    <SelectItem value="reference">Reference</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                {/* Period Identifier — only for date columns */}
-                <div>
-                  {mapping.type === "date" ? (
+              return (
+                <div
+                  key={i}
+                  className="grid grid-cols-[1fr_1fr_100px_32px] items-center px-3 py-2 border-b border-gray-100 last:border-b-0 hover:bg-gray-50/50"
+                >
+                  {/* Source A column */}
+                  <div>
                     <Select
-                      value={mapping.isPeriodIdentifier ? "yes" : "no"}
-                      onValueChange={(v) => updatePeriodIdentifier(i, v === "yes")}
+                      value={mapping.sourceAKey}
+                      onValueChange={(v) => {
+                        const updated = [...mappings]
+                        const col = colsA.find((c) => c.key === v)
+                        updated[i] = { ...updated[i], sourceAKey: v, label: col?.label || v }
+                        setMappings(updated)
+                      }}
                     >
-                      <SelectTrigger className="h-7 text-xs">
-                        <SelectValue />
+                      <SelectTrigger className="h-8 text-xs border-gray-200">
+                        <SelectValue>{colA?.label || mapping.sourceAKey}</SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="no">No</SelectItem>
-                        <SelectItem value="yes">Yes</SelectItem>
+                        {colsA.map((col) => (
+                          <SelectItem key={col.key} value={col.key}>
+                            {col.label}
+                            {col.sampleValues[0] && (
+                              <span className="ml-1 text-gray-400">({col.sampleValues[0]})</span>
+                            )}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
-                  ) : (
-                    <span className="text-xs text-gray-400 px-1">&mdash;</span>
-                  )}
-                </div>
+                  </div>
 
-                {/* Remove */}
+                  {/* Source B column */}
+                  <div>
+                    <Select value={mapping.sourceBKey} onValueChange={(v) => updateMappingBKey(i, v)}>
+                      <SelectTrigger className="h-8 text-xs border-gray-200">
+                        <SelectValue>{colB?.label || mapping.sourceBKey}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {colsB.map((col) => (
+                          <SelectItem key={col.key} value={col.key}>
+                            {col.label}
+                            {col.sampleValues[0] && (
+                              <span className="ml-1 text-gray-400">({col.sampleValues[0]})</span>
+                            )}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Type */}
+                  <Select value={mapping.type} onValueChange={(v) => updateMappingType(i, v as any)}>
+                    <SelectTrigger className="h-8 text-xs border-gray-200">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="date">Date</SelectItem>
+                      <SelectItem value="amount">Amount</SelectItem>
+                      <SelectItem value="text">Text</SelectItem>
+                      <SelectItem value="reference">Reference</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {/* Remove */}
+                  <button
+                    onClick={() => removeMapping(i)}
+                    className="p-1 text-gray-400 hover:text-red-500 transition-colors justify-self-center"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )
+            })}
+
+            {/* Add mapping button */}
+            {colsA.length > 0 && colsB.length > 0 && (
+              <div className="px-3 py-2 border-t border-gray-100">
                 <button
-                  onClick={() => removeMapping(i)}
-                  className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                  onClick={addMapping}
+                  disabled={
+                    colsA.filter(
+                      (c) => !mappings.some((m) => m.sourceAKey === c.key)
+                    ).length === 0 ||
+                    colsB.filter(
+                      (c) => !mappings.some((m) => m.sourceBKey === c.key)
+                    ).length === 0
+                  }
+                  className="flex items-center gap-1 text-xs text-orange-500 hover:text-orange-600 disabled:text-gray-300 disabled:cursor-not-allowed"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  + Add matching field
                 </button>
               </div>
-            ))}
-
-            {/* Add mapping button — always visible as long as there are unused columns */}
-            {colsA.length > 0 && colsB.length > 0 && (
-              <button
-                onClick={addMapping}
-                disabled={
-                  colsA.filter(
-                    (c) => !mappings.some((m) => m.sourceAKey === c.key)
-                  ).length === 0 ||
-                  colsB.filter(
-                    (c) => !mappings.some((m) => m.sourceBKey === c.key)
-                  ).length === 0
-                }
-                className="flex items-center gap-1 text-xs text-orange-500 hover:text-orange-600 px-2 py-1 disabled:text-gray-300 disabled:cursor-not-allowed"
-              >
-                + Add matching field
-              </button>
             )}
           </div>
         </div>
