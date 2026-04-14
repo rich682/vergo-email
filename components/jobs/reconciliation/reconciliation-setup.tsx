@@ -445,8 +445,8 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
 
       const { config } = await configRes.json()
 
-      // Step 2: Create a run and start uploads in background
-      setCreatingStatus("Starting test run...")
+      // Step 2: Create a run
+      setCreatingStatus("Creating test run...")
       const runRes = await fetch(`/api/reconciliations/${config.id}/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -455,48 +455,54 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
       if (!runRes.ok) throw new Error("Failed to create run")
       const { run } = await runRes.json()
 
-      // Navigate immediately — uploads and matching happen in background
-      onCreated(config.id)
-
-      // Fire-and-forget: upload both files and trigger matching
-      // This runs after navigation so user sees the config page while it processes
-      const runInBackground = async () => {
-        try {
-          const uploadSource = async (side: "A" | "B") => {
-            const isDb = side === "A" ? sourceAIsDatabase : sourceBIsDatabase
-            if (isDb) {
-              const dbAnalysis = side === "A" ? dbAnalysisA : dbAnalysisB
-              if (!dbAnalysis) return
-              await fetch(`/api/reconciliations/${config.id}/runs/${run.id}/load-database`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ source: side }),
-              })
-            } else {
-              const file = side === "A" ? sourceA?.file : sourceB?.file
-              if (!file) return
-              const formData = new FormData()
-              formData.append("file", file)
-              formData.append("source", side)
-              await fetch(`/api/reconciliations/${config.id}/runs/${run.id}/upload`, {
-                method: "POST",
-                body: formData,
-              })
-            }
-          }
-
-          await uploadSource("A")
-          await uploadSource("B")
-
-          // Trigger matching
-          await fetch(`/api/reconciliations/${config.id}/runs/${run.id}/match`, {
+      // Step 3: Upload source files
+      const uploadSource = async (side: "A" | "B") => {
+        const isDb = side === "A" ? sourceAIsDatabase : sourceBIsDatabase
+        if (isDb) {
+          const dbAnalysis = side === "A" ? dbAnalysisA : dbAnalysisB
+          if (!dbAnalysis) throw new Error(`Database source ${side} not configured`)
+          const loadRes = await fetch(`/api/reconciliations/${config.id}/runs/${run.id}/load-database`, {
             method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ source: side }),
           })
-        } catch {
-          // Background processing failed — user can retry from config page
+          if (!loadRes.ok) {
+            const data = await loadRes.json().catch(() => ({}))
+            throw new Error(data.error || `Failed to load database source ${side}`)
+          }
+        } else {
+          const file = side === "A" ? sourceA?.file : sourceB?.file
+          if (!file) throw new Error(`File for source ${side} not available`)
+          const formData = new FormData()
+          formData.append("file", file)
+          formData.append("source", side)
+          const uploadRes = await fetch(`/api/reconciliations/${config.id}/runs/${run.id}/upload`, {
+            method: "POST",
+            body: formData,
+          })
+          if (!uploadRes.ok) {
+            const data = await uploadRes.json().catch(() => ({}))
+            throw new Error(data.error || `Failed to upload source ${side}`)
+          }
         }
       }
-      runInBackground()
+
+      setCreatingStatus("Processing Source A...")
+      await uploadSource("A")
+      setCreatingStatus("Processing Source B (PDF extraction may take a minute)...")
+      await uploadSource("B")
+
+      // Step 4: Trigger matching
+      setCreatingStatus("Running AI matching...")
+      const matchRes = await fetch(`/api/reconciliations/${config.id}/runs/${run.id}/match`, {
+        method: "POST",
+      })
+      if (!matchRes.ok) {
+        // Matching failed but config + data exist — still navigate
+        console.error("Matching failed, navigating to config page anyway")
+      }
+
+      onCreated(config.id)
     } catch (err: any) {
       if (err.message === "Failed to fetch" || err.name === "TypeError") {
         setError("Network error — please check your connection and try again. If a reconciliation with this name already exists, try a different name.")
@@ -1243,7 +1249,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
               </>
             ) : (
               <>
-                Save Reconciliation <ArrowRight className="w-4 h-4 ml-2" />
+                Save &amp; Run <ArrowRight className="w-4 h-4 ml-2" />
               </>
             )}
           </Button>
