@@ -11,5 +11,5 @@ export function getOpenAIClient(): OpenAI {
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY environment variable is not set")
   }
-  return new OpenAI({ apiKey })
+  return new OpenAI({ apiKey, timeout: 90_000 }) // 90s timeout per request
 }

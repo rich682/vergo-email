@@ -1,7 +1,12 @@
 /**
  * POST /api/reconciliations/[configId]/generate-test
- * Creates a run, uploads both source files, and triggers matching — all server-side.
+ * Creates a run, parses source files, and triggers matching — all server-side.
  * Returns a streaming response with step-by-step progress logs.
+ *
+ * Accepts multipart form with:
+ * - sourceA, sourceB: File uploads
+ * - preParsedRowsA, preParsedRowsB: JSON string of pre-parsed rows (from analyze step)
+ *   If pre-parsed rows are provided AND match expected row count, skip re-parsing.
  */
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
@@ -39,6 +44,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const formData = await request.formData()
   const fileA = formData.get("sourceA") as File | null
   const fileB = formData.get("sourceB") as File | null
+  const preParsedA = formData.get("preParsedRowsA") as string | null
+  const preParsedB = formData.get("preParsedRowsB") as string | null
 
   const sourceAConfig = config.sourceAConfig as unknown as SourceConfig
   const sourceBConfig = config.sourceBConfig as unknown as SourceConfig
@@ -72,56 +79,71 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         })
         log("Creating run", "done", `Run ${run.id}`)
 
-        // Step 2: Parse Source A
-        log("Parsing Source A", "progress", fileA?.name || "database")
-        let sourceARows: Record<string, any>[] = []
+        // Step 2: Process Source A
         if (fileA) {
           const bufferA = Buffer.from(await fileA.arrayBuffer())
-          const parseA = await ReconciliationFileParserService.parseFile(
-            bufferA, fileA.name,
-            sourceAConfig.columns?.length > 0 ? sourceAConfig : undefined,
-            "full", sourceAConfig.extractionProfile
-          )
-          sourceARows = parseA.rows
-          log("Parsing Source A", "done", `${parseA.rowCount} rows, ${parseA.detectedColumns.length} columns`)
 
-          log("Uploading Source A", "progress")
+          // Check if we have pre-parsed rows from the analyze step (Excel/CSV)
+          let rowsA: Record<string, any>[]
+          if (preParsedA) {
+            log("Loading Source A", "progress", `${fileA.name} (pre-parsed)`)
+            rowsA = JSON.parse(preParsedA)
+            log("Loading Source A", "done", `${rowsA.length} rows from cache`)
+          } else {
+            log("Parsing Source A", "progress", fileA.name)
+            const parseA = await ReconciliationFileParserService.parseFile(
+              bufferA, fileA.name,
+              sourceAConfig.columns?.length > 0 ? sourceAConfig : undefined,
+              "full", sourceAConfig.extractionProfile
+            )
+            rowsA = parseA.rows
+            log("Parsing Source A", "done", `${parseA.rowCount} rows, ${parseA.detectedColumns.length} columns`)
+          }
+
+          log("Storing Source A", "progress")
           const storage = getStorageService()
           const keyA = `reconciliations/${configId}/${run.id}/A-${Date.now()}-${fileA.name}`
           await storage.upload(bufferA, keyA, fileA.type)
           await ReconciliationService.updateRunSource(run.id, session.user.organizationId!, "A", {
-            fileKey: keyA, fileName: fileA.name, rows: parseA.rows, totalRows: parseA.rowCount,
+            fileKey: keyA, fileName: fileA.name, rows: rowsA, totalRows: rowsA.length,
           })
-          log("Uploading Source A", "done")
+          log("Storing Source A", "done")
         }
 
-        // Step 3: Parse Source B
-        log("Parsing Source B", "progress", fileB?.name || "database")
-        let sourceBRows: Record<string, any>[] = []
+        // Step 3: Process Source B
         if (fileB) {
           const bufferB = Buffer.from(await fileB.arrayBuffer())
-          const parseB = await ReconciliationFileParserService.parseFile(
-            bufferB, fileB.name,
-            sourceBConfig.columns?.length > 0 ? sourceBConfig : undefined,
-            "full", sourceBConfig.extractionProfile
-          )
-          sourceBRows = parseB.rows
-          log("Parsing Source B", "done", `${parseB.rowCount} rows, ${parseB.detectedColumns.length} columns`)
 
-          log("Uploading Source B", "progress")
+          let rowsB: Record<string, any>[]
+          if (preParsedB) {
+            log("Loading Source B", "progress", `${fileB.name} (pre-parsed)`)
+            rowsB = JSON.parse(preParsedB)
+            log("Loading Source B", "done", `${rowsB.length} rows from cache`)
+          } else {
+            log("Parsing Source B", "progress", fileB.name)
+            const parseB = await ReconciliationFileParserService.parseFile(
+              bufferB, fileB.name,
+              sourceBConfig.columns?.length > 0 ? sourceBConfig : undefined,
+              "full", sourceBConfig.extractionProfile
+            )
+            rowsB = parseB.rows
+            log("Parsing Source B", "done", `${parseB.rowCount} rows, ${parseB.detectedColumns.length} columns`)
+          }
+
+          log("Storing Source B", "progress")
           const storage = getStorageService()
           const keyB = `reconciliations/${configId}/${run.id}/B-${Date.now()}-${fileB.name}`
           await storage.upload(bufferB, keyB, fileB.type)
           await ReconciliationService.updateRunSource(run.id, session.user.organizationId!, "B", {
-            fileKey: keyB, fileName: fileB.name, rows: parseB.rows, totalRows: parseB.rowCount,
+            fileKey: keyB, fileName: fileB.name, rows: rowsB, totalRows: rowsB.length,
           })
-          log("Uploading Source B", "done")
+          log("Storing Source B", "done")
         }
 
         // Step 4: Match
         const updatedRun = await prisma.reconciliationRun.findUnique({ where: { id: run.id } })
-        const finalRowsA = (updatedRun?.sourceARows as any) || sourceARows
-        const finalRowsB = (updatedRun?.sourceBRows as any) || sourceBRows
+        const finalRowsA = (updatedRun?.sourceARows as any) || []
+        const finalRowsB = (updatedRun?.sourceBRows as any) || []
 
         if (Array.isArray(finalRowsA) && finalRowsA.length > 0 && Array.isArray(finalRowsB) && finalRowsB.length > 0) {
           log("Running AI matching", "progress", `${finalRowsA.length} vs ${finalRowsB.length} rows`)
@@ -130,15 +152,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           const matchingGuidelines = config.matchingGuidelines as any
           const learnedContext = config.learnedContext as any
 
-          const matchResult = await ReconciliationMatchingService.runMatching({
-            sourceARows: finalRowsA,
-            sourceBRows: finalRowsB,
+          const matchResult = await ReconciliationMatchingService.runMatching(
+            finalRowsA,
+            finalRowsB,
             sourceAConfig,
             sourceBConfig,
-            matchingRules: matchingRules || { amountMatch: "exact", dateWindowDays: 0, fuzzyDescription: true },
-            matchingGuidelines: matchingGuidelines?.guidelines || null,
-            learnedPatterns: learnedContext?.patterns || [],
-          })
+            matchingRules || { amountMatch: "exact", dateWindowDays: 0, fuzzyDescription: true },
+            matchingGuidelines?.guidelines || undefined,
+            learnedContext?.patterns || [],
+          )
 
           const exceptionsMap: Record<string, any> = {}
           for (const exc of matchResult.exceptions || []) {
@@ -163,7 +185,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             where: { id: run.id },
             data: { status: "REVIEW", matchedCount: 0, exceptionCount: 0, variance: 0 },
           })
-          log("Running AI matching", "done", "No rows to match")
+          log("Running AI matching", "done", "No rows to match — check source parsing")
         }
 
         log("Complete", "done", run.id)

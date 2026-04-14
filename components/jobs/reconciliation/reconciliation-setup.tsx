@@ -66,6 +66,7 @@ interface FileAnalysis {
   columns: DetectedColumn[]
   warnings: string[]
   file: File // keep original file for re-upload when creating run
+  rows?: Record<string, any>[] // pre-parsed rows (Excel/CSV have all rows, PDF has placeholders)
 }
 
 interface ColumnMapping {
@@ -172,6 +173,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
         columns: data.columns,
         warnings: data.warnings || [],
         file,
+        rows: data.rows, // Excel/CSV: all rows. PDF: undefined (placeholders only)
       })
 
       // Auto-set source label from filename

@@ -69,12 +69,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Parse without any column config -- pure auto-detection
+    // For Excel/CSV: parse returns ALL rows (no AI needed, fast)
+    // For PDF: use "detect" mode (fast — 5 sample rows + count)
+    const isPdf = fileExtension === ".pdf"
     const parseResult = await ReconciliationFileParserService.parseFile(
       buffer,
       file.name,
       undefined, // no source config -- auto-detect everything
-      "detect",
+      isPdf ? "detect" : "full", // Excel/CSV: full parse is instant. PDF: detect only.
       extractionProfile
     )
 
@@ -101,6 +103,7 @@ export async function POST(request: NextRequest) {
         fileName: file.name,
         rowCount: 0,
         columns: [],
+        rows: [],
         warnings: [
           "Could not detect tabular data in this file.",
           "For PDFs, ensure the document contains a clear data table (e.g. transactions list).",
@@ -109,12 +112,16 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // For non-PDF files, include ALL parsed rows so generate-test doesn't need to re-parse
+    // For PDFs, rows are placeholders from detect mode — will need full extraction later
     return NextResponse.json({
       success: true,
       fileName: file.name,
       rowCount: parseResult.rowCount,
       columns,
       warnings: parseResult.warnings,
+      // Include full rows for Excel/CSV (they're already fully parsed)
+      ...(!isPdf && { rows: parseResult.rows }),
     })
   } catch (error: any) {
     console.error("[Reconciliations] Error analyzing file:", error)

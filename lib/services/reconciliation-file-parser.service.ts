@@ -852,45 +852,37 @@ Return JSON:
     console.log("[PDF Parser] Full mode: extracting ALL rows..." + (knownColumns ? ` (${knownColumns.length} known columns)` : ""))
     const profileContext = this.buildProfileContext(extractionProfile)
 
-    // If we already know the columns (from detect mode), tell the AI exactly what to extract
-    const columnHint = knownColumns && knownColumns.length > 0
-      ? `\n\nIMPORTANT: The columns are ALREADY KNOWN: ${JSON.stringify(knownColumns)}\nExtract EVERY row using exactly these column names. Do not rename or add columns.`
-      : ""
+    const columnInstruction = knownColumns && knownColumns.length > 0
+      ? `The columns are: ${JSON.stringify(knownColumns)}. Use exactly these column names.`
+      : `Detect column names from the document.`
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
-          content: `You are a document parser specializing in extracting structured tabular data. Extract the COMPLETE data table.
+          content: `You are a document parser. Extract ALL rows from the data table as JSON.
+${columnInstruction}
 
 Rules:
-- Identify the main DATA TABLE (transactions, line items, entries)
-- Do NOT confuse summary sections, headers, or account info with the data table
-- Documents may contain MULTIPLE tables or sections (e.g. different cardholders, "Purchasing Activity" and "Travel Activity") — COMBINE all transaction sections into a single unified table
-- Transaction tables may NOT start on page 1 — look through ALL pages
-- If there are multiple sections per cardholder or category, add a column for the section name
-- Extract ALL rows -- every single row from every section, not just a sample
-- Use column names exactly as they appear, or infer clean names from the layout
-- Include data from ALL pages (continuation pages too)
-- Parse amounts as numbers (remove currency symbols, handle negatives/parentheses)
-- Parse dates in original format
-- IGNORE non-tabular content: summaries, footers, page numbers, disclaimers
-${profileContext}${columnHint}
-Return JSON:
-{
-  "columns": ["Col1", "Col2", ...],
-  "rows": [{"Col1": "val", ...}, ...]
-}`,
+- Find the main DATA TABLE (transactions, line items, entries)
+- COMBINE all sections (e.g. different cardholders, activity types) into one table
+- Look through ALL pages — data may not start on page 1
+- Add a section/category column if multiple sections exist
+- Extract EVERY row, not just samples
+- Parse amounts as numbers, dates in original format
+- IGNORE summaries, footers, headers
+${profileContext}
+Return JSON: { "columns": [...], "rows": [{...}, ...] }`,
         },
         {
           role: "user",
-          content: `Extract ALL rows from the data table in this document:\n\n${text}`,
+          content: `Extract ALL rows:\n\n${text}`,
         },
       ],
       response_format: { type: "json_object" },
       temperature: 0.1,
-      max_tokens: 16000,
+      max_tokens: 8000,
     })
 
     const content = completion.choices[0]?.message?.content
