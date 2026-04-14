@@ -124,7 +124,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             const isPdf = ext === "pdf"
 
             if (isPdf) {
-              // For PDF: do text extraction first, then AI parse — with detailed logging
+              // ── PDF extraction leveraging config from setup wizard ──
+              // The config has: column definitions + sample rows from detect mode.
+              // We use these as few-shot examples so the AI knows exactly what to produce.
+
               log("Extracting PDF text", "progress", fileB.name)
               const { extractText } = await import("unpdf")
               const pdfData = new Uint8Array(bufferB)
@@ -136,57 +139,51 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 log("PDF text extraction", "error", "Not enough text extracted from PDF")
                 rowsB = []
               } else {
-                // Filter PDF text to only lines likely containing transaction data
-                // using known column values/patterns to identify relevant sections
+                // Use column definitions from config (set during setup wizard)
                 const knownCols = sourceBConfig.columns?.map((c: any) => c.label) || []
-                const lines = pdfText.split("\n")
-                const relevantLines: string[] = []
-                let inDataSection = false
 
-                for (const line of lines) {
-                  const trimmed = line.trim()
-                  if (!trimmed || trimmed === "--- PAGE BREAK ---") {
-                    if (trimmed === "--- PAGE BREAK ---") relevantLines.push(trimmed)
-                    continue
+                // Get sample rows from the detect-mode analysis (stored as sampleValues on columns)
+                // Reconstruct 3 example rows from the column sample values
+                const sampleRows: Record<string, string>[] = []
+                for (let i = 0; i < 3; i++) {
+                  const row: Record<string, string> = {}
+                  let hasData = false
+                  for (const col of (sourceBConfig.columns || []) as any[]) {
+                    const samples = col.sampleValues || []
+                    if (samples[i]) {
+                      row[col.label] = samples[i]
+                      hasData = true
+                    }
                   }
-
-                  // Detect data section markers (common in credit card / bank statements)
-                  const sectionMarkers = ["activity", "transaction", "purchasing", "travel", "payment", "detail"]
-                  if (sectionMarkers.some((m) => trimmed.toLowerCase().includes(m))) {
-                    inDataSection = true
-                    relevantLines.push(trimmed)
-                    continue
-                  }
-
-                  // Skip obvious non-data lines (summaries, account info)
-                  const skipMarkers = ["total activity", "account number", "credit limit", "available credit", "payment due", "new balance", "previous balance", "accounting code"]
-                  if (skipMarkers.some((m) => trimmed.toLowerCase().includes(m))) continue
-
-                  // Keep lines that look like transaction data:
-                  // - Contains a date pattern (MM-DD, MM/DD, etc.)
-                  // - Contains a dollar amount
-                  // - Contains a long reference number
-                  const hasDate = /\d{2}[-\/]\d{2}/.test(trimmed)
-                  const hasAmount = /\d+\.\d{2}/.test(trimmed)
-                  const hasRefNum = /\d{10,}/.test(trimmed)
-
-                  if (hasDate || hasAmount || hasRefNum || inDataSection) {
-                    relevantLines.push(trimmed)
-                  }
+                  if (hasData) sampleRows.push(row)
                 }
 
-                const filteredText = relevantLines.join("\n")
-                // Use filtered text if it has meaningful content, otherwise fall back to truncated raw
-                const textToSend = filteredText.length > 200 ? filteredText : (pdfText.length > 15000 ? pdfText.slice(0, 15000) : pdfText)
-                log("AI extracting rows", "progress", `Sending ${textToSend.length} chars (filtered from ${pdfText.length}) to gpt-4o-mini...`)
+                // Filter text: keep only lines with dates, amounts, or reference numbers
+                const lines = pdfText.split("\n")
+                const relevantLines: string[] = []
+                for (const line of lines) {
+                  const t = line.trim()
+                  if (!t) continue
+                  const hasDate = /\d{2}[-\/]\d{2}/.test(t)
+                  const hasAmount = /\d+\.\d{2}/.test(t)
+                  const hasRefNum = /\d{10,}/.test(t)
+                  const isSectionHeader = /activity|transaction|purchasing|travel/i.test(t)
+                  if (hasDate || hasAmount || hasRefNum || isSectionHeader) {
+                    relevantLines.push(t)
+                  }
+                }
+                const filteredText = relevantLines.length > 5 ? relevantLines.join("\n") : pdfText.slice(0, 15000)
+
+                log("AI extracting rows", "progress", `${filteredText.length} chars (filtered from ${pdfText.length}), ${knownCols.length} known columns, ${sampleRows.length} example rows`)
                 const startTime = Date.now()
 
                 const { getOpenAIClient } = await import("@/lib/utils/openai-client")
                 const openai = getOpenAIClient()
 
-                const columnInstruction = knownCols.length > 0
-                  ? `The columns are: ${JSON.stringify(knownCols)}. Use exactly these column names.`
-                  : `Detect column names from the document.`
+                // Build a prompt that uses the config's column definitions + sample rows as few-shot examples
+                const exampleSection = sampleRows.length > 0
+                  ? `\n\nHere are examples of correctly extracted rows:\n${JSON.stringify(sampleRows, null, 2)}\n\nExtract ALL remaining rows in the same format.`
+                  : ""
 
                 try {
                   const completion = await openai.chat.completions.create({
@@ -194,9 +191,19 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                     messages: [
                       {
                         role: "system",
-                        content: `You are a document parser. Extract ALL transaction rows as JSON.\n${columnInstruction}\n\nRules:\n- Find ALL transaction rows (purchases, payments, credits)\n- COMBINE all sections (different cardholders, activity types) into one table\n- Extract EVERY transaction row\n- Parse amounts as numbers, dates in original format\n- IGNORE account summaries, totals, headers, footers\n\nReturn JSON: { "columns": [...], "rows": [{...}, ...] }`,
+                        content: `Extract ALL transaction rows from this document as JSON.
+
+Columns: ${JSON.stringify(knownCols)}
+Use EXACTLY these column names for every row.${exampleSection}
+
+Rules:
+- Extract EVERY transaction row from ALL sections and pages
+- COMBINE all cardholder sections into one table
+- Parse amounts as numbers, dates in original format
+- IGNORE summaries, totals, headers, footers
+- Return: { "rows": [{...}, ...] }`,
                       },
-                      { role: "user", content: `Extract ALL transaction rows:\n\n${textToSend}` },
+                      { role: "user", content: filteredText },
                     ],
                     response_format: { type: "json_object" },
                     temperature: 0.1,

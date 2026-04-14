@@ -350,21 +350,32 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
 
     try {
       // Build source configs from mappings
+      const colsA = getSourceAColumns()
       const sourceAConfig: Record<string, any> = {
         label: sourceALabel,
-        columns: mappings.map((m) => ({
-          key: m.sourceAKey,
-          label: m.label,
-          type: m.type,
-        })),
+        columns: mappings.map((m) => {
+          const detectedCol = colsA.find((c) => c.key === m.sourceAKey)
+          return {
+            key: m.sourceAKey,
+            label: m.label,
+            type: m.type,
+            ...(detectedCol?.sampleValues && { sampleValues: detectedCol.sampleValues }),
+          }
+        }),
       }
+      const colsB = getSourceBColumns()
       const sourceBConfig: Record<string, any> = {
         label: sourceBLabel,
-        columns: mappings.map((m) => ({
-          key: m.sourceBKey,
-          label: m.label,
-          type: m.type,
-        })),
+        columns: mappings.map((m) => {
+          const detectedCol = colsB.find((c) => c.key === m.sourceBKey)
+          return {
+            key: m.sourceBKey,
+            label: m.label,
+            type: m.type,
+            // Include sample values so generate-test can use them as few-shot examples
+            ...(detectedCol?.sampleValues && { sampleValues: detectedCol.sampleValues }),
+          }
+        }),
       }
 
       // Add database metadata to source configs if applicable
