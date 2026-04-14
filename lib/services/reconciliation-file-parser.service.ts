@@ -50,7 +50,9 @@ export class ReconciliationFileParserService {
       rawRows = result.rows
       detectedColumns = result.detectedColumns
     } else if (ext === "pdf") {
-      const result = await this.parsePdf(buffer, mode, profile)
+      // Pass known column names from config to help full-mode extraction
+      const knownCols = sourceConfig?.columns?.map((c) => c.label) || undefined
+      const result = await this.parsePdf(buffer, mode, profile, knownCols)
       rawRows = result.rows
       detectedColumns = result.detectedColumns
       if (result.rows.length === 0) {
@@ -684,7 +686,8 @@ Return JSON:
   private static async parsePdf(
     buffer: Buffer,
     mode: "detect" | "full" = "detect",
-    extractionProfile?: ExtractionProfile
+    extractionProfile?: ExtractionProfile,
+    knownColumns?: string[]
   ): Promise<{ rows: Record<string, any>[]; detectedColumns: any[] }> {
     try {
       // Step 1: Extract text (fast, ~100ms)
@@ -700,13 +703,13 @@ Return JSON:
       const openai = getOpenAIClient()
       const truncatedText = fullText.length > 30000 ? fullText.slice(0, 30000) + "\n...(truncated)" : fullText
 
-      // Step 2: Try text-based extraction with gpt-4o (reliable for complex layouts)
-      console.log("[PDF Parser] Trying text-based extraction with gpt-4o...")
+      // Step 2: Try text-based extraction
+      console.log(`[PDF Parser] Trying text-based extraction (${mode} mode)...`)
       let result: { rows: Record<string, any>[]; detectedColumns: any[] }
       if (mode === "detect") {
         result = await this.parsePdfDetectMode(openai, truncatedText, extractionProfile)
       } else {
-        result = await this.parsePdfFullMode(openai, truncatedText, extractionProfile)
+        result = await this.parsePdfFullMode(openai, truncatedText, extractionProfile, knownColumns)
       }
 
       if (result.detectedColumns.length > 0) {
@@ -720,7 +723,14 @@ Return JSON:
         return result
       }
 
-      // Step 4: Try hybrid text + vision (requires canvas — may fail on serverless)
+      // For full mode, stop here — don't cascade through slow vision fallbacks
+      // (detect mode can afford the extra attempts since it's smaller)
+      if (mode === "full") {
+        console.log("[PDF Parser] Full mode: text + raw PDF both failed, returning empty")
+        return { rows: [], detectedColumns: [] }
+      }
+
+      // Step 4 (detect only): Try hybrid text + vision
       console.log("[PDF Parser] Raw PDF found no columns, trying hybrid text + vision...")
       try {
         result = await this.parsePdfHybrid(buffer, fullText, mode, extractionProfile)
@@ -731,7 +741,7 @@ Return JSON:
         console.warn("[PDF Parser] Hybrid fallback failed:", (hybridErr as Error).message)
       }
 
-      // Step 5: Pure vision fallback (renders pages — may fail on serverless)
+      // Step 5 (detect only): Pure vision fallback
       console.log("[PDF Parser] Trying pure vision fallback...")
       try {
         return await this.parsePdfWithVision(buffer, mode, extractionProfile)
@@ -836,10 +846,16 @@ Return JSON:
   private static async parsePdfFullMode(
     openai: OpenAI,
     text: string,
-    extractionProfile?: ExtractionProfile
+    extractionProfile?: ExtractionProfile,
+    knownColumns?: string[]
   ): Promise<{ rows: Record<string, any>[]; detectedColumns: any[] }> {
-    console.log("[PDF Parser] Full mode: extracting ALL rows...")
+    console.log("[PDF Parser] Full mode: extracting ALL rows..." + (knownColumns ? ` (${knownColumns.length} known columns)` : ""))
     const profileContext = this.buildProfileContext(extractionProfile)
+
+    // If we already know the columns (from detect mode), tell the AI exactly what to extract
+    const columnHint = knownColumns && knownColumns.length > 0
+      ? `\n\nIMPORTANT: The columns are ALREADY KNOWN: ${JSON.stringify(knownColumns)}\nExtract EVERY row using exactly these column names. Do not rename or add columns.`
+      : ""
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -860,7 +876,7 @@ Rules:
 - Parse amounts as numbers (remove currency symbols, handle negatives/parentheses)
 - Parse dates in original format
 - IGNORE non-tabular content: summaries, footers, page numbers, disclaimers
-${profileContext}
+${profileContext}${columnHint}
 Return JSON:
 {
   "columns": ["Col1", "Col2", ...],
