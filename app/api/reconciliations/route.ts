@@ -56,9 +56,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
     }
 
-    // Check for duplicate name within the organization
+    // Check for duplicate name within the organization (exclude soft-deleted)
     const existing = await prisma.reconciliationConfig.findFirst({
-      where: { organizationId: session.user.organizationId, name: name.trim() },
+      where: { organizationId: session.user.organizationId, name: name.trim(), deletedAt: null },
       select: { id: true },
     })
     if (existing) {
