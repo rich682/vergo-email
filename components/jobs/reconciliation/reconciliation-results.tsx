@@ -120,8 +120,8 @@ export function ReconciliationResults({
   const [accepting, setAccepting] = useState(false)
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
   const [matchingPair, setMatchingPair] = useState<string | null>(null)
-  const [selectedMatches, setSelectedMatches] = useState<Set<number>>(new Set()) // indices into matchedPairs
-  const [rejectedMatches, setRejectedMatches] = useState<Set<number>>(new Set()) // indices into matchedPairs
+  const [selectedMatches, setSelectedMatches] = useState<Set<number>>(new Set())
+  const [acceptedMatches, setAcceptedMatches] = useState<Set<number>>(new Set()) // accepted match indices
 
   const isComplete = status === "COMPLETE"
 
@@ -202,9 +202,21 @@ export function ReconciliationResults({
     }, 0)
   }, [matchedPairs, sourceARows, allColsA])
 
+  // Analytics driven by what the user has ACCEPTED (not just system-matched)
+  const acceptedCount = acceptedMatches.size
+  const acceptedTotal = useMemo(() => {
+    return [...acceptedMatches].reduce((sum, idx) => {
+      const m = matchedPairs[idx]
+      if (!m) return sum
+      const amt = getAmountFromRow(sourceARows[m.sourceAIdx] || {}, allColsA)
+      return sum + (amt || 0)
+    }, 0)
+  }, [acceptedMatches, matchedPairs, sourceARows, allColsA])
+
+  const pendingReviewCount = matchedPairs.length - acceptedCount
   const netVariance = Math.round((unmatchedATotal - unmatchedBTotal) * 100) / 100
-  const totalRows = sourceARows.length + sourceBRows.length
-  const matchPct = totalRows > 0 ? Math.round((matchedPairs.length * 2 / totalRows) * 100) : 0
+  const totalTransactions = matchedPairs.length + unmatchedAIndices.length + unmatchedBIndices.length
+  const matchPct = totalTransactions > 0 ? Math.round((acceptedCount / totalTransactions) * 100) : 0
 
   // ── Potential match suggestions for unmatched A rows ───────────────
 
@@ -248,10 +260,33 @@ export function ReconciliationResults({
 
   // ── Actions ────────────────────────────────────────────────────────
 
-  const handleAcceptAll = useCallback(async () => {
+  const handleAcceptSelected = useCallback(() => {
+    // Move selected matches to accepted
+    setAcceptedMatches((prev) => {
+      const next = new Set(prev)
+      for (const idx of selectedMatches) next.add(idx)
+      return next
+    })
+    setSelectedMatches(new Set())
+  }, [selectedMatches])
+
+  const handleAcceptAll = useCallback(() => {
+    // Accept all matches
+    setAcceptedMatches(new Set(matchedPairs.map((_, i) => i)))
+    setSelectedMatches(new Set())
+  }, [matchedPairs])
+
+  const handleUnaccept = useCallback((idx: number) => {
+    setAcceptedMatches((prev) => {
+      const next = new Set(prev)
+      next.delete(idx)
+      return next
+    })
+  }, [])
+
+  const handleComplete = useCallback(async () => {
     setAccepting(true)
     try {
-      // The matched pairs are already in the match results — mark the run as complete
       const res = await fetch(`/api/reconciliations/${configId}/runs/${runId}/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -284,42 +319,46 @@ export function ReconciliationResults({
   // ── Excel download ─────────────────────────────────────────────────
 
   const handleDownloadExcel = useCallback(() => {
-    const wb = XLSX.utils.book_new()
+    try {
+      const wb = XLSX.utils.book_new()
+      // Sheet names max 31 chars, no special chars
+      const cleanName = (s: string) => s.replace(/[\\\/\?\*\[\]]/g, "").slice(0, 31)
 
-    // Sheet 1: Summary
-    const summaryData = [
-      ["Reconciliation Summary"],
-      [],
-      ["Source A", sourceALabel, `${sourceARows.length} rows`],
-      ["Source B", sourceBLabel, `${sourceBRows.length} rows`],
-      [],
-      ["Matched", matchedPairs.length, formatDollar(matchedTotal)],
-      ["Unmatched Source A", unmatchedAIndices.length, formatDollar(unmatchedATotal)],
-      ["Unmatched Source B (Orphans)", unmatchedBIndices.length, formatDollar(unmatchedBTotal)],
-      [],
-      ["Net Variance", "", formatDollar(netVariance)],
-    ]
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData), "Summary")
+      // Sheet 1: Summary
+      const summaryData = [
+        ["Reconciliation Summary"],
+        [],
+        ["Source A", sourceALabel, `${sourceARows.length} rows`],
+        ["Source B", sourceBLabel, `${sourceBRows.length} rows`],
+        [],
+        ["Accepted", acceptedCount, formatDollar(acceptedTotal)],
+        ["Pending Review", pendingReviewCount],
+        ["Unmatched Source A", unmatchedAIndices.length, formatDollar(unmatchedATotal)],
+        ["Unmatched Source B (Orphans)", unmatchedBIndices.length, formatDollar(unmatchedBTotal)],
+        [],
+        ["Net Variance", "", formatDollar(netVariance)],
+      ]
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData), "Summary")
 
-    // Sheet 2: Matched
-    const matchedRows = matchedPairs.map((m) => {
-      const rowA = sourceARows[m.sourceAIdx] || {}
-      const rowB = sourceBRows[m.sourceBIdx] || {}
-      const row: Record<string, any> = {}
-      for (const col of colsA) row[`${sourceALabel} ${col}`] = rowA[col] ?? ""
-      for (const col of colsB) row[`${sourceBLabel} ${col}`] = rowB[col] ?? ""
-      row["Confidence"] = `${m.confidence}%`
-      return row
-    })
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(matchedRows.length > 0 ? matchedRows : [{ "No Data": "No matched rows" }]), "Matched")
+      // Sheet 2: Matched
+      const matchedRows = matchedPairs.map((m) => {
+        const rowA = sourceARows[m.sourceAIdx] || {}
+        const rowB = sourceBRows[m.sourceBIdx] || {}
+        const row: Record<string, any> = {}
+        for (const col of colsA) row[`Source A ${col}`] = rowA[col] ?? ""
+        for (const col of colsB) row[`Source B ${col}`] = rowB[col] ?? ""
+        row["Status"] = acceptedMatches.has(matchedPairs.indexOf(m)) ? "Accepted" : "Pending"
+        return row
+      })
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(matchedRows.length > 0 ? matchedRows : [{ "No Data": "No matched rows" }]), "Matched")
 
-    // Sheet 3: Unmatched Source A
-    const unmatchedARows = unmatchedAIndices.map((idx) => {
-      const row: Record<string, any> = {}
-      for (const col of allColsA) row[col] = sourceARows[idx]?.[col] ?? ""
-      return row
-    })
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(unmatchedARows.length > 0 ? unmatchedARows : [{ "No Data": "All rows matched" }]), `Unmatched ${sourceALabel}`)
+      // Sheet 3: Unmatched Source A
+      const unmatchedARows = unmatchedAIndices.map((idx) => {
+        const row: Record<string, any> = {}
+        for (const col of allColsA) row[col] = sourceARows[idx]?.[col] ?? ""
+        return row
+      })
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(unmatchedARows.length > 0 ? unmatchedARows : [{ "No Data": "All rows matched" }]), cleanName(`Unmatched ${sourceALabel}`))
 
     // Sheet 4: Unmatched Source B (Orphans)
     const unmatchedBRows = unmatchedBIndices.map((idx) => {
@@ -327,10 +366,14 @@ export function ReconciliationResults({
       for (const col of allColsB) row[col] = sourceBRows[idx]?.[col] ?? ""
       return row
     })
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(unmatchedBRows.length > 0 ? unmatchedBRows : [{ "No Data": "All rows matched" }]), `Unmatched ${sourceBLabel}`)
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(unmatchedBRows.length > 0 ? unmatchedBRows : [{ "No Data": "All rows matched" }]), cleanName(`Unmatched ${sourceBLabel}`))
 
-    XLSX.writeFile(wb, `reconciliation-${runId.slice(0, 8)}.xlsx`)
-  }, [matchedPairs, unmatchedAIndices, unmatchedBIndices, sourceARows, sourceBRows, colsA, colsB, allColsA, allColsB, sourceALabel, sourceBLabel, matchedTotal, unmatchedATotal, unmatchedBTotal, netVariance, runId])
+      XLSX.writeFile(wb, `reconciliation-${runId.slice(0, 8)}.xlsx`)
+    } catch (err) {
+      console.error("Excel download failed:", err)
+      alert("Failed to download Excel. Check console for details.")
+    }
+  }, [matchedPairs, unmatchedAIndices, unmatchedBIndices, sourceARows, sourceBRows, colsA, colsB, allColsA, allColsB, sourceALabel, sourceBLabel, acceptedCount, acceptedTotal, pendingReviewCount, unmatchedATotal, unmatchedBTotal, netVariance, runId, acceptedMatches])
 
   // ── Tabs ───────────────────────────────────────────────────────────
 
@@ -366,11 +409,16 @@ export function ReconciliationResults({
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-5 gap-3">
           <div className="text-center p-3 bg-green-50 rounded-lg">
-            <p className="text-2xl font-bold text-green-700">{matchedPairs.length}</p>
-            <p className="text-xs text-green-600">Matched</p>
-            <p className="text-xs text-green-500 mt-0.5">{formatDollar(matchedTotal)}</p>
+            <p className="text-2xl font-bold text-green-700">{acceptedCount}</p>
+            <p className="text-xs text-green-600">Accepted</p>
+            <p className="text-xs text-green-500 mt-0.5">{formatDollar(acceptedTotal)}</p>
+          </div>
+          <div className="text-center p-3 bg-gray-50 rounded-lg">
+            <p className="text-2xl font-bold text-gray-700">{pendingReviewCount}</p>
+            <p className="text-xs text-gray-500">Pending Review</p>
+            <p className="text-xs text-gray-400 mt-0.5">{matchedPairs.length} system matched</p>
           </div>
           <div className="text-center p-3 bg-amber-50 rounded-lg">
             <p className="text-2xl font-bold text-amber-700">{unmatchedAIndices.length}</p>
@@ -417,42 +465,36 @@ export function ReconciliationResults({
           {!isComplete && matchedPairs.length > 0 && (
             <div className="flex items-center justify-between">
               <p className="text-xs text-gray-500">
+                {acceptedMatches.size > 0 && `${acceptedMatches.size} accepted. `}
                 {selectedMatches.size > 0
-                  ? `${selectedMatches.size} of ${matchedPairs.length} selected`
-                  : `${matchedPairs.length} transactions matched by amount and date — select rows to accept`}
+                  ? `${selectedMatches.size} selected`
+                  : `${matchedPairs.length - acceptedMatches.size} pending review`}
               </p>
               <div className="flex items-center gap-2">
-                {selectedMatches.size > 0 ? (
+                {selectedMatches.size > 0 && (
+                  <Button onClick={handleAcceptSelected} size="sm" className="bg-green-600 hover:bg-green-700 text-white text-xs">
+                    <CheckCircle2 className="w-3 h-3 mr-1" /> Accept {selectedMatches.size} Selected
+                  </Button>
+                )}
+                {acceptedMatches.size < matchedPairs.length && (
+                  <Button onClick={handleAcceptAll} size="sm" variant="outline" className="text-xs">
+                    Accept All {matchedPairs.length}
+                  </Button>
+                )}
+                {acceptedMatches.size > 0 && (
                   <Button
-                    onClick={handleAcceptAll}
+                    onClick={handleComplete}
                     disabled={accepting}
                     size="sm"
                     className="bg-green-600 hover:bg-green-700 text-white"
                   >
-                    {accepting ? "Accepting..." : `Accept ${selectedMatches.size} Selected`}
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={() => { selectAllMatches(); }}
-                    size="sm"
-                    variant="outline"
-                    className="text-xs"
-                  >
-                    Select All
+                    {accepting ? (
+                      <><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1.5" /> Completing...</>
+                    ) : (
+                      <><CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Complete Reconciliation</>
+                    )}
                   </Button>
                 )}
-                <Button
-                  onClick={() => { selectAllMatches(); handleAcceptAll(); }}
-                  disabled={accepting}
-                  size="sm"
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                >
-                  {accepting ? (
-                    <><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1.5" /> Completing...</>
-                  ) : (
-                    <><CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Accept All &amp; Complete</>
-                  )}
-                </Button>
               </div>
             </div>
           )}
@@ -495,16 +537,23 @@ export function ReconciliationResults({
                     const rowA = sourceARows[match.sourceAIdx]
                     const rowB = sourceBRows[match.sourceBIdx]
                     const isSelected = selectedMatches.has(i)
+                    const isAccepted = acceptedMatches.has(i)
                     return (
-                      <tr key={i} className={`border-b border-gray-100 ${isSelected ? "bg-green-50" : "hover:bg-gray-50"}`}>
+                      <tr key={i} className={`border-b border-gray-100 ${isAccepted ? "bg-green-50/70" : isSelected ? "bg-orange-50" : "hover:bg-gray-50"}`}>
                         {!isComplete && (
                           <td className="px-2 py-2.5">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => toggleMatchSelect(i)}
-                              className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                            />
+                            {isAccepted ? (
+                              <button onClick={() => handleUnaccept(i)} title="Unaccept">
+                                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                              </button>
+                            ) : (
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleMatchSelect(i)}
+                                className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                              />
+                            )}
                           </td>
                         )}
                         <Td className="text-center text-gray-400">{i + 1}</Td>
@@ -656,7 +705,7 @@ export function ReconciliationResults({
                       {colsB.map((col) => (
                         <Th key={col}>{sourceBLabel} {col.replace(/_/g, " ")}</Th>
                       ))}
-                      {!isComplete && <Th className="w-20">Action</Th>}
+                      <Th className="w-20">Action</Th>
                     </tr>
                   </thead>
                   <tbody>
@@ -668,16 +717,14 @@ export function ReconciliationResults({
                           {colsB.map((col) => (
                             <Td key={col}>{row ? formatCellValue(row[col], col) : "—"}</Td>
                           ))}
-                          {!isComplete && (
-                            <Td>
-                              <button
-                                onClick={() => setIgnoredOrphans((prev) => { const next = new Set(prev); next.add(bIdx); return next })}
-                                className="text-xs text-gray-400 hover:text-red-500"
-                              >
-                                Ignore
-                              </button>
-                            </Td>
-                          )}
+                          <Td>
+                            <button
+                              onClick={() => setIgnoredOrphans((prev) => { const next = new Set(prev); next.add(bIdx); return next })}
+                              className="text-xs text-gray-400 hover:text-red-500"
+                            >
+                              Ignore
+                            </button>
+                          </Td>
                         </tr>
                       )
                     })}
