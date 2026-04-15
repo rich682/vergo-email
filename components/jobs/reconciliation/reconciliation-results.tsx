@@ -65,13 +65,24 @@ interface ReconciliationResultsProps {
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-function formatCellValue(value: any): string {
+function formatCellValue(value: any, colKey?: string): string {
   if (value === null || value === undefined || value === "") return "—"
+
+  // Detect if this is an amount column by key name
+  const isAmountCol = colKey ? /amount|total|debit|credit|charge|balance/i.test(colKey) : false
+
   if (typeof value === "number") {
-    if (Number.isFinite(value) && (value % 1 !== 0 || Math.abs(value) > 100)) {
+    if (isAmountCol || Number.isFinite(value) && (value % 1 !== 0 || Math.abs(value) > 100)) {
       return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
     }
     return value.toLocaleString()
+  }
+  // String amounts — format as currency
+  if (isAmountCol && typeof value === "string") {
+    const num = parseFloat(value.replace(/[$,\s]/g, "").replace(/\((.+)\)/, "-$1"))
+    if (!isNaN(num)) {
+      return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num)
+    }
   }
   const str = String(value)
   if (str.match(/^\d{4}-\d{2}-\d{2}/) || str.match(/^\d{1,2}\/\d{1,2}\/\d{4}/)) {
@@ -268,6 +279,7 @@ export function ReconciliationResults({
     return getColumnKeys(sourceBRows)
   }, [sourceBColumns, sourceBRows])
 
+
   // ── Computed match buckets ──────────────────────────────────────────
 
   const matchByA = useMemo(() => {
@@ -414,6 +426,19 @@ export function ReconciliationResults({
 
   return (
     <div className="space-y-4">
+      {/* Transaction count summary bar */}
+      <div className="flex items-center gap-4 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600">
+        <span><strong>{sourceARows.length}</strong> {sourceALabel} rows</span>
+        <span className="text-gray-300">|</span>
+        <span><strong>{sourceBRows.length}</strong> {sourceBLabel} rows</span>
+        <span className="text-gray-300">|</span>
+        <span className="text-green-600"><strong>{matchResults.matched.length}</strong> matched</span>
+        <span className="text-gray-300">|</span>
+        <span className="text-amber-600"><strong>{matchResults.unmatchedA.length}</strong> unmatched</span>
+        <span className="text-gray-300">|</span>
+        <span className="text-blue-600"><strong>{orphanBIndices.length}</strong> orphans</span>
+      </div>
+
       <div className="flex items-center justify-between border-b border-gray-200">
         <div className="flex items-center gap-1 overflow-x-auto">
           {tabs.map((tab) => (
@@ -552,7 +577,7 @@ function AllTable({
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
       <div className="overflow-auto max-h-[600px]">
-        <table className="border-collapse" style={{ tableLayout: "auto", width: "max-content", minWidth: "100%" }}>
+        <table className="border-collapse" style={{ tableLayout: "auto", width: "100%" }}>
           <thead className="bg-gray-100 border-b border-gray-300 sticky top-0 z-10">
             <tr>
               <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200 w-10">
@@ -590,12 +615,12 @@ function AllTable({
                         ci === colsA.length - 1 ? "border-r border-gray-300" : ""
                       }`}
                     >
-                      {rowA ? formatCellValue(rowA[col]) : "—"}
+                      {rowA ? formatCellValue(rowA[col], col) : "—"}
                     </td>
                   ))}
                   {colsB.map((col) => (
                     <td key={`b-${col}`} className="px-4 py-3 text-sm text-gray-700 border-b border-gray-200">
-                      {rowB ? formatCellValue(rowB[col]) : "—"}
+                      {rowB ? formatCellValue(rowB[col], col) : "—"}
                     </td>
                   ))}
                   <td className="px-4 py-3 border-b border-gray-200">
@@ -653,7 +678,7 @@ function MatchedPairsTable({
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
       <div className="overflow-auto max-h-[600px]">
-        <table className="border-collapse" style={{ tableLayout: "auto", width: "max-content", minWidth: "100%" }}>
+        <table className="border-collapse" style={{ tableLayout: "auto", width: "100%" }}>
           <thead className="bg-gray-100 border-b border-gray-300 sticky top-0 z-10">
             <tr>
               <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200 w-10">
@@ -691,12 +716,12 @@ function MatchedPairsTable({
                         ci === colsA.length - 1 ? "border-r border-gray-300" : ""
                       }`}
                     >
-                      {rowA ? formatCellValue(rowA[col]) : "—"}
+                      {rowA ? formatCellValue(rowA[col], col) : "—"}
                     </td>
                   ))}
                   {colsB.map((col) => (
                     <td key={`b-${col}`} className="px-4 py-3 text-sm text-gray-700 border-b border-gray-200">
-                      {rowB ? formatCellValue(rowB[col]) : "—"}
+                      {rowB ? formatCellValue(rowB[col], col) : "—"}
                     </td>
                   ))}
                   <td className="px-4 py-3 border-b border-gray-200">
@@ -749,7 +774,7 @@ function HighProbabilityTab({
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
       <div className="overflow-auto max-h-[600px]">
-        <table className="border-collapse" style={{ tableLayout: "auto", width: "max-content", minWidth: "100%" }}>
+        <table className="border-collapse" style={{ tableLayout: "auto", width: "100%" }}>
           <thead className="bg-gray-100 border-b border-gray-300 sticky top-0 z-10">
             <tr>
               <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200 w-10">
@@ -794,12 +819,12 @@ function HighProbabilityTab({
                         ci === colsA.length - 1 ? "border-r border-gray-300" : ""
                       }`}
                     >
-                      {rowA ? formatCellValue(rowA[col]) : "—"}
+                      {rowA ? formatCellValue(rowA[col], col) : "—"}
                     </td>
                   ))}
                   {colsB.map((col) => (
                     <td key={`b-${col}`} className="px-4 py-3 text-sm text-gray-700 border-b border-gray-200">
-                      {rowB ? formatCellValue(rowB[col]) : "—"}
+                      {rowB ? formatCellValue(rowB[col], col) : "—"}
                     </td>
                   ))}
                   <td className="px-4 py-3 border-b border-gray-200">
@@ -884,7 +909,7 @@ function LowProbabilityTab({
           </h3>
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
             <div className="overflow-auto max-h-[600px]">
-              <table className="border-collapse" style={{ tableLayout: "auto", width: "max-content", minWidth: "100%" }}>
+              <table className="border-collapse" style={{ tableLayout: "auto", width: "100%" }}>
                 <thead className="bg-gray-100 border-b border-gray-300 sticky top-0 z-10">
                   <tr>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200 w-10">
@@ -929,12 +954,12 @@ function LowProbabilityTab({
                               ci === colsA.length - 1 ? "border-r border-gray-300" : ""
                             }`}
                           >
-                            {rowA ? formatCellValue(rowA[col]) : "—"}
+                            {rowA ? formatCellValue(rowA[col], col) : "—"}
                           </td>
                         ))}
                         {colsB.map((col) => (
                           <td key={`b-${col}`} className="px-4 py-3 text-sm text-gray-700 border-b border-gray-200">
-                            {rowB ? formatCellValue(rowB[col]) : "—"}
+                            {rowB ? formatCellValue(rowB[col], col) : "—"}
                           </td>
                         ))}
                         <td className="px-4 py-3 border-b border-gray-200">
@@ -979,7 +1004,7 @@ function LowProbabilityTab({
           </h3>
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
             <div className="overflow-auto max-h-[600px]">
-              <table className="border-collapse" style={{ tableLayout: "auto", width: "max-content", minWidth: "100%" }}>
+              <table className="border-collapse" style={{ tableLayout: "auto", width: "100%" }}>
                 <thead className="bg-gray-100 border-b border-gray-300 sticky top-0 z-10">
                   <tr>
                     {colsA.map((col) => (
@@ -1063,7 +1088,7 @@ function UnmatchedRow({
       <tr className="bg-white border-b border-gray-200 hover:bg-blue-50 transition-colors">
         {colsA.map((col) => (
           <td key={col} className="px-4 py-3 text-sm text-gray-700">
-            {rowA ? formatCellValue(rowA[col]) : "—"}
+            {rowA ? formatCellValue(rowA[col], col) : "—"}
           </td>
         ))}
         <td className="px-4 py-3">
@@ -1114,7 +1139,7 @@ function UnmatchedRow({
                         <tr key={potential.sourceBIdx} className="border-b border-gray-200 bg-white hover:bg-blue-50 transition-colors">
                           {colsB.map((col) => (
                             <td key={col} className="px-4 py-3 text-sm text-gray-700">
-                              {rowB ? formatCellValue(rowB[col]) : "—"}
+                              {rowB ? formatCellValue(rowB[col], col) : "—"}
                             </td>
                           ))}
                           <td className="px-4 py-3">
@@ -1209,7 +1234,7 @@ function OrphansTable({
 
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
         <div className="overflow-auto max-h-[600px]">
-          <table className="border-collapse" style={{ tableLayout: "auto", width: "max-content", minWidth: "100%" }}>
+          <table className="border-collapse" style={{ tableLayout: "auto", width: "100%" }}>
             <thead className="bg-gray-100 border-b border-gray-300 sticky top-0 z-10">
               <tr>
                 <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200 w-10">
@@ -1228,7 +1253,7 @@ function OrphansTable({
                     <td className="px-4 py-3 text-sm text-gray-400 border-b border-gray-200 border-r border-gray-200 text-center">{i + 1}</td>
                     {colsB.map((col) => (
                       <td key={col} className="px-4 py-3 text-sm text-gray-700 border-b border-gray-200">
-                        {row ? formatCellValue(row[col]) : "—"}
+                        {row ? formatCellValue(row[col], col) : "—"}
                       </td>
                     ))}
                   </tr>

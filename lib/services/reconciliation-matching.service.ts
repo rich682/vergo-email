@@ -551,14 +551,15 @@ export class ReconciliationMatchingService {
       for (const cand of candidates) {
         if (assignedB.has(cand.bIdx)) continue
 
-        // Confidence based on date proximity
+        // Confidence: amount matched + date within window = 100 (confirmed match)
+        // Amount matched + date outside window = 85 (likely match, needs review)
         let confidence: number
         if (cand.dateDiff <= dateWindow) {
-          confidence = cand.dateDiff === 0 ? 100 : cand.dateDiff === 1 ? 98 : 95
+          confidence = 100 // Amount + date confirmed
         } else if (cand.dateDiff <= dateWindow * 2) {
-          confidence = 85
+          confidence = 85  // Amount matches, date slightly outside window
         } else {
-          confidence = 80
+          confidence = 75  // Amount matches, date far off — needs review
         }
 
         matched.push({
