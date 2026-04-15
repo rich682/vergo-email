@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, Fragment } from "react"
 import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
-import { CheckCircle2, Download, AlertTriangle, FileQuestion } from "lucide-react"
+import { CheckCircle2, Download, AlertTriangle, FileQuestion, ChevronDown, ChevronRight } from "lucide-react"
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -117,6 +117,11 @@ export function ReconciliationResults({
   onRefresh,
 }: ReconciliationResultsProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("matched")
+  const [accepting, setAccepting] = useState(false)
+  const [expandedRow, setExpandedRow] = useState<number | null>(null)
+  const [matchingPair, setMatchingPair] = useState<string | null>(null)
+
+  const isComplete = status === "COMPLETE"
 
   const colsA = useMemo(() => {
     if (sourceAColumns?.length) return sourceAColumns.map((c) => c.key)
@@ -162,6 +167,81 @@ export function ReconciliationResults({
   const netVariance = Math.round((unmatchedATotal - unmatchedBTotal) * 100) / 100
   const totalRows = sourceARows.length + sourceBRows.length
   const matchPct = totalRows > 0 ? Math.round((matchedPairs.length * 2 / totalRows) * 100) : 0
+
+  // ── Potential match suggestions for unmatched A rows ───────────────
+
+  /** For each unmatched A row, find top 3 potential B matches by amount proximity */
+  const suggestions = useMemo(() => {
+    const matchedBSet = new Set(matchedPairs.map((m) => m.sourceBIdx))
+    const availableB = unmatchedBIndices.filter((i) => !matchedBSet.has(i))
+
+    const result: Record<number, { bIdx: number; amtDiff: number; dateDiff: string }[]> = {}
+
+    for (const aIdx of unmatchedAIndices) {
+      const amtA = getAmountFromRow(sourceARows[aIdx] || {}, allColsA)
+      if (amtA === null) continue
+
+      const candidates: { bIdx: number; amtDiff: number; dateDiff: string }[] = []
+
+      for (const bIdx of availableB) {
+        const amtB = getAmountFromRow(sourceBRows[bIdx] || {}, allColsB)
+        if (amtB === null) continue
+
+        const diff = Math.abs(Math.abs(amtA) - Math.abs(amtB))
+        // Show suggestions within 20% or $50, whichever is larger
+        const threshold = Math.max(Math.abs(amtA) * 0.2, 50)
+        if (diff > threshold) continue
+
+        // Get dates for display
+        const dateB = allColsB.find((k) => /date|tran/i.test(k))
+        const dateBVal = dateB ? String(sourceBRows[bIdx]?.[dateB] || "") : ""
+
+        candidates.push({ bIdx, amtDiff: diff, dateDiff: dateBVal })
+      }
+
+      candidates.sort((a, b) => a.amtDiff - b.amtDiff)
+      if (candidates.length > 0) {
+        result[aIdx] = candidates.slice(0, 3)
+      }
+    }
+
+    return result
+  }, [unmatchedAIndices, unmatchedBIndices, matchedPairs, sourceARows, sourceBRows, allColsA, allColsB])
+
+  // ── Actions ────────────────────────────────────────────────────────
+
+  const handleAcceptAll = useCallback(async () => {
+    setAccepting(true)
+    try {
+      // The matched pairs are already in the match results — mark the run as complete
+      const res = await fetch(`/api/reconciliations/${configId}/runs/${runId}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+      if (res.ok) onRefresh()
+    } finally {
+      setAccepting(false)
+    }
+  }, [configId, runId, onRefresh])
+
+  const handleManualMatch = useCallback(async (sourceAIdx: number, sourceBIdx: number) => {
+    const key = `${sourceAIdx}-${sourceBIdx}`
+    setMatchingPair(key)
+    try {
+      const res = await fetch(`/api/reconciliations/${configId}/runs/${runId}/accept-match`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceAIdx, sourceBIdx }),
+      })
+      if (res.ok) {
+        setExpandedRow(null)
+        onRefresh()
+      }
+    } finally {
+      setMatchingPair(null)
+    }
+  }, [configId, runId, onRefresh])
 
   // ── Excel download ─────────────────────────────────────────────────
 
@@ -295,7 +375,30 @@ export function ReconciliationResults({
 
       {/* ── Matched Tab ──────────────────────────────────────────── */}
       {activeTab === "matched" && (
-        <div>
+        <div className="space-y-3">
+          {!isComplete && matchedPairs.length > 0 && (
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-gray-500">{matchedPairs.length} transactions matched by amount and date</p>
+              <Button
+                onClick={handleAcceptAll}
+                disabled={accepting}
+                size="sm"
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                {accepting ? (
+                  <><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1.5" /> Completing...</>
+                ) : (
+                  <><CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Complete Reconciliation</>
+                )}
+              </Button>
+            </div>
+          )}
+          {isComplete && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700">
+              <CheckCircle2 className="w-4 h-4" />
+              Reconciliation completed — all matches accepted
+            </div>
+          )}
           {matchedPairs.length === 0 ? (
             <EmptyState icon={<CheckCircle2 className="w-8 h-8" />} message="No matched transactions" />
           ) : (
@@ -347,28 +450,97 @@ export function ReconciliationResults({
           ) : (
             <>
               <p className="text-xs text-amber-600 mb-2">
-                These {sourceALabel} rows have no matching amount in {sourceBLabel}. Investigate the variance.
+                These {sourceALabel} rows have no matching amount in {sourceBLabel}. Click a row to see potential matches.
               </p>
               <div className="overflow-x-auto border border-gray-200 rounded-lg">
                 <table className="w-full">
                   <thead className="bg-amber-50 border-b border-amber-200 sticky top-0">
                     <tr>
+                      <Th className="w-8">{""}</Th>
                       <Th className="w-10 text-center">#</Th>
                       {colsA.map((col) => (
                         <Th key={col}>{sourceALabel} {col.replace(/_/g, " ")}</Th>
                       ))}
+                      <Th className="w-24">Suggestions</Th>
                     </tr>
                   </thead>
                   <tbody>
                     {unmatchedAIndices.map((aIdx, i) => {
                       const row = sourceARows[aIdx]
+                      const hasSuggestions = (suggestions[aIdx]?.length || 0) > 0
+                      const isExpanded = expandedRow === aIdx
                       return (
-                        <tr key={aIdx} className="hover:bg-amber-50/50 border-b border-gray-100">
-                          <Td className="text-center text-gray-400">{i + 1}</Td>
-                          {colsA.map((col) => (
-                            <Td key={col}>{row ? formatCellValue(row[col], col) : "—"}</Td>
-                          ))}
-                        </tr>
+                        <Fragment key={aIdx}>
+                          <tr
+                            className={`border-b border-gray-100 cursor-pointer ${isExpanded ? "bg-amber-50" : "hover:bg-amber-50/50"}`}
+                            onClick={() => setExpandedRow(isExpanded ? null : aIdx)}
+                          >
+                            <Td className="text-center">
+                              {hasSuggestions && (
+                                isExpanded
+                                  ? <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                                  : <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+                              )}
+                            </Td>
+                            <Td className="text-center text-gray-400">{i + 1}</Td>
+                            {colsA.map((col) => (
+                              <Td key={col}>{row ? formatCellValue(row[col], col) : "—"}</Td>
+                            ))}
+                            <Td>
+                              {hasSuggestions ? (
+                                <span className="text-xs text-orange-500 font-medium">{suggestions[aIdx].length} found</span>
+                              ) : (
+                                <span className="text-xs text-gray-400">None</span>
+                              )}
+                            </Td>
+                          </tr>
+                          {/* Expanded suggestions */}
+                          {isExpanded && hasSuggestions && (
+                            <tr>
+                              <td colSpan={colsA.length + 3} className="bg-orange-50/50 px-6 py-3 border-b border-orange-200">
+                                <p className="text-xs font-medium text-gray-600 mb-2">Potential matches from {sourceBLabel}:</p>
+                                <div className="space-y-1">
+                                  {suggestions[aIdx].map((s) => {
+                                    const bRow = sourceBRows[s.bIdx]
+                                    const pairKey = `${aIdx}-${s.bIdx}`
+                                    const isMatching = matchingPair === pairKey
+                                    return (
+                                      <div key={s.bIdx} className="flex items-center justify-between bg-white rounded-lg border border-gray-200 px-3 py-2">
+                                        <div className="flex items-center gap-4 text-sm">
+                                          {colsB.map((col) => (
+                                            <span key={col} className="text-gray-700">
+                                              <span className="text-gray-400 text-xs mr-1">{col}:</span>
+                                              {bRow ? formatCellValue(bRow[col], col) : "—"}
+                                            </span>
+                                          ))}
+                                          {s.amtDiff > 0.01 && (
+                                            <span className="text-xs text-red-500">
+                                              (${s.amtDiff.toFixed(2)} difference)
+                                            </span>
+                                          )}
+                                        </div>
+                                        {!isComplete && (
+                                          <Button
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              handleManualMatch(aIdx, s.bIdx)
+                                            }}
+                                            disabled={isMatching}
+                                            size="sm"
+                                            variant="outline"
+                                            className="text-xs border-green-300 text-green-700 hover:bg-green-50 ml-3"
+                                          >
+                                            {isMatching ? "Matching..." : "Match"}
+                                          </Button>
+                                        )}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       )
                     })}
                   </tbody>
