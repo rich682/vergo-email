@@ -120,8 +120,26 @@ export function ReconciliationResults({
   const [accepting, setAccepting] = useState(false)
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
   const [matchingPair, setMatchingPair] = useState<string | null>(null)
+  const [selectedMatches, setSelectedMatches] = useState<Set<number>>(new Set()) // indices into matchedPairs
+  const [rejectedMatches, setRejectedMatches] = useState<Set<number>>(new Set()) // indices into matchedPairs
 
   const isComplete = status === "COMPLETE"
+
+  const toggleMatchSelect = (idx: number) => {
+    setSelectedMatches((prev) => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return next
+    })
+  }
+  const selectAllMatches = () => {
+    if (selectedMatches.size === matchResults.matched.length) {
+      setSelectedMatches(new Set())
+    } else {
+      setSelectedMatches(new Set(matchResults.matched.map((_, i) => i)))
+    }
+  }
 
   const colsA = useMemo(() => {
     if (sourceAColumns?.length) return sourceAColumns.map((c) => c.key)
@@ -378,19 +396,44 @@ export function ReconciliationResults({
         <div className="space-y-3">
           {!isComplete && matchedPairs.length > 0 && (
             <div className="flex items-center justify-between">
-              <p className="text-xs text-gray-500">{matchedPairs.length} transactions matched by amount and date</p>
-              <Button
-                onClick={handleAcceptAll}
-                disabled={accepting}
-                size="sm"
-                className="bg-green-600 hover:bg-green-700 text-white"
-              >
-                {accepting ? (
-                  <><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1.5" /> Completing...</>
+              <p className="text-xs text-gray-500">
+                {selectedMatches.size > 0
+                  ? `${selectedMatches.size} of ${matchedPairs.length} selected`
+                  : `${matchedPairs.length} transactions matched by amount and date — select rows to accept`}
+              </p>
+              <div className="flex items-center gap-2">
+                {selectedMatches.size > 0 ? (
+                  <Button
+                    onClick={handleAcceptAll}
+                    disabled={accepting}
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    {accepting ? "Accepting..." : `Accept ${selectedMatches.size} Selected`}
+                  </Button>
                 ) : (
-                  <><CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Complete Reconciliation</>
+                  <Button
+                    onClick={() => { selectAllMatches(); }}
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                  >
+                    Select All
+                  </Button>
                 )}
-              </Button>
+                <Button
+                  onClick={() => { selectAllMatches(); handleAcceptAll(); }}
+                  disabled={accepting}
+                  size="sm"
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  {accepting ? (
+                    <><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1.5" /> Completing...</>
+                  ) : (
+                    <><CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Accept All &amp; Complete</>
+                  )}
+                </Button>
+              </div>
             </div>
           )}
           {isComplete && (
@@ -406,6 +449,16 @@ export function ReconciliationResults({
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
                   <tr>
+                    {!isComplete && (
+                      <th className="px-2 py-2.5 w-8">
+                        <input
+                          type="checkbox"
+                          checked={selectedMatches.size === matchedPairs.length && matchedPairs.length > 0}
+                          onChange={selectAllMatches}
+                          className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                        />
+                      </th>
+                    )}
                     <Th className="w-10 text-center">#</Th>
                     {colsA.map((col, i) => (
                       <Th key={`a-${col}`} className={i === colsA.length - 1 ? "border-r border-gray-300" : ""}>
@@ -421,8 +474,19 @@ export function ReconciliationResults({
                   {matchedPairs.map((match, i) => {
                     const rowA = sourceARows[match.sourceAIdx]
                     const rowB = sourceBRows[match.sourceBIdx]
+                    const isSelected = selectedMatches.has(i)
                     return (
-                      <tr key={i} className="hover:bg-gray-50 border-b border-gray-100">
+                      <tr key={i} className={`border-b border-gray-100 ${isSelected ? "bg-green-50" : "hover:bg-gray-50"}`}>
+                        {!isComplete && (
+                          <td className="px-2 py-2.5">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleMatchSelect(i)}
+                              className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                            />
+                          </td>
+                        )}
                         <Td className="text-center text-gray-400">{i + 1}</Td>
                         {colsA.map((col, ci) => (
                           <Td key={`a-${col}`} className={ci === colsA.length - 1 ? "border-r border-gray-200" : ""}>
