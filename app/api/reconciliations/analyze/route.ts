@@ -8,7 +8,6 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { ReconciliationFileParserService } from "@/lib/services/reconciliation-file-parser.service"
 import { canPerformAction } from "@/lib/permissions"
-import type { ExtractionProfile } from "@/lib/services/reconciliation.service"
 
 export const maxDuration = 300
 
@@ -58,26 +57,12 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
-    // Build extraction profile from optional form fields (used for retry-with-hints)
-    const documentDescription = formData.get("documentDescription") as string | null
-    const extractionHints = formData.get("extractionHints") as string | null
-    let extractionProfile: ExtractionProfile | undefined
-    if (documentDescription || extractionHints) {
-      extractionProfile = {
-        ...(documentDescription && { documentDescription }),
-        ...(extractionHints && { extractionHints }),
-      }
-    }
-
-    // For Excel/CSV: parse returns ALL rows (no AI needed, fast)
-    // For PDF: use "detect" mode (fast — 5 sample rows + count)
-    const isPdf = fileExtension === ".pdf"
+    // Parse all rows — both Excel/CSV and PDF are now instant (no AI)
     const parseResult = await ReconciliationFileParserService.parseFile(
       buffer,
       file.name,
       undefined, // no source config -- auto-detect everything
-      isPdf ? "detect" : "full", // Excel/CSV: full parse is instant. PDF: detect only.
-      extractionProfile
+      "full"
     )
 
     // AI-detect column types from the data
@@ -112,16 +97,14 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // For non-PDF files, include ALL parsed rows so generate-test doesn't need to re-parse
-    // For PDFs, rows are placeholders from detect mode — will need full extraction later
     return NextResponse.json({
       success: true,
       fileName: file.name,
       rowCount: parseResult.rowCount,
       columns,
       warnings: parseResult.warnings,
-      // Include full rows for Excel/CSV (they're already fully parsed)
-      ...(!isPdf && { rows: parseResult.rows }),
+      // Include all parsed rows — both Excel and PDF are now fully parsed (no AI)
+      rows: parseResult.rows,
     })
   } catch (error: any) {
     console.error("[Reconciliations] Error analyzing file:", error)
