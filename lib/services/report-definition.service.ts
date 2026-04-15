@@ -77,7 +77,7 @@ export interface AccountingFormulaRow {
   expression?: string            // Used when type="formula": [TOTAL REVENUE] - [TOTAL DIRECT JOB COSTS]
   refReportName?: string         // Used when type="reference": source report name
   refRowLabel?: string           // Used when type="reference": source row label
-  refColumnKey?: string          // Used when type="reference": specific source column key (e.g., a formula column like "SUM"). If set, imports single value into all pivot columns.
+  refColumnKey?: string          // Used when type="reference": specific source column key (e.g., a formula column like "SUM"). If set, imports single value into all pivot columns. Special value "__cumulative__" computes running total across periods.
   order: number
   isBold?: boolean
   separatorAbove?: boolean

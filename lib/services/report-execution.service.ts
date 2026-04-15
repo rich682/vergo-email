@@ -1055,7 +1055,22 @@ export class ReportExecutionService {
             }
           }
 
-          if (fr.refColumnKey && refRowValues) {
+          if (fr.refColumnKey === "__cumulative__" && refRowValues) {
+            // Running total by period: accumulate values chronologically
+            const sorted = [...pivotValues].sort() // ISO period keys sort chronologically
+            let cumulative = 0
+            let hasAny = false
+            const cumulativeMap: Record<string, number | null> = {}
+            for (const pv of sorted) {
+              const val = refRowValues[pv] ?? null
+              if (val !== null) { cumulative += val; hasAny = true }
+              cumulativeMap[pv] = hasAny ? Math.round(cumulative * 100) / 100 : null
+            }
+            for (const pv of pivotValues) {
+              formulaRow[pv] = cumulativeMap[pv] ?? null
+              rowValues[pv] = cumulativeMap[pv] ?? null
+            }
+          } else if (fr.refColumnKey && refRowValues) {
             // Single-column import: pull one specific column value and apply to all pivot columns
             const singleVal = refRowValues[fr.refColumnKey] ?? null
             for (const pv of pivotValues) {

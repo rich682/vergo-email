@@ -2990,13 +2990,14 @@ function AccountingFormulaRowModal({
               {selectedRefReport && selectedRefReport.columns.length > 0 && refRowLabel && (
                 <div className="space-y-2">
                   <Label>Source Column</Label>
-                  <p className="text-xs text-gray-400">Pick a specific column (e.g., a Total/SUM column). Leave as &quot;Auto-match&quot; to match by period.</p>
+                  <p className="text-xs text-gray-400">Pick a specific column (e.g., a Total/SUM column). Leave as &quot;Auto-match&quot; to match by period, or use &quot;Running total&quot; for cumulative YTD values.</p>
                   <Select value={refColumnKey || "__auto__"} onValueChange={(v) => setRefColumnKey(v === "__auto__" ? "" : v)}>
                     <SelectTrigger className="h-8 text-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__auto__" className="text-sm">Auto-match by period</SelectItem>
+                      <SelectItem value="__cumulative__" className="text-sm">Running total by period</SelectItem>
                       {selectedRefReport.columns.map(col => (
                         <SelectItem key={col.key} value={col.key} className="text-sm">
                           {col.label} {col.type === "formula" ? "(formula)" : ""}
