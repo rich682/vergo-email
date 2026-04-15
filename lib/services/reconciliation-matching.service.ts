@@ -410,7 +410,73 @@ export class ReconciliationMatchingService {
    * Run the full matching pipeline.
    * Dispatches to amount-first or composite strategy based on matchingRules.strategy.
    */
+  /**
+   * Filter rows to only those where ALL mapped columns have data.
+   * Removes totals, subtotals, headers, and incomplete rows.
+   */
+  private static filterValidRows(
+    rows: Record<string, any>[],
+    columns: { key: string; type: string }[]
+  ): { validRows: Record<string, any>[]; validIndices: number[] } {
+    const validRows: Record<string, any>[] = []
+    const validIndices: number[] = []
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
+      const allMappedColumnsHaveData = columns.every((col) => {
+        const val = row[col.key]
+        if (val === null || val === undefined || val === "") return false
+        if (typeof val === "string" && val.trim() === "") return false
+        return true
+      })
+      if (allMappedColumnsHaveData) {
+        validRows.push(row)
+        validIndices.push(i)
+      }
+    }
+
+    return { validRows, validIndices }
+  }
+
   static async runMatching(
+    sourceARows: Record<string, any>[],
+    sourceBRows: Record<string, any>[],
+    sourceAConfig: SourceConfig,
+    sourceBConfig: SourceConfig,
+    matchingRules: MatchingRules,
+    guidelines?: string,
+    learnedPatterns?: LearnedPattern[]
+  ): Promise<MatchingResult> {
+    // Filter rows: only include rows where ALL mapped columns have data
+    const colsA = sourceAConfig.columns || []
+    const colsB = sourceBConfig.columns || []
+    const { validRows: filteredA, validIndices: indicesA } = this.filterValidRows(sourceARows, colsA)
+    const { validRows: filteredB, validIndices: indicesB } = this.filterValidRows(sourceBRows, colsB)
+
+    console.log(`[Matching] Filtered: ${sourceARows.length} → ${filteredA.length} Source A rows, ${sourceBRows.length} → ${filteredB.length} Source B rows`)
+
+    // Run matching on filtered rows, then remap indices back to originals
+    const result = await this._runMatchingImpl(
+      filteredA, filteredB, sourceAConfig, sourceBConfig, matchingRules, guidelines, learnedPatterns
+    )
+
+    // Remap filtered indices back to original row indices
+    result.matched = result.matched.map((m) => ({
+      ...m,
+      sourceAIdx: indicesA[m.sourceAIdx],
+      sourceBIdx: indicesB[m.sourceBIdx],
+    }))
+    result.unmatchedA = result.unmatchedA.map((i) => indicesA[i])
+    result.unmatchedB = result.unmatchedB.map((i) => indicesB[i])
+    result.exceptions = result.exceptions.map((e) => ({
+      ...e,
+      rowIdx: e.source === "A" ? indicesA[e.rowIdx] : indicesB[e.rowIdx],
+    }))
+
+    return result
+  }
+
+  private static async _runMatchingImpl(
     sourceARows: Record<string, any>[],
     sourceBRows: Record<string, any>[],
     sourceAConfig: SourceConfig,
