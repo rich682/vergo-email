@@ -264,7 +264,7 @@ export function ReconciliationResults({
   status,
   onRefresh,
 }: ReconciliationResultsProps) {
-  const [activeTab, setActiveTab] = useState<TabKey>("all")
+  const [activeTab, setActiveTab] = useState<TabKey>("exact")
   const [acceptingMatch, setAcceptingMatch] = useState<string | null>(null)
   const [expandedUnmatchedRow, setExpandedUnmatchedRow] = useState<number | null>(null)
 
@@ -481,11 +481,11 @@ export function ReconciliationResults({
   // ── Tabs ────────────────────────────────────────────────────────────
 
   const tabs: { key: TabKey; label: string; count: number }[] = [
-    { key: "all", label: "All", count: sourceARows.length },
     { key: "exact", label: "100% Matches", count: exactMatches.length },
     { key: "high_prob", label: "High Probability", count: highProbMatches.length },
     { key: "low_prob", label: "Low Probability", count: lowProbMatches.length + unmatchedAWithPotentials.length },
     { key: "orphans", label: "Orphans", count: orphanBIndices.length },
+    { key: "all", label: "All", count: sourceARows.length },
   ]
 
   return (
