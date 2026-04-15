@@ -133,6 +133,8 @@ export function ReconciliationResults({
       return next
     })
   }
+  const [ignoredOrphans, setIgnoredOrphans] = useState<Set<number>>(new Set()) // original B indices
+
   const selectAllMatches = () => {
     if (selectedMatches.size === matchResults.matched.length) {
       setSelectedMatches(new Set())
@@ -157,8 +159,26 @@ export function ReconciliationResults({
   // ── Computed data ──────────────────────────────────────────────────
 
   const matchedPairs = matchResults.matched
-  const unmatchedAIndices = matchResults.unmatchedA
-  const unmatchedBIndices = matchResults.unmatchedB
+
+  // Filter unmatched/orphan rows: only show rows where ALL mapped columns have data
+  const hasAllMappedData = useCallback((row: Record<string, any> | undefined, cols: string[]) => {
+    if (!row) return false
+    return cols.every((col) => {
+      const val = row[col]
+      return val !== null && val !== undefined && val !== "" && String(val).trim() !== "" && val !== "—"
+    })
+  }, [])
+
+  const unmatchedAIndices = useMemo(
+    () => matchResults.unmatchedA.filter((idx) => hasAllMappedData(sourceARows[idx], colsA)),
+    [matchResults.unmatchedA, sourceARows, colsA, hasAllMappedData]
+  )
+  const unmatchedBIndices = useMemo(
+    () => matchResults.unmatchedB
+      .filter((idx) => hasAllMappedData(sourceBRows[idx], colsB))
+      .filter((idx) => !ignoredOrphans.has(idx)),
+    [matchResults.unmatchedB, sourceBRows, colsB, hasAllMappedData, ignoredOrphans]
+  )
 
   // Variance calculations
   const unmatchedATotal = useMemo(() => {
@@ -625,6 +645,9 @@ export function ReconciliationResults({
               <p className="text-xs text-blue-600 mb-2">
                 These {sourceBLabel} rows have no corresponding entry in {sourceALabel}. They may be fees, payments, or unrecognized charges.
               </p>
+              {ignoredOrphans.size > 0 && (
+                <p className="text-xs text-gray-400 mb-2">{ignoredOrphans.size} orphan(s) ignored</p>
+              )}
               <div className="overflow-x-auto border border-gray-200 rounded-lg">
                 <table className="w-full">
                   <thead className="bg-blue-50 border-b border-blue-200 sticky top-0">
@@ -633,6 +656,7 @@ export function ReconciliationResults({
                       {colsB.map((col) => (
                         <Th key={col}>{sourceBLabel} {col.replace(/_/g, " ")}</Th>
                       ))}
+                      {!isComplete && <Th className="w-20">Action</Th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -644,6 +668,16 @@ export function ReconciliationResults({
                           {colsB.map((col) => (
                             <Td key={col}>{row ? formatCellValue(row[col], col) : "—"}</Td>
                           ))}
+                          {!isComplete && (
+                            <Td>
+                              <button
+                                onClick={() => setIgnoredOrphans((prev) => { const next = new Set(prev); next.add(bIdx); return next })}
+                                className="text-xs text-gray-400 hover:text-red-500"
+                              >
+                                Ignore
+                              </button>
+                            </Td>
+                          )}
                         </tr>
                       )
                     })}
