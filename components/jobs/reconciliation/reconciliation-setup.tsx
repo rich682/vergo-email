@@ -89,7 +89,11 @@ interface ReconciliationSetupProps {
 
 export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, onCreated }: ReconciliationSetupProps) {
   // Step tracking
-  const [step, setStep] = useState<"source_type" | "upload" | "review" | "map" | "confirm">("source_type")
+  const [step, setStep] = useState<"template" | "source_type" | "upload" | "review" | "map" | "confirm">("template")
+
+  // Template selection
+  const [templates, setTemplates] = useState<any[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
 
   // Source type selection
   const [sourceType, setSourceType] = useState<SourceType>("excel_pdf")
@@ -437,6 +441,7 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
             fuzzyDescription: true,
           },
           ...(matchingGuidelines.trim() && { matchingGuidelines: matchingGuidelines.trim() }),
+          ...(selectedTemplateId && { templateId: selectedTemplateId }),
         }),
       })
 
@@ -466,6 +471,88 @@ export function ReconciliationSetup({ mode = "task", taskInstanceId, taskName, o
     } finally {
       setCreating(false)
     }
+  }
+
+  // ── Render: Template Selection ─────────────────────────────────────
+
+  if (step === "template") {
+    // Fetch templates on first render
+    if (templates.length === 0) {
+      fetch("/api/reconciliations/templates")
+        .then((r) => r.json())
+        .then((data) => setTemplates(data.templates || []))
+        .catch(() => {})
+    }
+
+    const CATEGORY_ICONS: Record<string, string> = {
+      credit_card: "💳",
+      bank: "🏦",
+      vendor: "📄",
+      intercompany: "🔄",
+      custom: "⚙️",
+    }
+
+    return (
+      <div className="max-w-3xl space-y-6">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Choose a Reconciliation Type</h3>
+          <p className="text-sm text-gray-500">
+            Select a template to get pre-configured matching rules, or start from scratch.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          {templates.map((tmpl: any) => (
+            <button
+              key={tmpl.id}
+              onClick={() => {
+                setSelectedTemplateId(tmpl.id)
+                // Auto-configure from template
+                setSourceALabel(tmpl.sourceA?.label || "Source A")
+                setSourceBLabel(tmpl.sourceB?.label || "Source B")
+                // Set source type based on expected formats
+                const fmtA = tmpl.sourceA?.expectedFormats?.[0] || "excel"
+                const fmtB = tmpl.sourceB?.expectedFormats?.[0] || "pdf"
+                setSourceType(`${fmtA}_${fmtB}` as SourceType)
+                setStep("upload")
+              }}
+              className="flex items-start gap-4 p-5 rounded-xl border-2 text-left transition-all hover:border-orange-300 hover:bg-orange-50/50 border-gray-200 bg-white"
+            >
+              <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-xl">
+                {CATEGORY_ICONS[tmpl.category] || "📊"}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-sm font-medium text-gray-900">{tmpl.name}</h4>
+                <p className="text-xs text-gray-500 mt-0.5">{tmpl.description}</p>
+                <div className="flex items-center gap-3 mt-2 text-[10px] text-gray-400">
+                  <span>Amount tolerance: ${tmpl.matchingStrategy?.amountTolerance || 0.01}</span>
+                  <span>Date window: {tmpl.matchingStrategy?.dateWindowDays || 3} days</span>
+                </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-gray-400 mt-1 flex-shrink-0" />
+            </button>
+          ))}
+
+          {/* Custom option */}
+          <button
+            onClick={() => {
+              setSelectedTemplateId(null)
+              setStep("source_type")
+            }}
+            className="flex items-start gap-4 p-5 rounded-xl border-2 text-left transition-all hover:border-gray-300 border-gray-200 bg-white"
+          >
+            <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-xl">
+              ⚙️
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-sm font-medium text-gray-900">Custom Reconciliation</h4>
+              <p className="text-xs text-gray-500 mt-0.5">Configure matching rules from scratch. Choose your own source types and column mappings.</p>
+            </div>
+            <ArrowRight className="w-4 h-4 text-gray-400 mt-1 flex-shrink-0" />
+          </button>
+        </div>
+      </div>
+    )
   }
 
   // ── Render: Step 0 - Source Type ────────────────────────────────────

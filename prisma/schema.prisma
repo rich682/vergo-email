@@ -1609,7 +1609,11 @@ model ReconciliationConfig {
 
   name String // "Chase Checking Bank Rec"
 
-  // Source type: "document_document" | "database_document" | "database_database"
+  // Template reference (e.g., "credit_card_vs_ap") — null for custom/legacy configs
+  templateId      String?
+  templateVersion Int?
+
+  // Source type: "excel_pdf" | "pdf_excel" | "database_excel" | etc.
   sourceType String @default("document_document")
 
   // Source definitions (JSON)

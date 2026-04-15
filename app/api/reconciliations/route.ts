@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, sourceType, sourceAConfig, sourceBConfig, matchingRules, matchingGuidelines } = body
+    const { name, sourceType, sourceAConfig, sourceBConfig, matchingRules, matchingGuidelines, templateId } = body
 
     if (!name) {
       return NextResponse.json({ error: "name is required" }, { status: 400 })
@@ -68,17 +68,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // If a template is specified, merge its default matching rules
+    let finalMatchingRules = matchingRules || {
+      amountMatch: "tolerance",
+      amountTolerance: 0.01,
+      dateWindowDays: 3,
+      fuzzyDescription: true,
+    }
+    let templateVersion: number | undefined
+    if (templateId) {
+      const { getTemplate } = await import("@/lib/services/reconciliation-templates")
+      const template = getTemplate(templateId)
+      if (template) {
+        finalMatchingRules = { ...template.defaultMatchingRules, ...matchingRules }
+        templateVersion = template.version
+      }
+    }
+
     const config = await ReconciliationService.createConfig({
       organizationId: session.user.organizationId,
       name,
       sourceType,
       sourceAConfig: sourceAConfig || { label: "Source A", columns: [] },
       sourceBConfig: sourceBConfig || { label: "Source B", columns: [] },
-      matchingRules: matchingRules || {
-        amountMatch: "exact",
-        dateWindowDays: 3,
-        fuzzyDescription: true,
-      },
+      matchingRules: finalMatchingRules,
       ...(matchingGuidelines && {
         matchingGuidelines: {
           guidelines: matchingGuidelines,
@@ -87,6 +100,8 @@ export async function POST(request: NextRequest) {
         },
       }),
       createdById: session.user.id,
+      templateId: templateId || undefined,
+      templateVersion,
     })
 
     return NextResponse.json({ config }, { status: 201 })

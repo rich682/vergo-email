@@ -408,8 +408,222 @@ function resolveMatches(scoredMatches: ScoredMatch[]): MatchPair[] {
 export class ReconciliationMatchingService {
   /**
    * Run the full matching pipeline.
+   * Dispatches to amount-first or composite strategy based on matchingRules.strategy.
    */
   static async runMatching(
+    sourceARows: Record<string, any>[],
+    sourceBRows: Record<string, any>[],
+    sourceAConfig: SourceConfig,
+    sourceBConfig: SourceConfig,
+    matchingRules: MatchingRules,
+    guidelines?: string,
+    learnedPatterns?: LearnedPattern[]
+  ): Promise<MatchingResult> {
+    // Dispatch based on strategy
+    if (matchingRules.strategy === "amount_first") {
+      return this.runAmountFirstMatching(
+        sourceARows, sourceBRows, sourceAConfig, sourceBConfig, matchingRules
+      )
+    }
+
+    return this.runCompositeMatching(
+      sourceARows, sourceBRows, sourceAConfig, sourceBConfig, matchingRules, guidelines, learnedPatterns
+    )
+  }
+
+  // ── Amount-First Matching (template-driven) ─────────────────────────
+
+  /**
+   * Amount-first matching: find exact amount matches, rank by date proximity.
+   * Used by templates like "Credit Card vs AP" where amount is the primary key.
+   *
+   * Algorithm:
+   * 1. Parse all amounts, filter ignored patterns
+   * 2. Build amount index for O(1) lookup
+   * 3. For each A row: find B rows with matching amount → rank by date
+   * 4. Greedy assignment (each B row used once)
+   */
+  private static runAmountFirstMatching(
+    sourceARows: Record<string, any>[],
+    sourceBRows: Record<string, any>[],
+    sourceAConfig: SourceConfig,
+    sourceBConfig: SourceConfig,
+    matchingRules: MatchingRules
+  ): MatchingResult {
+    const colsA = sourceAConfig.columns || []
+    const colsB = sourceBConfig.columns || []
+    const tolerance = matchingRules.amountTolerance || 0.01
+    const dateWindow = matchingRules.dateWindowDays || 3
+    const ignorePatterns = matchingRules.ignorePatterns || []
+    const creditHandling = matchingRules.creditHandling || "negative"
+
+    // Step 1: Identify ignored B rows (fees, payments, etc.)
+    const ignoredBIndices = new Set<number>()
+    if (ignorePatterns.length > 0) {
+      const descCol = colsB.find((c) => c.type === "text")
+      if (descCol) {
+        for (let i = 0; i < sourceBRows.length; i++) {
+          const desc = String(sourceBRows[i][descCol.key] || "").toUpperCase()
+          if (ignorePatterns.some((p) => desc.includes(p.toUpperCase()))) {
+            ignoredBIndices.add(i)
+          }
+        }
+      }
+    }
+
+    // Step 2: Build amount index from B rows (key = integer cents for precision)
+    const amountIndex = new Map<number, number[]>()
+    for (let bIdx = 0; bIdx < sourceBRows.length; bIdx++) {
+      if (ignoredBIndices.has(bIdx)) continue
+      const amt = getAmountFromRow(sourceBRows[bIdx], colsB)
+      if (amt === null) continue
+
+      const key = Math.round(Math.abs(amt) * 100) // Integer cents
+      if (!amountIndex.has(key)) amountIndex.set(key, [])
+      amountIndex.get(key)!.push(bIdx)
+
+      // If credit handling is "negative", also index the inverted amount
+      if (creditHandling === "negative") {
+        const invertedKey = Math.round(Math.abs(-amt) * 100)
+        if (invertedKey !== key) {
+          if (!amountIndex.has(invertedKey)) amountIndex.set(invertedKey, [])
+          amountIndex.get(invertedKey)!.push(bIdx)
+        }
+      }
+    }
+
+    // Step 3: Match each A row to B rows by amount, then rank by date
+    const matched: MatchPair[] = []
+    const assignedB = new Set<number>()
+
+    // Score all A rows and sort by specificity (fewer candidates = more certain)
+    const aRowScores: { aIdx: number; candidates: { bIdx: number; dateDiff: number; signInverted: boolean }[] }[] = []
+
+    for (let aIdx = 0; aIdx < sourceARows.length; aIdx++) {
+      const amtA = getAmountFromRow(sourceARows[aIdx], colsA)
+      if (amtA === null) continue
+
+      const key = Math.round(Math.abs(amtA) * 100)
+
+      // Find tolerance range: check exact key and ±1 cent
+      const candidates: { bIdx: number; dateDiff: number; signInverted: boolean }[] = []
+      const toleranceCents = Math.round(tolerance * 100)
+
+      for (let offset = -toleranceCents; offset <= toleranceCents; offset++) {
+        const lookupKey = key + offset
+        const bIndices = amountIndex.get(lookupKey) || []
+
+        for (const bIdx of bIndices) {
+          if (assignedB.has(bIdx)) continue
+
+          // Verify exact amount match within tolerance
+          const amtB = getAmountFromRow(sourceBRows[bIdx], colsB)
+          if (amtB === null) continue
+
+          const directDiff = Math.abs(Math.abs(amtA) - Math.abs(amtB))
+          const invertedDiff = Math.abs(Math.abs(amtA) - Math.abs(-amtB))
+          const isDirectMatch = directDiff <= tolerance
+          const isInvertedMatch = creditHandling === "negative" && invertedDiff <= tolerance
+
+          if (!isDirectMatch && !isInvertedMatch) continue
+
+          // Calculate date difference
+          const dateA = parseDate(getColumnByType(sourceARows[aIdx], colsA, "date"))
+          const dateB = parseDate(getColumnByType(sourceBRows[bIdx], colsB, "date"))
+          const dateDiff = (dateA && dateB) ? daysDiff(dateA, dateB) : 999
+
+          candidates.push({ bIdx, dateDiff, signInverted: isInvertedMatch && !isDirectMatch })
+        }
+      }
+
+      if (candidates.length > 0) {
+        // Sort by date proximity (closest date first)
+        candidates.sort((a, b) => a.dateDiff - b.dateDiff)
+        aRowScores.push({ aIdx, candidates })
+      }
+    }
+
+    // Sort A rows by fewest candidates first (most certain matches assigned first)
+    aRowScores.sort((a, b) => a.candidates.length - b.candidates.length)
+
+    // Greedy assignment
+    for (const { aIdx, candidates } of aRowScores) {
+      for (const cand of candidates) {
+        if (assignedB.has(cand.bIdx)) continue
+
+        // Confidence based on date proximity
+        let confidence: number
+        if (cand.dateDiff <= dateWindow) {
+          confidence = cand.dateDiff === 0 ? 100 : cand.dateDiff === 1 ? 98 : 95
+        } else if (cand.dateDiff <= dateWindow * 2) {
+          confidence = 85
+        } else {
+          confidence = 80
+        }
+
+        matched.push({
+          sourceAIdx: aIdx,
+          sourceBIdx: cand.bIdx,
+          confidence,
+          method: confidence >= 90 ? "exact" : "fuzzy_ai", // Reuse existing method labels
+          signInverted: cand.signInverted || undefined,
+        })
+        assignedB.add(cand.bIdx)
+        break
+      }
+    }
+
+    // Step 4: Collect unmatched
+    const matchedAIndices = new Set(matched.map((m) => m.sourceAIdx))
+    const matchedBIndices = new Set(matched.map((m) => m.sourceBIdx))
+    const unmatchedA = sourceARows.map((_, i) => i).filter((i) => !matchedAIndices.has(i))
+    const unmatchedB = sourceBRows.map((_, i) => i).filter((i) => !matchedBIndices.has(i) && !ignoredBIndices.has(i))
+
+    // Step 5: Build exceptions (simple categorization, no AI needed)
+    const exceptions: ExceptionClassification[] = [
+      ...unmatchedA.map((idx) => ({
+        category: "other" as const,
+        reason: "No matching amount found in credit card statement",
+        source: "A" as const,
+        rowIdx: idx,
+      })),
+      ...unmatchedB.map((idx) => ({
+        category: "other" as const,
+        reason: "No matching amount found in AP report",
+        source: "B" as const,
+        rowIdx: idx,
+      })),
+      // Ignored items get their own category
+      ...[...ignoredBIndices].map((idx) => ({
+        category: "bank_fee" as const,
+        reason: `Excluded by template rule (matches ignore pattern)`,
+        source: "B" as const,
+        rowIdx: idx,
+      })),
+    ]
+
+    // Variance
+    const unmatchedATotal = unmatchedA.reduce((sum, idx) => {
+      const amt = getAmountFromRow(sourceARows[idx], colsA)
+      return sum + (amt || 0)
+    }, 0)
+    const unmatchedBTotal = unmatchedB.reduce((sum, idx) => {
+      const amt = getAmountFromRow(sourceBRows[idx], colsB)
+      return sum + (amt || 0)
+    }, 0)
+    const variance = Math.round((unmatchedATotal - unmatchedBTotal) * 100) / 100
+
+    console.log(`[Matching] Amount-first: ${matched.length} matched, ${unmatchedA.length} unmatched A, ${unmatchedB.length} unmatched B, ${ignoredBIndices.size} ignored B`)
+
+    return { matched, unmatchedA, unmatchedB, exceptions, variance }
+  }
+
+  // ── Composite Matching (legacy/custom) ──────────────────────────────
+
+  /**
+   * Original composite scoring pipeline. Used when no template or strategy=composite.
+   */
+  private static async runCompositeMatching(
     sourceARows: Record<string, any>[],
     sourceBRows: Record<string, any>[],
     sourceAConfig: SourceConfig,

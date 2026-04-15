@@ -39,6 +39,10 @@ export interface MatchingRules {
   dateWindowDays: number
   fuzzyDescription: boolean
   columnTolerances?: Record<string, { type: string; tolerance: number }>
+  // Template-driven strategy
+  strategy?: "composite" | "amount_first"
+  ignorePatterns?: string[]
+  creditHandling?: "negative" | "positive" | "absolute"
 }
 
 export interface MatchingGuidelines {
@@ -175,6 +179,8 @@ export class ReconciliationService {
     matchingRules: MatchingRules
     matchingGuidelines?: MatchingGuidelines
     createdById?: string
+    templateId?: string
+    templateVersion?: number
   }) {
     return prisma.reconciliationConfig.create({
       data: {
@@ -186,6 +192,8 @@ export class ReconciliationService {
         matchingRules: data.matchingRules as any,
         ...(data.matchingGuidelines && { matchingGuidelines: data.matchingGuidelines as any }),
         ...(data.createdById && { createdById: data.createdById }),
+        ...(data.templateId && { templateId: data.templateId }),
+        ...(data.templateVersion && { templateVersion: data.templateVersion }),
       },
     })
   }
