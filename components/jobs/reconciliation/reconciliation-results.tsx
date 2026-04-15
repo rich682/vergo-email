@@ -268,7 +268,63 @@ export function ReconciliationResults({
   const [acceptingMatch, setAcceptingMatch] = useState<string | null>(null)
   const [expandedUnmatchedRow, setExpandedUnmatchedRow] = useState<number | null>(null)
 
+  // Accept/unaccept staging (client-side until finalized)
+  const [acceptedPairs, setAcceptedPairs] = useState<Set<string>>(new Set())
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
+  const [finalizing, setFinalizing] = useState(false)
+
   const isComplete = status === "COMPLETE"
+
+  const matchKey = (m: MatchPair) => `A${m.sourceAIdx}-B${m.sourceBIdx}`
+  const isAccepted = (m: MatchPair) => acceptedPairs.has(matchKey(m))
+
+  const acceptMatches = (matches: MatchPair[]) => {
+    setAcceptedPairs((prev) => {
+      const next = new Set(prev)
+      for (const m of matches) next.add(matchKey(m))
+      return next
+    })
+    setSelectedRows(new Set())
+  }
+
+  const unacceptMatch = (m: MatchPair) => {
+    setAcceptedPairs((prev) => {
+      const next = new Set(prev)
+      next.delete(matchKey(m))
+      return next
+    })
+  }
+
+  const toggleSelected = (key: string) => {
+    setSelectedRows((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const handleFinalize = async () => {
+    setFinalizing(true)
+    try {
+      // Accept each pair via the server API
+      const pairs = [...acceptedPairs].map((key) => {
+        const [a, b] = key.split("-")
+        return { sourceAIdx: parseInt(a.slice(1)), sourceBIdx: parseInt(b.slice(1)) }
+      })
+      for (const pair of pairs) {
+        await fetch(`/api/reconciliations/${configId}/runs/${runId}/accept-match`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(pair),
+        })
+      }
+      setAcceptedPairs(new Set())
+      onRefresh()
+    } finally {
+      setFinalizing(false)
+    }
+  }
 
   const colsA = useMemo(() => {
     if (sourceAColumns && sourceAColumns.length > 0) return sourceAColumns.map((c) => c.key)
@@ -297,14 +353,17 @@ export function ReconciliationResults({
     }))
   }, [sourceARows, matchByA])
 
+  // Filter out accepted pairs from all match buckets
+  const notAccepted = (m: MatchPair) => !isAccepted(m)
+
   const exactMatches = useMemo(
-    () => matchResults.matched.filter((m) => m.method === "exact" && m.confidence >= 100),
-    [matchResults.matched]
+    () => matchResults.matched.filter((m) => m.method === "exact" && m.confidence >= 100).filter(notAccepted),
+    [matchResults.matched, acceptedPairs] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   const manualMatched = useMemo(
-    () => matchResults.matched.filter((m) => m.method === "manual"),
-    [matchResults.matched]
+    () => matchResults.matched.filter((m) => m.method === "manual").filter(notAccepted),
+    [matchResults.matched, acceptedPairs] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   const highProbMatches = useMemo(
@@ -314,13 +373,18 @@ export function ReconciliationResults({
           m.method !== "manual" &&
           !(m.method === "exact" && m.confidence >= 100) &&
           m.confidence >= 75
-      ),
-    [matchResults.matched]
+      ).filter(notAccepted),
+    [matchResults.matched, acceptedPairs] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   const lowProbMatches = useMemo(
-    () => matchResults.matched.filter((m) => m.method !== "manual" && m.confidence < 75),
-    [matchResults.matched]
+    () => matchResults.matched.filter((m) => m.method !== "manual" && m.confidence < 75).filter(notAccepted),
+    [matchResults.matched, acceptedPairs] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
+  const acceptedMatchList = useMemo(
+    () => matchResults.matched.filter(isAccepted),
+    [matchResults.matched, acceptedPairs] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   const unmatchedAWithPotentials = useMemo(() => {
@@ -474,31 +538,81 @@ export function ReconciliationResults({
       )}
 
       {activeTab === "exact" && (
-        <MatchedPairsTable
-          matches={exactMatches}
-          sourceARows={sourceARows}
-          sourceBRows={sourceBRows}
-          colsA={colsA}
-          colsB={colsB}
-          sourceALabel={sourceALabel}
-          sourceBLabel={sourceBLabel}
-          emptyMessage="No 100% exact matches"
-        />
+        <div className="space-y-2">
+          {!isComplete && exactMatches.length > 0 && (
+            <div className="flex items-center justify-end">
+              <Button
+                onClick={() => acceptMatches(exactMatches)}
+                size="sm"
+                className="bg-green-600 hover:bg-green-700 text-white text-xs"
+              >
+                <CheckCircle2 className="w-3 h-3 mr-1" /> Accept All {exactMatches.length} Matches
+              </Button>
+            </div>
+          )}
+          <MatchedPairsTable
+            matches={exactMatches}
+            sourceARows={sourceARows}
+            sourceBRows={sourceBRows}
+            colsA={colsA}
+            colsB={colsB}
+            sourceALabel={sourceALabel}
+            sourceBLabel={sourceBLabel}
+            emptyMessage="No 100% exact matches"
+          />
+        </div>
       )}
 
       {activeTab === "high_prob" && (
-        <HighProbabilityTab
-          matches={highProbMatches}
-          sourceARows={sourceARows}
-          sourceBRows={sourceBRows}
-          colsA={colsA}
-          colsB={colsB}
-          sourceALabel={sourceALabel}
-          sourceBLabel={sourceBLabel}
-          onAcceptMatch={handleAcceptMatch}
-          acceptingMatch={acceptingMatch}
-          isComplete={isComplete}
-        />
+        <div className="space-y-2">
+          {!isComplete && highProbMatches.length > 0 && (
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-gray-500">
+                {selectedRows.size > 0 ? `${selectedRows.size} selected` : "Select rows to accept, or accept all"}
+              </p>
+              <div className="flex items-center gap-2">
+                {selectedRows.size > 0 ? (
+                  <Button
+                    onClick={() => {
+                      const toAccept = highProbMatches.filter((m) => selectedRows.has(matchKey(m)))
+                      acceptMatches(toAccept)
+                    }}
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700 text-white text-xs"
+                  >
+                    <CheckCircle2 className="w-3 h-3 mr-1" /> Accept {selectedRows.size} Selected
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() => acceptMatches(highProbMatches)}
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700 text-white text-xs"
+                  >
+                    <CheckCircle2 className="w-3 h-3 mr-1" /> Accept All {highProbMatches.length}
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+          <HighProbabilityTab
+            matches={highProbMatches}
+            sourceARows={sourceARows}
+            sourceBRows={sourceBRows}
+            colsA={colsA}
+            colsB={colsB}
+            sourceALabel={sourceALabel}
+            sourceBLabel={sourceBLabel}
+            onAcceptMatch={(aIdx, bIdx) => {
+              const m = highProbMatches.find((m) => m.sourceAIdx === aIdx && m.sourceBIdx === bIdx)
+              if (m) acceptMatches([m])
+            }}
+            acceptingMatch={acceptingMatch}
+            isComplete={isComplete}
+            selectedRows={selectedRows}
+            onToggleSelect={toggleSelected}
+            matchKey={matchKey}
+          />
+        </div>
       )}
 
       {activeTab === "low_prob" && (
@@ -526,6 +640,75 @@ export function ReconciliationResults({
           colsB={colsB}
           sourceBLabel={sourceBLabel}
         />
+      )}
+
+      {/* ── Accepted Matches staging table ─────────────────────────── */}
+      {acceptedMatchList.length > 0 && (
+        <div className="mt-6 border-t-2 border-green-200 pt-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-green-700 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" />
+              Accepted Matches ({acceptedMatchList.length})
+            </h3>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={handleFinalize}
+                disabled={finalizing}
+                size="sm"
+                className="bg-green-600 hover:bg-green-700 text-white text-xs"
+              >
+                {finalizing ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Saving...</> : `Finalize ${acceptedMatchList.length} Matches`}
+              </Button>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg border border-green-200 overflow-hidden">
+            <div className="overflow-auto max-h-[400px]">
+              <table className="border-collapse" style={{ tableLayout: "auto", width: "100%" }}>
+                <thead className="bg-green-50 border-b border-green-200 sticky top-0 z-10">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-green-700 uppercase w-8">#</th>
+                    {colsA.map((col) => (
+                      <ColHeader key={`a-${col}`} label={`${sourceALabel} ${col}`} />
+                    ))}
+                    {colsB.map((col) => (
+                      <ColHeader key={`b-${col}`} label={`${sourceBLabel} ${col}`} />
+                    ))}
+                    <th className="px-3 py-2 text-xs font-medium text-green-700 uppercase w-24">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {acceptedMatchList.map((match, i) => {
+                    const rowA = sourceARows[match.sourceAIdx]
+                    const rowB = sourceBRows[match.sourceBIdx]
+                    return (
+                      <tr key={matchKey(match)} className="hover:bg-green-50/50 border-b border-green-100">
+                        <td className="px-3 py-2 text-xs text-gray-400">{i + 1}</td>
+                        {colsA.map((col) => (
+                          <td key={`a-${col}`} className="px-3 py-2 text-sm text-gray-700">
+                            {rowA ? formatCellValue(rowA[col], col) : "—"}
+                          </td>
+                        ))}
+                        {colsB.map((col) => (
+                          <td key={`b-${col}`} className="px-3 py-2 text-sm text-gray-700">
+                            {rowB ? formatCellValue(rowB[col], col) : "—"}
+                          </td>
+                        ))}
+                        <td className="px-3 py-2">
+                          <button
+                            onClick={() => unacceptMatch(match)}
+                            className="text-xs text-red-500 hover:text-red-700 underline"
+                          >
+                            Unaccept
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -759,6 +942,9 @@ function HighProbabilityTab({
   onAcceptMatch,
   acceptingMatch,
   isComplete,
+  selectedRows,
+  onToggleSelect,
+  matchKey: getMatchKey,
 }: {
   matches: MatchPair[]
   sourceARows: Record<string, any>[]
@@ -770,13 +956,38 @@ function HighProbabilityTab({
   onAcceptMatch: (sourceAIdx: number, sourceBIdx: number) => void
   acceptingMatch: string | null
   isComplete: boolean
+  selectedRows?: Set<string>
+  onToggleSelect?: (key: string) => void
+  matchKey?: (m: MatchPair) => string
 }) {
+  const allSelected = selectedRows && getMatchKey && matches.length > 0 && matches.every((m) => selectedRows.has(getMatchKey(m)))
+
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
       <div className="overflow-auto max-h-[600px]">
         <table className="border-collapse" style={{ tableLayout: "auto", width: "100%" }}>
           <thead className="bg-gray-100 border-b border-gray-300 sticky top-0 z-10">
             <tr>
+              {selectedRows && onToggleSelect && getMatchKey && (
+                <th className="px-2 py-3 w-8">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={() => {
+                      if (allSelected) {
+                        // Deselect all
+                        for (const m of matches) onToggleSelect(getMatchKey(m))
+                      } else {
+                        // Select all unselected
+                        for (const m of matches) {
+                          if (!selectedRows.has(getMatchKey(m))) onToggleSelect(getMatchKey(m))
+                        }
+                      }
+                    }}
+                    className="rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                  />
+                </th>
+              )}
               <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200 w-10">
                 #
               </th>
@@ -805,10 +1016,21 @@ function HighProbabilityTab({
               const rowA = sourceARows[match.sourceAIdx]
               const rowB = sourceBRows[match.sourceBIdx]
               const badge = getMatchBadge(match)
-              const matchKey = `${match.sourceAIdx}-${match.sourceBIdx}`
-              const isAccepting = acceptingMatch === matchKey
+              const mk = getMatchKey ? getMatchKey(match) : `${match.sourceAIdx}-${match.sourceBIdx}`
+              const isAccepting = acceptingMatch === mk
+              const isSelected = selectedRows?.has(mk)
               return (
-                <tr key={i} className="hover:bg-blue-50 transition-colors bg-white">
+                <tr key={i} className={`hover:bg-blue-50 transition-colors ${isSelected ? "bg-orange-50" : "bg-white"}`}>
+                  {selectedRows && onToggleSelect && (
+                    <td className="px-2 py-3 border-b border-gray-200">
+                      <input
+                        type="checkbox"
+                        checked={isSelected || false}
+                        onChange={() => onToggleSelect(mk)}
+                        className="rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                      />
+                    </td>
+                  )}
                   <td className="px-4 py-3 text-sm text-gray-400 border-b border-gray-200 border-r border-gray-200 text-center">
                     {i + 1}
                   </td>
