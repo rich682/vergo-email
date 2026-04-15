@@ -540,13 +540,22 @@ export function ReconciliationResults({
       {activeTab === "exact" && (
         <div className="space-y-2">
           {!isComplete && exactMatches.length > 0 && (
-            <div className="flex items-center justify-end">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-gray-500">
+                {selectedRows.size > 0 ? `${selectedRows.size} selected` : "Select rows or accept all"}
+              </p>
               <Button
-                onClick={() => acceptMatches(exactMatches)}
+                onClick={() => {
+                  const toAccept = selectedRows.size > 0
+                    ? exactMatches.filter((m) => selectedRows.has(matchKey(m)))
+                    : exactMatches
+                  acceptMatches(toAccept)
+                }}
                 size="sm"
                 className="bg-green-600 hover:bg-green-700 text-white text-xs"
               >
-                <CheckCircle2 className="w-3 h-3 mr-1" /> Accept All {exactMatches.length} Matches
+                <CheckCircle2 className="w-3 h-3 mr-1" />
+                {selectedRows.size > 0 ? `Accept ${selectedRows.size} Selected` : `Accept All ${exactMatches.length}`}
               </Button>
             </div>
           )}
@@ -559,6 +568,10 @@ export function ReconciliationResults({
             sourceALabel={sourceALabel}
             sourceBLabel={sourceBLabel}
             emptyMessage="No 100% exact matches"
+            onAcceptMatch={(m) => acceptMatches([m])}
+            selectedRows={selectedRows}
+            onToggleSelect={toggleSelected}
+            matchKeyFn={matchKey}
           />
         </div>
       )}
@@ -662,8 +675,8 @@ export function ReconciliationResults({
             </div>
           </div>
           <div className="bg-white rounded-lg border border-green-200 overflow-hidden">
-            <div className="overflow-auto max-h-[400px]">
-              <table className="border-collapse" style={{ tableLayout: "auto", width: "100%" }}>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
                 <thead className="bg-green-50 border-b border-green-200 sticky top-0 z-10">
                   <tr>
                     <th className="px-3 py-2 text-left text-xs font-medium text-green-700 uppercase w-8">#</th>
@@ -759,8 +772,8 @@ function AllTable({
 }) {
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-      <div className="overflow-auto max-h-[600px]">
-        <table className="border-collapse" style={{ tableLayout: "auto", width: "100%" }}>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
           <thead className="bg-gray-100 border-b border-gray-300 sticky top-0 z-10">
             <tr>
               <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200 w-10">
@@ -848,6 +861,10 @@ function MatchedPairsTable({
   sourceALabel,
   sourceBLabel,
   emptyMessage,
+  onAcceptMatch,
+  selectedRows,
+  onToggleSelect,
+  matchKeyFn,
 }: {
   matches: MatchPair[]
   sourceARows: Record<string, any>[]
@@ -857,67 +874,92 @@ function MatchedPairsTable({
   sourceALabel: string
   sourceBLabel: string
   emptyMessage: string
+  onAcceptMatch?: (m: MatchPair) => void
+  selectedRows?: Set<string>
+  onToggleSelect?: (key: string) => void
+  matchKeyFn?: (m: MatchPair) => string
 }) {
+  const hasCheckbox = !!selectedRows && !!onToggleSelect && !!matchKeyFn
+  const allSelected = hasCheckbox && matches.length > 0 && matches.every((m) => selectedRows!.has(matchKeyFn!(m)))
+
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-      <div className="overflow-auto max-h-[600px]">
-        <table className="border-collapse" style={{ tableLayout: "auto", width: "100%" }}>
+      <div className="overflow-x-auto">
+        <table className="w-full">
           <thead className="bg-gray-100 border-b border-gray-300 sticky top-0 z-10">
             <tr>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200 w-10">
-                #
-              </th>
+              {hasCheckbox && (
+                <th className="px-2 py-3 w-8">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={() => {
+                      for (const m of matches) {
+                        const k = matchKeyFn!(m)
+                        if (allSelected ? selectedRows!.has(k) : !selectedRows!.has(k)) onToggleSelect!(k)
+                      }
+                    }}
+                    className="rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                  />
+                </th>
+              )}
+              <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200 w-10">#</th>
               {colsA.map((col, i) => (
-                <ColHeader
-                  key={`a-${col}`}
-                  label={`${sourceALabel} ${col}`}
-                  isLast={i === colsA.length - 1}
-                />
+                <ColHeader key={`a-${col}`} label={`${sourceALabel} ${col}`} isLast={i === colsA.length - 1} />
               ))}
               {colsB.map((col) => (
                 <ColHeader key={`b-${col}`} label={`${sourceBLabel} ${col}`} />
               ))}
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: 80 }}>
-                Match
-              </th>
+              {onAcceptMatch && (
+                <th className="px-3 py-3 text-xs font-medium text-gray-500 uppercase w-20">Action</th>
+              )}
             </tr>
           </thead>
           <tbody>
             {matches.map((match, i) => {
               const rowA = sourceARows[match.sourceAIdx]
               const rowB = sourceBRows[match.sourceBIdx]
-              const badge = getMatchBadge(match)
+              const mk = matchKeyFn ? matchKeyFn(match) : ""
+              const isSelected = selectedRows?.has(mk)
               return (
-                <tr key={i} className="hover:bg-blue-50 transition-colors bg-white">
-                  <td className="px-4 py-3 text-sm text-gray-400 border-b border-gray-200 border-r border-gray-200 text-center">
-                    {i + 1}
-                  </td>
+                <tr key={i} className={`hover:bg-blue-50 transition-colors ${isSelected ? "bg-orange-50" : "bg-white"}`}>
+                  {hasCheckbox && (
+                    <td className="px-2 py-2.5 border-b border-gray-200">
+                      <input
+                        type="checkbox"
+                        checked={isSelected || false}
+                        onChange={() => onToggleSelect!(mk)}
+                        className="rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                      />
+                    </td>
+                  )}
+                  <td className="px-3 py-2.5 text-sm text-gray-400 border-b border-gray-200 border-r text-center">{i + 1}</td>
                   {colsA.map((col, ci) => (
-                    <td
-                      key={`a-${col}`}
-                      className={`px-4 py-3 text-sm text-gray-700 border-b border-gray-200 ${
-                        ci === colsA.length - 1 ? "border-r border-gray-300" : ""
-                      }`}
-                    >
+                    <td key={`a-${col}`} className={`px-3 py-2.5 text-sm text-gray-700 border-b border-gray-200 ${ci === colsA.length - 1 ? "border-r border-gray-300" : ""}`}>
                       {rowA ? formatCellValue(rowA[col], col) : "—"}
                     </td>
                   ))}
                   {colsB.map((col) => (
-                    <td key={`b-${col}`} className="px-4 py-3 text-sm text-gray-700 border-b border-gray-200">
+                    <td key={`b-${col}`} className="px-3 py-2.5 text-sm text-gray-700 border-b border-gray-200">
                       {rowB ? formatCellValue(rowB[col], col) : "—"}
                     </td>
                   ))}
-                  <td className="px-4 py-3 border-b border-gray-200">
-                    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${badge.bg} ${badge.text}`}>
-                      {badge.label}
-                    </span>
-                  </td>
+                  {onAcceptMatch && (
+                    <td className="px-3 py-2.5 border-b border-gray-200">
+                      <button
+                        onClick={() => onAcceptMatch(match)}
+                        className="text-xs text-green-600 hover:text-green-800 font-medium"
+                      >
+                        Accept
+                      </button>
+                    </td>
+                  )}
                 </tr>
               )
             })}
             {matches.length === 0 && (
               <tr>
-                <td colSpan={colsA.length + colsB.length + 2} className="px-4 py-12 text-center text-sm text-gray-400">
+                <td colSpan={colsA.length + colsB.length + 3} className="px-4 py-12 text-center text-sm text-gray-400">
                   {emptyMessage}
                 </td>
               </tr>
@@ -964,8 +1006,8 @@ function HighProbabilityTab({
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-      <div className="overflow-auto max-h-[600px]">
-        <table className="border-collapse" style={{ tableLayout: "auto", width: "100%" }}>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
           <thead className="bg-gray-100 border-b border-gray-300 sticky top-0 z-10">
             <tr>
               {selectedRows && onToggleSelect && getMatchKey && (
@@ -1130,8 +1172,8 @@ function LowProbabilityTab({
             Low Confidence Matches ({lowProbMatches.length})
           </h3>
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-            <div className="overflow-auto max-h-[600px]">
-              <table className="border-collapse" style={{ tableLayout: "auto", width: "100%" }}>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
                 <thead className="bg-gray-100 border-b border-gray-300 sticky top-0 z-10">
                   <tr>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200 w-10">
@@ -1225,8 +1267,8 @@ function LowProbabilityTab({
             Unmatched ({unmatchedItems.length})
           </h3>
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-            <div className="overflow-auto max-h-[600px]">
-              <table className="border-collapse" style={{ tableLayout: "auto", width: "100%" }}>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
                 <thead className="bg-gray-100 border-b border-gray-300 sticky top-0 z-10">
                   <tr>
                     {colsA.map((col) => (
@@ -1455,8 +1497,8 @@ function OrphansTable({
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-        <div className="overflow-auto max-h-[600px]">
-          <table className="border-collapse" style={{ tableLayout: "auto", width: "100%" }}>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
             <thead className="bg-gray-100 border-b border-gray-300 sticky top-0 z-10">
               <tr>
                 <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200 w-10">
