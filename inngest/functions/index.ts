@@ -565,7 +565,7 @@ Use plain language. Be concise.`
       name: "Sync Gmail Accounts for Replies and Opens"
     },
     { 
-      cron: "* * * * *" // Run every 1 minute
+      cron: "*/10 * * * *" // Run every 10 minutes
     },
     async () => {
       try {
@@ -596,7 +596,7 @@ Use plain language. Be concise.`
       name: "Sync Microsoft Accounts for Replies"
     },
     { 
-      cron: "* * * * *" // Run every 1 minute
+      cron: "*/10 * * * *" // Run every 10 minutes
     },
     async () => {
       try {
@@ -627,7 +627,7 @@ Use plain language. Be concise.`
       name: "Send Due Reminders"
     },
     {
-      cron: "*/15 * * * *" // Run every 15 minutes
+      cron: "0 * * * *" // Run every hour (reminder frequencies are in hours, default 72h)
     },
     async () => {
       try {

@@ -71,9 +71,35 @@ export class EmailSyncService {
   ): Promise<SyncSummary> {
     log.info("Starting email sync", { provider }, { operation: "syncAccountsByProvider" })
 
-    const accounts = await prisma.connectedEmailAccount.findMany({
-      where: { provider, isActive: true },
+    // Step 1: Find org IDs that have sent at least one outbound request
+    const qualifyingOrgs = await prisma.request.findMany({
+      where: {
+        messages: { some: { direction: "OUTBOUND" } }
+      },
+      select: { organizationId: true },
+      distinct: ['organizationId']
     })
+    const qualifyingOrgIds = qualifyingOrgs.map(r => r.organizationId)
+
+    if (qualifyingOrgIds.length === 0) {
+      log.info("No qualifying orgs found (none have sent requests)", { provider }, { operation: "syncAccountsByProvider" })
+      return { accountsProcessed: 0, messagesFetched: 0, repliesPersisted: 0, errors: 0 }
+    }
+
+    // Step 2: Get active accounts for qualifying, non-test orgs only
+    const accounts = await prisma.connectedEmailAccount.findMany({
+      where: {
+        provider,
+        isActive: true,
+        organizationId: { in: qualifyingOrgIds },
+        organization: { isTestAccount: false }
+      },
+    })
+
+    if (accounts.length === 0) {
+      log.info("No qualifying accounts found", { provider, qualifyingOrgs: qualifyingOrgIds.length }, { operation: "syncAccountsByProvider" })
+      return { accountsProcessed: 0, messagesFetched: 0, repliesPersisted: 0, errors: 0 }
+    }
 
     let accountsProcessed = 0
     let messagesFetched = 0
