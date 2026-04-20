@@ -50,7 +50,7 @@ export interface MetricRow {
   // Comparison fields (type="comparison")
   compareRowKey?: string         // Which row to compare (references another metric row's key)
   comparePeriod?: "mom" | "qoq" | "yoy"  // Month-over-month, Quarter-over-quarter, Year-over-year
-  compareOutput?: "value" | "delta" | "percent"  // Output: raw value, difference, or percentage change
+  compareOutput?: "value" | "delta" | "percent" | "point_change"  // Output: raw value, difference, percentage change, or percentage-point change
   format: "text" | "number" | "currency" | "percent"
   order: number
   isBold?: boolean               // Bold all cells in this row
@@ -59,7 +59,7 @@ export interface MetricRow {
 
 // Comparison period types for metric rows
 export type ComparePeriodType = "mom" | "qoq" | "yoy"
-export type CompareOutputType = "value" | "delta" | "percent"
+export type CompareOutputType = "value" | "delta" | "percent" | "point_change"
 
 // Formula column for pivot layout - computed columns that aggregate across pivot columns
 export interface PivotFormulaColumn {

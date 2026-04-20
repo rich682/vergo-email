@@ -89,7 +89,7 @@ interface MetricRow {
   // Comparison fields
   compareRowKey?: string
   comparePeriod?: "mom" | "qoq" | "yoy"
-  compareOutput?: "value" | "delta" | "percent"
+  compareOutput?: "value" | "delta" | "percent" | "point_change"
   format: "text" | "number" | "currency" | "percent"
   order: number
   isBold?: boolean
@@ -3072,7 +3072,7 @@ function MetricRowModal({
   const [expression, setExpression] = useState("")
   const [compareRowKey, setCompareRowKey] = useState("")
   const [comparePeriod, setComparePeriod] = useState<"mom" | "qoq" | "yoy">("yoy")
-  const [compareOutput, setCompareOutput] = useState<"value" | "delta" | "percent">("value")
+  const [compareOutput, setCompareOutput] = useState<"value" | "delta" | "percent" | "point_change">("value")
   const [format, setFormat] = useState<"text" | "number" | "currency" | "percent">("currency")
   const [isBold, setIsBold] = useState(false)
   const [separatorAbove, setSeparatorAbove] = useState(false)
@@ -3160,7 +3160,7 @@ function MetricRowModal({
   // Auto-derive display format for comparison rows based on output type
   useEffect(() => {
     if (type !== "comparison") return
-    if (compareOutput === "percent") {
+    if (compareOutput === "percent" || compareOutput === "point_change") {
       setFormat("percent")
     } else {
       // Inherit format from the compared row
@@ -3441,6 +3441,7 @@ function MetricRowModal({
                       <SelectItem value="value">Previous Value</SelectItem>
                       <SelectItem value="delta">Difference (Δ)</SelectItem>
                       <SelectItem value="percent">% Change</SelectItem>
+                      <SelectItem value="point_change">% Point Change (pp)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

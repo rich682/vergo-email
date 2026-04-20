@@ -611,6 +611,11 @@ export class ReportExecutionService {
                 metricValuesByPivot[pv][metric.key] = (currentValue - compareValue) / compareValue
               }
               break
+            case "point_change":
+              // Percentage-point change: current - compare (for percent-formatted source rows)
+              // e.g. GP% 6.86% - 8.92% = -2.06pp. Stored as ratio; formatter ×100 renders as "-2.06%"
+              metricValuesByPivot[pv][metric.key] = Math.round((currentValue - compareValue) * 1e6) / 1e6
+              break
             default:
               metricValuesByPivot[pv][metric.key] = compareValue
           }
@@ -682,8 +687,8 @@ export class ReportExecutionService {
             }
           }
           row[fc.key] = evaluateSafeExpression(metric.expression, context)
-        } else if (metric.type === "comparison" && metric.compareOutput === "percent") {
-          // Percent comparison totals are meaningless (summing % changes), show nothing
+        } else if (metric.type === "comparison" && (metric.compareOutput === "percent" || metric.compareOutput === "point_change")) {
+          // Percent / percentage-point comparison totals are meaningless across pivots, show nothing
           row[fc.key] = null
         } else {
           row[fc.key] = this.evaluatePivotFormulaColumn(fc.expression, row, pivotValues)
