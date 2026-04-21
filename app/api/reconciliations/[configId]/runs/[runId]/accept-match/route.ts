@@ -38,17 +38,30 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json()
-    const { sourceAIdx, sourceBIdx } = body
+    const { sourceAIdx, sourceBIdx, sourceBIdxs } = body
 
-    if (sourceAIdx === undefined || sourceBIdx === undefined) {
-      return NextResponse.json({ error: "sourceAIdx and sourceBIdx are required" }, { status: 400 })
+    // Accept either the scalar sourceBIdx (1:1) or the array sourceBIdxs (many-to-one)
+    const bIdxsArray: number[] | undefined = Array.isArray(sourceBIdxs)
+      ? sourceBIdxs.filter((n: unknown) => typeof n === "number")
+      : undefined
+
+    const bInput: number | number[] | undefined =
+      bIdxsArray && bIdxsArray.length > 0
+        ? bIdxsArray
+        : (typeof sourceBIdx === "number" ? sourceBIdx : undefined)
+
+    if (sourceAIdx === undefined || bInput === undefined) {
+      return NextResponse.json(
+        { error: "sourceAIdx and either sourceBIdx or sourceBIdxs are required" },
+        { status: 400 }
+      )
     }
 
     const result = await ReconciliationService.acceptManualMatch(
       runId,
       session.user.organizationId,
       sourceAIdx,
-      sourceBIdx
+      bInput
     )
 
     return NextResponse.json({ success: true, ...result })

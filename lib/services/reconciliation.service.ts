@@ -352,17 +352,29 @@ export class ReconciliationService {
     })
   }
 
-  /** Accept a manual match: move an unmatched pair into the matched list */
+  /**
+   * Accept a manual match: move an unmatched pair into the matched list.
+   * Supports many-to-one: pass a `sourceBIdxs` array to link multiple Source B
+   * rows to a single Source A row. The scalar `sourceBIdx` form is preserved
+   * for back-compat and 1:1 matches.
+   */
   static async acceptManualMatch(
     runId: string,
     organizationId: string,
     sourceAIdx: number,
-    sourceBIdx: number
+    sourceBIdxOrIdxs: number | number[]
   ) {
     const run = await prisma.reconciliationRun.findFirst({
       where: { id: runId, organizationId },
     })
     if (!run) throw new Error("Run not found")
+
+    // Normalise to an array and de-dup
+    const bIdxs = Array.from(new Set(
+      Array.isArray(sourceBIdxOrIdxs) ? sourceBIdxOrIdxs : [sourceBIdxOrIdxs]
+    ))
+    if (bIdxs.length === 0) throw new Error("At least one Source B index required")
+    const primaryBIdx = bIdxs[0]
 
     const matchResults = (run.matchResults as any) || { matched: [], unmatchedA: [], unmatchedB: [] }
     const exceptions = (run.exceptions as Record<string, any>) || {}
@@ -371,27 +383,33 @@ export class ReconciliationService {
     const sourceARows = run.sourceARows as Record<string, any>[] | null
     const sourceBRows = run.sourceBRows as Record<string, any>[] | null
 
-    // Add to matched list as manual match with row context
+    // Add to matched list as manual match with row context.
+    // For multi-B matches, `sourceBIdxs` holds all linked indices while
+    // `sourceBIdx` holds the primary one so legacy consumers still work.
     matchResults.matched.push({
       sourceAIdx,
-      sourceBIdx,
+      sourceBIdx: primaryBIdx,
+      ...(bIdxs.length > 1 && { sourceBIdxs: bIdxs }),
       confidence: 100,
       method: "manual",
       ...(sourceARows && sourceBRows && {
         context: {
           sourceAData: sourceARows[sourceAIdx],
-          sourceBData: sourceBRows[sourceBIdx],
+          sourceBData: sourceBRows[primaryBIdx],
+          ...(bIdxs.length > 1 && {
+            sourceBDataAll: bIdxs.map((i) => sourceBRows[i]),
+          }),
         },
       }),
     })
 
     // Remove from unmatched lists
     matchResults.unmatchedA = (matchResults.unmatchedA as number[]).filter((i: number) => i !== sourceAIdx)
-    matchResults.unmatchedB = (matchResults.unmatchedB as number[]).filter((i: number) => i !== sourceBIdx)
+    matchResults.unmatchedB = (matchResults.unmatchedB as number[]).filter((i: number) => !bIdxs.includes(i))
 
     // Remove related exceptions
     delete exceptions[`A-${sourceAIdx}`]
-    delete exceptions[`B-${sourceBIdx}`]
+    for (const bIdx of bIdxs) delete exceptions[`B-${bIdx}`]
 
     const newExceptionCount = (matchResults.unmatchedA as number[]).length + (matchResults.unmatchedB as number[]).length
 

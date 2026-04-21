@@ -15,6 +15,11 @@ import type { SourceConfig, MatchingRules, LearnedPattern } from "./reconciliati
 export interface MatchPair {
   sourceAIdx: number
   sourceBIdx: number
+  /**
+   * For many-to-one manual matches: all Source B indices in this match
+   * (including sourceBIdx). When absent, the match is 1:1 — treat as [sourceBIdx].
+   */
+  sourceBIdxs?: number[]
   confidence: number  // 0-100
   method: "exact" | "fuzzy_ai" | "manual"
   reasoning?: string

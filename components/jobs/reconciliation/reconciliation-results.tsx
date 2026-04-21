@@ -10,6 +10,8 @@ import { CheckCircle2, Download, AlertTriangle, FileQuestion, ChevronDown, Chevr
 interface MatchPair {
   sourceAIdx: number
   sourceBIdx: number
+  /** Present for many-to-one manual matches; absent for 1:1 */
+  sourceBIdxs?: number[]
   confidence: number
   method: "exact" | "fuzzy_ai" | "manual"
   reasoning?: string
@@ -134,6 +136,9 @@ export function ReconciliationResults({
     })
   }
   const [ignoredOrphans, setIgnoredOrphans] = useState<Set<number>>(new Set()) // original B indices
+  // Orphans selected for multi-match against the currently-expanded unmatched A row
+  const [selectedOrphans, setSelectedOrphans] = useState<Set<number>>(new Set())
+  const [orphanFilter, setOrphanFilter] = useState("")
 
   const selectAllMatches = () => {
     if (selectedMatches.size === matchResults.matched.length) {
@@ -218,46 +223,6 @@ export function ReconciliationResults({
   const totalTransactions = matchedPairs.length + unmatchedAIndices.length + unmatchedBIndices.length
   const matchPct = totalTransactions > 0 ? Math.round((acceptedCount / totalTransactions) * 100) : 0
 
-  // ── Potential match suggestions for unmatched A rows ───────────────
-
-  /** For each unmatched A row, find top 3 potential B matches by amount proximity */
-  const suggestions = useMemo(() => {
-    const matchedBSet = new Set(matchedPairs.map((m) => m.sourceBIdx))
-    const availableB = unmatchedBIndices.filter((i) => !matchedBSet.has(i))
-
-    const result: Record<number, { bIdx: number; amtDiff: number; dateDiff: string }[]> = {}
-
-    for (const aIdx of unmatchedAIndices) {
-      const amtA = getAmountFromRow(sourceARows[aIdx] || {}, allColsA)
-      if (amtA === null) continue
-
-      const candidates: { bIdx: number; amtDiff: number; dateDiff: string }[] = []
-
-      for (const bIdx of availableB) {
-        const amtB = getAmountFromRow(sourceBRows[bIdx] || {}, allColsB)
-        if (amtB === null) continue
-
-        const diff = Math.abs(Math.abs(amtA) - Math.abs(amtB))
-        // Show suggestions within 20% or $50, whichever is larger
-        const threshold = Math.max(Math.abs(amtA) * 0.2, 50)
-        if (diff > threshold) continue
-
-        // Get dates for display
-        const dateB = allColsB.find((k) => /date|tran/i.test(k))
-        const dateBVal = dateB ? String(sourceBRows[bIdx]?.[dateB] || "") : ""
-
-        candidates.push({ bIdx, amtDiff: diff, dateDiff: dateBVal })
-      }
-
-      candidates.sort((a, b) => a.amtDiff - b.amtDiff)
-      if (candidates.length > 0) {
-        result[aIdx] = candidates.slice(0, 3)
-      }
-    }
-
-    return result
-  }, [unmatchedAIndices, unmatchedBIndices, matchedPairs, sourceARows, sourceBRows, allColsA, allColsB])
-
   // ── Actions ────────────────────────────────────────────────────────
 
   const handleAcceptSelected = useCallback(() => {
@@ -298,23 +263,43 @@ export function ReconciliationResults({
     }
   }, [configId, runId, onRefresh])
 
-  const handleManualMatch = useCallback(async (sourceAIdx: number, sourceBIdx: number) => {
-    const key = `${sourceAIdx}-${sourceBIdx}`
+  const handleManualMatch = useCallback(async (
+    sourceAIdx: number,
+    sourceBIdxs: number | number[]
+  ) => {
+    const idxArr = Array.isArray(sourceBIdxs) ? sourceBIdxs : [sourceBIdxs]
+    const key = `${sourceAIdx}-${idxArr.join(",")}`
     setMatchingPair(key)
     try {
       const res = await fetch(`/api/reconciliations/${configId}/runs/${runId}/accept-match`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceAIdx, sourceBIdx }),
+        body: JSON.stringify(
+          idxArr.length === 1
+            ? { sourceAIdx, sourceBIdx: idxArr[0] }
+            : { sourceAIdx, sourceBIdxs: idxArr }
+        ),
       })
       if (res.ok) {
         setExpandedRow(null)
+        setSelectedOrphans(new Set())
+        setOrphanFilter("")
         onRefresh()
       }
     } finally {
       setMatchingPair(null)
     }
   }, [configId, runId, onRefresh])
+
+  // When the expanded row changes, clear the per-row orphan selection
+  const toggleExpandedRow = useCallback((aIdx: number) => {
+    setExpandedRow((prev) => {
+      const next = prev === aIdx ? null : aIdx
+      setSelectedOrphans(new Set())
+      setOrphanFilter("")
+      return next
+    })
+  }, [])
 
   // ── Excel download ─────────────────────────────────────────────────
 
@@ -340,15 +325,22 @@ export function ReconciliationResults({
       ]
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData), "Summary")
 
-      // Sheet 2: Matched
-      const matchedRows = matchedPairs.map((m) => {
+      // Sheet 2: Matched — multi-B matches are emitted as one row per B item
+      // with A columns repeated only on the first row of the group.
+      const matchedRows: Record<string, any>[] = []
+      matchedPairs.forEach((m, mi) => {
         const rowA = sourceARows[m.sourceAIdx] || {}
-        const rowB = sourceBRows[m.sourceBIdx] || {}
-        const row: Record<string, any> = {}
-        for (const col of colsA) row[`Source A ${col}`] = rowA[col] ?? ""
-        for (const col of colsB) row[`Source B ${col}`] = rowB[col] ?? ""
-        row["Status"] = acceptedMatches.has(matchedPairs.indexOf(m)) ? "Accepted" : "Pending"
-        return row
+        const bIdxs = m.sourceBIdxs && m.sourceBIdxs.length > 0 ? m.sourceBIdxs : [m.sourceBIdx]
+        bIdxs.forEach((bIdx, bi) => {
+          const rowB = sourceBRows[bIdx] || {}
+          const row: Record<string, any> = {}
+          row["Match #"] = mi + 1
+          row["Match Type"] = bIdxs.length > 1 ? `1:${bIdxs.length}` : "1:1"
+          for (const col of colsA) row[`Source A ${col}`] = bi === 0 ? (rowA[col] ?? "") : ""
+          for (const col of colsB) row[`Source B ${col}`] = rowB[col] ?? ""
+          row["Status"] = acceptedMatches.has(mi) ? "Accepted" : "Pending"
+          matchedRows.push(row)
+        })
       })
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(matchedRows.length > 0 ? matchedRows : [{ "No Data": "No matched rows" }]), "Matched")
 
@@ -535,37 +527,77 @@ export function ReconciliationResults({
                 <tbody>
                   {matchedPairs.map((match, i) => {
                     const rowA = sourceARows[match.sourceAIdx]
-                    const rowB = sourceBRows[match.sourceBIdx]
+                    const bIdxs = match.sourceBIdxs && match.sourceBIdxs.length > 0
+                      ? match.sourceBIdxs
+                      : [match.sourceBIdx]
+                    const isMulti = bIdxs.length > 1
                     const isSelected = selectedMatches.has(i)
                     const isAccepted = acceptedMatches.has(i)
+                    const rowSpan = bIdxs.length
+                    const bgClass = isAccepted ? "bg-green-50/70" : isSelected ? "bg-orange-50" : "hover:bg-gray-50"
                     return (
-                      <tr key={i} className={`border-b border-gray-100 ${isAccepted ? "bg-green-50/70" : isSelected ? "bg-orange-50" : "hover:bg-gray-50"}`}>
-                        {!isComplete && (
-                          <td className="px-2 py-2.5">
-                            {isAccepted ? (
-                              <button onClick={() => handleUnaccept(i)} title="Unaccept">
-                                <CheckCircle2 className="w-4 h-4 text-green-500" />
-                              </button>
-                            ) : (
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => toggleMatchSelect(i)}
-                                className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                              />
-                            )}
-                          </td>
-                        )}
-                        <Td className="text-center text-gray-400">{i + 1}</Td>
-                        {colsA.map((col, ci) => (
-                          <Td key={`a-${col}`} className={ci === colsA.length - 1 ? "border-r border-gray-200" : ""}>
-                            {rowA ? formatCellValue(rowA[col], col) : "—"}
-                          </Td>
-                        ))}
-                        {colsB.map((col) => (
-                          <Td key={`b-${col}`}>{rowB ? formatCellValue(rowB[col], col) : "—"}</Td>
-                        ))}
-                      </tr>
+                      <Fragment key={i}>
+                        {bIdxs.map((bIdx, bi) => {
+                          const rowB = sourceBRows[bIdx]
+                          const isFirst = bi === 0
+                          const isLast = bi === bIdxs.length - 1
+                          return (
+                            <tr
+                              key={`${i}-${bIdx}`}
+                              className={`${bgClass} ${isLast ? "border-b border-gray-100" : ""}`}
+                            >
+                              {isFirst && (
+                                <>
+                                  {!isComplete && (
+                                    <td className="px-2 py-2.5 align-top" rowSpan={rowSpan}>
+                                      {isAccepted ? (
+                                        <button onClick={() => handleUnaccept(i)} title="Unaccept">
+                                          <CheckCircle2 className="w-4 h-4 text-green-500" />
+                                        </button>
+                                      ) : (
+                                        <input
+                                          type="checkbox"
+                                          checked={isSelected}
+                                          onChange={() => toggleMatchSelect(i)}
+                                          className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                        />
+                                      )}
+                                    </td>
+                                  )}
+                                  <td
+                                    className="px-3 py-2.5 text-sm text-gray-400 text-center align-top"
+                                    rowSpan={rowSpan}
+                                  >
+                                    <span className="inline-flex flex-col items-center">
+                                      <span>{i + 1}</span>
+                                      {isMulti && (
+                                        <span
+                                          className="mt-0.5 px-1 py-0.5 rounded bg-orange-100 text-orange-700 text-[10px] font-medium whitespace-nowrap"
+                                          title={`${bIdxs.length} ${sourceBLabel} rows combined`}
+                                        >
+                                          1:{bIdxs.length}
+                                        </span>
+                                      )}
+                                    </span>
+                                  </td>
+                                  {colsA.map((col, ci) => (
+                                    <td
+                                      key={`a-${col}`}
+                                      className={`px-3 py-2.5 text-sm text-gray-700 align-top ${ci === colsA.length - 1 ? "border-r border-gray-200" : ""}`}
+                                      rowSpan={rowSpan}
+                                    >
+                                      {rowA ? formatCellValue(rowA[col], col) : "—"}
+                                    </td>
+                                  ))}
+                                </>
+                              )}
+                              {colsB.map((col) => (
+                                <Td key={`b-${col}`}>{rowB ? formatCellValue(rowB[col], col) : "—"}</Td>
+                              ))}
+                            </tr>
+                          )
+                        })}
+                      </Fragment>
                     )
                   })}
                 </tbody>
@@ -583,7 +615,7 @@ export function ReconciliationResults({
           ) : (
             <>
               <p className="text-xs text-amber-600 mb-2">
-                These {sourceALabel} rows have no matching amount in {sourceBLabel}. Click a row to see potential matches.
+                These {sourceALabel} rows have no match. Click a row to pick one or more {sourceBLabel} orphans whose amounts sum to the target.
               </p>
               <div className="overflow-x-auto border border-gray-200 rounded-lg">
                 <table className="w-full">
@@ -594,82 +626,65 @@ export function ReconciliationResults({
                       {colsA.map((col) => (
                         <Th key={col}>{sourceALabel} {col.replace(/_/g, " ")}</Th>
                       ))}
-                      <Th className="w-24">Suggestions</Th>
+                      <Th className="w-32">Match</Th>
                     </tr>
                   </thead>
                   <tbody>
                     {unmatchedAIndices.map((aIdx, i) => {
                       const row = sourceARows[aIdx]
-                      const hasSuggestions = (suggestions[aIdx]?.length || 0) > 0
                       const isExpanded = expandedRow === aIdx
+                      const targetAmt = row ? getAmountFromRow(row, allColsA) : null
                       return (
                         <Fragment key={aIdx}>
                           <tr
                             className={`border-b border-gray-100 cursor-pointer ${isExpanded ? "bg-amber-50" : "hover:bg-amber-50/50"}`}
-                            onClick={() => setExpandedRow(isExpanded ? null : aIdx)}
+                            onClick={() => toggleExpandedRow(aIdx)}
                           >
                             <Td className="text-center">
-                              {hasSuggestions && (
-                                isExpanded
-                                  ? <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
-                                  : <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
-                              )}
+                              {isExpanded
+                                ? <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                                : <ChevronRight className="w-3.5 h-3.5 text-gray-400" />}
                             </Td>
                             <Td className="text-center text-gray-400">{i + 1}</Td>
                             {colsA.map((col) => (
                               <Td key={col}>{row ? formatCellValue(row[col], col) : "—"}</Td>
                             ))}
                             <Td>
-                              {hasSuggestions ? (
-                                <span className="text-xs text-orange-500 font-medium">{suggestions[aIdx].length} found</span>
-                              ) : (
-                                <span className="text-xs text-gray-400">None</span>
-                              )}
+                              <span className="text-xs text-orange-600 font-medium">
+                                {isComplete ? "—" : (isExpanded ? "Selecting…" : "Pick orphans")}
+                              </span>
                             </Td>
                           </tr>
-                          {/* Expanded suggestions */}
-                          {isExpanded && hasSuggestions && (
+                          {/* Expanded multi-select orphan picker */}
+                          {isExpanded && !isComplete && (
                             <tr>
-                              <td colSpan={colsA.length + 3} className="bg-orange-50/50 px-6 py-3 border-b border-orange-200">
-                                <p className="text-xs font-medium text-gray-600 mb-2">Potential matches from {sourceBLabel}:</p>
-                                <div className="space-y-1">
-                                  {suggestions[aIdx].map((s) => {
-                                    const bRow = sourceBRows[s.bIdx]
-                                    const pairKey = `${aIdx}-${s.bIdx}`
-                                    const isMatching = matchingPair === pairKey
-                                    return (
-                                      <div key={s.bIdx} className="flex items-center justify-between bg-white rounded-lg border border-gray-200 px-3 py-2">
-                                        <div className="flex items-center gap-4 text-sm">
-                                          {colsB.map((col) => (
-                                            <span key={col} className="text-gray-700">
-                                              <span className="text-gray-400 text-xs mr-1">{col}:</span>
-                                              {bRow ? formatCellValue(bRow[col], col) : "—"}
-                                            </span>
-                                          ))}
-                                          {s.amtDiff > 0.01 && (
-                                            <span className="text-xs text-red-500">
-                                              (${s.amtDiff.toFixed(2)} difference)
-                                            </span>
-                                          )}
-                                        </div>
-                                        {!isComplete && (
-                                          <Button
-                                            onClick={(e) => {
-                                              e.stopPropagation()
-                                              handleManualMatch(aIdx, s.bIdx)
-                                            }}
-                                            disabled={isMatching}
-                                            size="sm"
-                                            variant="outline"
-                                            className="text-xs border-green-300 text-green-700 hover:bg-green-50 ml-3"
-                                          >
-                                            {isMatching ? "Matching..." : "Match"}
-                                          </Button>
-                                        )}
-                                      </div>
-                                    )
-                                  })}
-                                </div>
+                              <td colSpan={colsA.length + 3} className="bg-orange-50/40 px-6 py-3 border-b border-orange-200">
+                                <OrphanMultiMatchPicker
+                                  targetAIdx={aIdx}
+                                  targetAmount={targetAmt}
+                                  unmatchedBIndices={unmatchedBIndices}
+                                  sourceBRows={sourceBRows}
+                                  colsB={colsB}
+                                  allColsB={allColsB}
+                                  sourceBLabel={sourceBLabel}
+                                  selected={selectedOrphans}
+                                  onToggle={(bIdx) => {
+                                    setSelectedOrphans((prev) => {
+                                      const next = new Set(prev)
+                                      if (next.has(bIdx)) next.delete(bIdx)
+                                      else next.add(bIdx)
+                                      return next
+                                    })
+                                  }}
+                                  onClear={() => setSelectedOrphans(new Set())}
+                                  filter={orphanFilter}
+                                  onFilterChange={setOrphanFilter}
+                                  onSubmit={(idxs) => handleManualMatch(aIdx, idxs)}
+                                  isMatching={
+                                    matchingPair !== null &&
+                                    matchingPair.startsWith(`${aIdx}-`)
+                                  }
+                                />
                               </td>
                             </tr>
                           )}
@@ -762,6 +777,195 @@ function EmptyState({ icon, message }: { icon: React.ReactNode; message: string 
     <div className="text-center py-12 border border-gray-200 rounded-lg bg-gray-50">
       <div className="text-gray-300 flex justify-center mb-2">{icon}</div>
       <p className="text-sm text-gray-500">{message}</p>
+    </div>
+  )
+}
+
+// ── Multi-orphan match picker ─────────────────────────────────────────
+
+const MULTI_MATCH_TOLERANCE = 1 // dollars
+
+interface OrphanMultiMatchPickerProps {
+  targetAIdx: number
+  targetAmount: number | null
+  unmatchedBIndices: number[]
+  sourceBRows: Record<string, any>[]
+  colsB: string[]
+  allColsB: string[]
+  sourceBLabel: string
+  selected: Set<number>
+  onToggle: (bIdx: number) => void
+  onClear: () => void
+  filter: string
+  onFilterChange: (v: string) => void
+  onSubmit: (idxs: number[]) => void
+  isMatching: boolean
+}
+
+function OrphanMultiMatchPicker({
+  targetAmount,
+  unmatchedBIndices,
+  sourceBRows,
+  colsB,
+  allColsB,
+  sourceBLabel,
+  selected,
+  onToggle,
+  onClear,
+  filter,
+  onFilterChange,
+  onSubmit,
+  isMatching,
+}: OrphanMultiMatchPickerProps) {
+  const filterLower = filter.trim().toLowerCase()
+
+  const visibleOrphans = useMemo(() => {
+    if (!filterLower) return unmatchedBIndices
+    return unmatchedBIndices.filter((bIdx) => {
+      const row = sourceBRows[bIdx]
+      if (!row) return false
+      return Object.values(row).some((v) =>
+        v !== null && v !== undefined && String(v).toLowerCase().includes(filterLower)
+      )
+    })
+  }, [unmatchedBIndices, sourceBRows, filterLower])
+
+  const selectedSum = useMemo(() => {
+    let sum = 0
+    for (const bIdx of selected) {
+      const amt = getAmountFromRow(sourceBRows[bIdx] || {}, allColsB)
+      if (amt !== null) sum += amt
+    }
+    return Math.round(sum * 100) / 100
+  }, [selected, sourceBRows, allColsB])
+
+  // Match both direct and sign-inverted sums (e.g. bank debit vs GL credit)
+  const diffDirect = targetAmount === null ? null : Math.round((targetAmount - selectedSum) * 100) / 100
+  const diffInverted = targetAmount === null ? null : Math.round((targetAmount + selectedSum) * 100) / 100
+  const bestDiff =
+    diffDirect === null || diffInverted === null
+      ? null
+      : (Math.abs(diffDirect) <= Math.abs(diffInverted) ? diffDirect : diffInverted)
+
+  const withinTolerance = bestDiff !== null && Math.abs(bestDiff) <= MULTI_MATCH_TOLERANCE
+  const canSubmit =
+    selected.size > 0 &&
+    !isMatching &&
+    (targetAmount === null || withinTolerance)
+
+  const selectedArr = useMemo(() => Array.from(selected), [selected])
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-xs font-medium text-gray-600">
+          Select one or more {sourceBLabel} orphans:
+        </p>
+        <input
+          type="text"
+          value={filter}
+          onChange={(e) => onFilterChange(e.target.value)}
+          placeholder="Filter orphans…"
+          className="text-xs px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-orange-400 w-56"
+        />
+      </div>
+
+      {unmatchedBIndices.length === 0 ? (
+        <div className="text-xs text-gray-500 py-2 italic">
+          No orphans available to match.
+        </div>
+      ) : (
+        <>
+          <div className="max-h-72 overflow-y-auto bg-white rounded-lg border border-gray-200">
+            {visibleOrphans.length === 0 ? (
+              <div className="text-xs text-gray-500 p-3 italic">No orphans match this filter.</div>
+            ) : (
+              visibleOrphans.map((bIdx) => {
+                const bRow = sourceBRows[bIdx]
+                const isChecked = selected.has(bIdx)
+                return (
+                  <label
+                    key={bIdx}
+                    className={`flex items-center gap-3 px-3 py-2 border-b border-gray-100 last:border-b-0 cursor-pointer text-sm ${isChecked ? "bg-orange-50" : "hover:bg-gray-50"}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => onToggle(bIdx)}
+                      className="rounded border-gray-300 text-orange-500 focus:ring-orange-400"
+                    />
+                    <div className="flex items-center gap-4 flex-wrap flex-1">
+                      {colsB.map((col) => (
+                        <span key={col} className="text-gray-700">
+                          <span className="text-gray-400 text-xs mr-1">{col}:</span>
+                          {bRow ? formatCellValue(bRow[col], col) : "—"}
+                        </span>
+                      ))}
+                    </div>
+                  </label>
+                )
+              })
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 flex-wrap pt-1">
+            <div className="text-xs text-gray-600 flex items-center gap-4 flex-wrap">
+              <span>
+                Selected: <span className="font-semibold text-gray-900">{selected.size}</span>
+              </span>
+              <span>
+                Sum: <span className="font-semibold text-gray-900">{formatDollar(selectedSum)}</span>
+              </span>
+              {targetAmount !== null && (
+                <>
+                  <span>
+                    Target: <span className="font-semibold text-gray-900">{formatDollar(targetAmount)}</span>
+                  </span>
+                  <span className={withinTolerance ? "text-green-700" : "text-red-600"}>
+                    Diff: <span className="font-semibold">{formatDollar(bestDiff ?? 0)}</span>
+                    {withinTolerance && selected.size > 0 && (
+                      <span className="ml-1 text-green-600">✓ within ${MULTI_MATCH_TOLERANCE} tolerance</span>
+                    )}
+                  </span>
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {selected.size > 0 && (
+                <Button
+                  onClick={onClear}
+                  size="sm"
+                  variant="outline"
+                  className="text-xs"
+                  disabled={isMatching}
+                >
+                  Clear
+                </Button>
+              )}
+              <Button
+                onClick={() => onSubmit(selectedArr)}
+                size="sm"
+                variant="outline"
+                className={`text-xs border-green-300 text-green-700 hover:bg-green-50 ${!canSubmit ? "opacity-50 cursor-not-allowed" : ""}`}
+                disabled={!canSubmit}
+                title={
+                  selected.size === 0
+                    ? "Select at least one orphan"
+                    : !withinTolerance && targetAmount !== null
+                      ? `Sum differs from target by more than $${MULTI_MATCH_TOLERANCE}`
+                      : ""
+                }
+              >
+                {isMatching
+                  ? "Matching…"
+                  : selected.size > 1
+                    ? `Match ${selected.size} orphans`
+                    : "Match"}
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }
