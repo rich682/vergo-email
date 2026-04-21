@@ -136,11 +136,9 @@ export function ReconciliationResults({
     })
   }
   const [ignoredOrphans, setIgnoredOrphans] = useState<Set<number>>(new Set()) // original B indices
-  // Orphans selected for multi-match against the currently-expanded unmatched A row
+  // Orphans selected for multi-match (used in both Unmatched and Orphans tabs)
   const [selectedOrphans, setSelectedOrphans] = useState<Set<number>>(new Set())
   const [orphanFilter, setOrphanFilter] = useState("")
-  // When true, the Orphans tab shows an unmatched-A target picker
-  const [orphansTargetPickerOpen, setOrphansTargetPickerOpen] = useState(false)
 
   // Switching tabs resets per-tab selection state
   const switchTab = useCallback((key: TabKey) => {
@@ -148,7 +146,6 @@ export function ReconciliationResults({
     setExpandedRow(null)
     setSelectedOrphans(new Set())
     setOrphanFilter("")
-    setOrphansTargetPickerOpen(false)
   }, [])
 
   const selectAllMatches = () => {
@@ -295,7 +292,6 @@ export function ReconciliationResults({
         setExpandedRow(null)
         setSelectedOrphans(new Set())
         setOrphanFilter("")
-        setOrphansTargetPickerOpen(false)
         onRefresh()
       }
     } finally {
@@ -308,6 +304,16 @@ export function ReconciliationResults({
     setExpandedRow((prev) => {
       const next = prev === aIdx ? null : aIdx
       setSelectedOrphans(new Set())
+      setOrphanFilter("")
+      return next
+    })
+  }, [])
+
+  // Expand/collapse an orphan row; when expanding, pre-select that orphan itself
+  const toggleExpandedOrphan = useCallback((bIdx: number) => {
+    setExpandedRow((prev) => {
+      const next = prev === bIdx ? null : bIdx
+      setSelectedOrphans(next === null ? new Set() : new Set([bIdx]))
       setOrphanFilter("")
       return next
     })
@@ -719,98 +725,95 @@ export function ReconciliationResults({
           ) : (
             <>
               <p className="text-xs text-blue-600 mb-2">
-                These {sourceBLabel} rows have no corresponding entry in {sourceALabel}. Select one or more and match them to an unmatched {sourceALabel} row.
+                These {sourceBLabel} rows have no corresponding entry in {sourceALabel}. Click a row to pick an unmatched {sourceALabel} target (optionally combining with other orphans).
               </p>
               {ignoredOrphans.size > 0 && (
                 <p className="text-xs text-gray-400 mb-2">{ignoredOrphans.size} orphan(s) ignored</p>
               )}
-
-              {/* Selection action bar */}
-              {!isComplete && selectedOrphans.size > 0 && (
-                <OrphanToUnmatchedPicker
-                  selectedOrphans={selectedOrphans}
-                  unmatchedAIndices={unmatchedAIndices}
-                  sourceARows={sourceARows}
-                  sourceBRows={sourceBRows}
-                  colsA={colsA}
-                  allColsA={allColsA}
-                  allColsB={allColsB}
-                  sourceALabel={sourceALabel}
-                  sourceBLabel={sourceBLabel}
-                  pickerOpen={orphansTargetPickerOpen}
-                  onTogglePicker={() => setOrphansTargetPickerOpen((p) => !p)}
-                  onClearSelection={() => { setSelectedOrphans(new Set()); setOrphansTargetPickerOpen(false) }}
-                  onSubmit={(aIdx, bIdxs) => handleManualMatch(aIdx, bIdxs)}
-                  matchingPair={matchingPair}
-                />
-              )}
-
               <div className="overflow-x-auto border border-gray-200 rounded-lg">
                 <table className="w-full">
                   <thead className="bg-blue-50 border-b border-blue-200 sticky top-0">
                     <tr>
-                      {!isComplete && (
-                        <th className="px-2 py-2.5 w-8">
-                          <input
-                            type="checkbox"
-                            checked={selectedOrphans.size === unmatchedBIndices.length && unmatchedBIndices.length > 0}
-                            onChange={() => {
-                              if (selectedOrphans.size === unmatchedBIndices.length) {
-                                setSelectedOrphans(new Set())
-                              } else {
-                                setSelectedOrphans(new Set(unmatchedBIndices))
-                              }
-                            }}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                        </th>
-                      )}
+                      <Th className="w-8">{""}</Th>
                       <Th className="w-10 text-center">#</Th>
                       {colsB.map((col) => (
                         <Th key={col}>{sourceBLabel} {col.replace(/_/g, " ")}</Th>
                       ))}
-                      <Th className="w-20">Action</Th>
+                      <Th className="w-32">Action</Th>
                     </tr>
                   </thead>
                   <tbody>
                     {unmatchedBIndices.map((bIdx, i) => {
                       const row = sourceBRows[bIdx]
-                      const isChecked = selectedOrphans.has(bIdx)
+                      const isExpanded = expandedRow === bIdx
                       return (
-                        <tr
-                          key={bIdx}
-                          className={`border-b border-gray-100 ${isChecked ? "bg-blue-50" : "hover:bg-blue-50/50"}`}
-                        >
-                          {!isComplete && (
-                            <td className="px-2 py-2.5">
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => {
-                                  setSelectedOrphans((prev) => {
-                                    const next = new Set(prev)
-                                    if (next.has(bIdx)) next.delete(bIdx)
-                                    else next.add(bIdx)
-                                    return next
-                                  })
-                                }}
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              />
-                            </td>
+                        <Fragment key={bIdx}>
+                          <tr
+                            className={`border-b border-gray-100 cursor-pointer ${isExpanded ? "bg-blue-50" : "hover:bg-blue-50/50"}`}
+                            onClick={() => !isComplete && toggleExpandedOrphan(bIdx)}
+                          >
+                            <Td className="text-center">
+                              {!isComplete && (
+                                isExpanded
+                                  ? <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                                  : <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+                              )}
+                            </Td>
+                            <Td className="text-center text-gray-400">{i + 1}</Td>
+                            {colsB.map((col) => (
+                              <Td key={col}>{row ? formatCellValue(row[col], col) : "—"}</Td>
+                            ))}
+                            <Td>
+                              {isComplete ? (
+                                <span className="text-xs text-gray-400">—</span>
+                              ) : isExpanded ? (
+                                <span className="text-xs text-blue-600 font-medium">Selecting…</span>
+                              ) : (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setIgnoredOrphans((prev) => { const next = new Set(prev); next.add(bIdx); return next })
+                                  }}
+                                  className="text-xs text-gray-400 hover:text-red-500"
+                                >
+                                  Ignore
+                                </button>
+                              )}
+                            </Td>
+                          </tr>
+                          {isExpanded && !isComplete && (
+                            <tr>
+                              <td colSpan={colsB.length + 3} className="bg-blue-50/40 px-6 py-3 border-b border-blue-200">
+                                <OrphanRowPicker
+                                  anchorBIdx={bIdx}
+                                  unmatchedAIndices={unmatchedAIndices}
+                                  unmatchedBIndices={unmatchedBIndices}
+                                  sourceARows={sourceARows}
+                                  sourceBRows={sourceBRows}
+                                  colsA={colsA}
+                                  colsB={colsB}
+                                  allColsA={allColsA}
+                                  allColsB={allColsB}
+                                  sourceALabel={sourceALabel}
+                                  sourceBLabel={sourceBLabel}
+                                  selected={selectedOrphans}
+                                  onToggleOrphan={(idx) => {
+                                    setSelectedOrphans((prev) => {
+                                      const next = new Set(prev)
+                                      if (next.has(idx)) next.delete(idx)
+                                      else next.add(idx)
+                                      return next
+                                    })
+                                  }}
+                                  filter={orphanFilter}
+                                  onFilterChange={setOrphanFilter}
+                                  onSubmit={(aIdx, bIdxs) => handleManualMatch(aIdx, bIdxs)}
+                                  matchingPair={matchingPair}
+                                />
+                              </td>
+                            </tr>
                           )}
-                          <Td className="text-center text-gray-400">{i + 1}</Td>
-                          {colsB.map((col) => (
-                            <Td key={col}>{row ? formatCellValue(row[col], col) : "—"}</Td>
-                          ))}
-                          <Td>
-                            <button
-                              onClick={() => setIgnoredOrphans((prev) => { const next = new Set(prev); next.add(bIdx); return next })}
-                              className="text-xs text-gray-400 hover:text-red-500"
-                            >
-                              Ignore
-                            </button>
-                          </Td>
-                        </tr>
+                        </Fragment>
                       )
                     })}
                   </tbody>
@@ -856,148 +859,218 @@ function EmptyState({ icon, message }: { icon: React.ReactNode; message: string 
 const MULTI_MATCH_TOLERANCE = 1 // dollars
 
 /**
- * Picks an unmatched Source A target for a set of pre-selected orphans.
- * Used from the Orphans tab — the inverse flow of OrphanMultiMatchPicker.
+ * Per-row picker shown when an orphan row is expanded in the Orphans tab.
+ * Lets the user combine with other orphans and pick an unmatched Source A target
+ * with live sum-vs-target validation. Inverse of OrphanMultiMatchPicker.
  */
-interface OrphanToUnmatchedPickerProps {
-  selectedOrphans: Set<number>
+interface OrphanRowPickerProps {
+  anchorBIdx: number
   unmatchedAIndices: number[]
+  unmatchedBIndices: number[]
   sourceARows: Record<string, any>[]
   sourceBRows: Record<string, any>[]
   colsA: string[]
+  colsB: string[]
   allColsA: string[]
   allColsB: string[]
   sourceALabel: string
   sourceBLabel: string
-  pickerOpen: boolean
-  onTogglePicker: () => void
-  onClearSelection: () => void
+  selected: Set<number>
+  onToggleOrphan: (bIdx: number) => void
+  filter: string
+  onFilterChange: (v: string) => void
   onSubmit: (aIdx: number, bIdxs: number[]) => void
   matchingPair: string | null
 }
 
-function OrphanToUnmatchedPicker({
-  selectedOrphans,
+function OrphanRowPicker({
+  anchorBIdx,
   unmatchedAIndices,
+  unmatchedBIndices,
   sourceARows,
   sourceBRows,
   colsA,
+  colsB,
   allColsA,
   allColsB,
   sourceALabel,
   sourceBLabel,
-  pickerOpen,
-  onTogglePicker,
-  onClearSelection,
+  selected,
+  onToggleOrphan,
+  filter,
+  onFilterChange,
   onSubmit,
   matchingPair,
-}: OrphanToUnmatchedPickerProps) {
-  const selectedArr = useMemo(() => Array.from(selectedOrphans), [selectedOrphans])
+}: OrphanRowPickerProps) {
+  const selectedArr = useMemo(() => Array.from(selected), [selected])
   const selectedSum = useMemo(() => {
     let sum = 0
-    for (const bIdx of selectedOrphans) {
+    for (const bIdx of selected) {
       const amt = getAmountFromRow(sourceBRows[bIdx] || {}, allColsB)
       if (amt !== null) sum += amt
     }
     return Math.round(sum * 100) / 100
-  }, [selectedOrphans, sourceBRows, allColsB])
+  }, [selected, sourceBRows, allColsB])
+
+  // Other orphans available to combine with (excludes the anchor row itself)
+  const combinableOrphans = useMemo(
+    () => unmatchedBIndices.filter((idx) => idx !== anchorBIdx),
+    [unmatchedBIndices, anchorBIdx]
+  )
+
+  const filterLower = filter.trim().toLowerCase()
+  const visibleCombinable = useMemo(() => {
+    if (!filterLower) return combinableOrphans
+    return combinableOrphans.filter((bIdx) => {
+      const row = sourceBRows[bIdx]
+      if (!row) return false
+      return Object.values(row).some((v) =>
+        v !== null && v !== undefined && String(v).toLowerCase().includes(filterLower)
+      )
+    })
+  }, [combinableOrphans, sourceBRows, filterLower])
 
   return (
-    <div className="mb-3 border border-blue-200 rounded-lg bg-blue-50/50 p-3">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="text-xs text-gray-700 flex items-center gap-4 flex-wrap">
-          <span>
-            Selected: <span className="font-semibold text-gray-900">{selectedOrphans.size}</span>
-          </span>
-          <span>
-            Sum: <span className="font-semibold text-gray-900">{formatDollar(selectedSum)}</span>
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button onClick={onClearSelection} size="sm" variant="outline" className="text-xs">
-            Clear
-          </Button>
-          <Button
-            onClick={onTogglePicker}
-            size="sm"
-            variant="outline"
-            className="text-xs border-blue-300 text-blue-700 hover:bg-blue-100"
-            disabled={unmatchedAIndices.length === 0}
-            title={unmatchedAIndices.length === 0 ? `No unmatched ${sourceALabel} rows to match to` : ""}
-          >
-            {pickerOpen ? "Hide" : "Match to"} unmatched {sourceALabel} row…
-          </Button>
-        </div>
-      </div>
-
-      {pickerOpen && unmatchedAIndices.length > 0 && (
-        <div className="mt-3 bg-white rounded-lg border border-gray-200 max-h-72 overflow-y-auto">
-          {unmatchedAIndices.map((aIdx) => {
-            const rowA = sourceARows[aIdx]
-            const targetAmt = rowA ? getAmountFromRow(rowA, allColsA) : null
-
-            // Match both direct and sign-inverted sums (bank vs GL)
-            const diffDirect =
-              targetAmt === null ? null : Math.round((targetAmt - selectedSum) * 100) / 100
-            const diffInverted =
-              targetAmt === null ? null : Math.round((targetAmt + selectedSum) * 100) / 100
-            const bestDiff =
-              diffDirect === null || diffInverted === null
-                ? null
-                : Math.abs(diffDirect) <= Math.abs(diffInverted)
-                  ? diffDirect
-                  : diffInverted
-
-            const withinTolerance = bestDiff !== null && Math.abs(bestDiff) <= MULTI_MATCH_TOLERANCE
-            const canSubmit =
-              selectedOrphans.size > 0 &&
-              matchingPair === null &&
-              (targetAmt === null || withinTolerance)
-            const isMatchingThis =
-              matchingPair !== null && matchingPair.startsWith(`${aIdx}-`)
-
-            return (
-              <div
-                key={aIdx}
-                className="flex items-center justify-between gap-3 px-3 py-2 border-b border-gray-100 last:border-b-0"
-              >
-                <div className="flex items-center gap-4 flex-wrap text-sm flex-1 min-w-0">
-                  {colsA.map((col) => (
-                    <span key={col} className="text-gray-700">
-                      <span className="text-gray-400 text-xs mr-1">{col}:</span>
-                      {rowA ? formatCellValue(rowA[col], col) : "—"}
-                    </span>
-                  ))}
-                  {targetAmt !== null && bestDiff !== null && (
-                    <span className={withinTolerance ? "text-xs text-green-700" : "text-xs text-red-600"}>
-                      Diff: <span className="font-semibold">{formatDollar(bestDiff)}</span>
-                      {withinTolerance && <span className="ml-1">✓</span>}
-                    </span>
-                  )}
-                </div>
-                <Button
-                  onClick={() => onSubmit(aIdx, selectedArr)}
-                  size="sm"
-                  variant="outline"
-                  className={`text-xs border-green-300 text-green-700 hover:bg-green-50 ${!canSubmit ? "opacity-50 cursor-not-allowed" : ""}`}
-                  disabled={!canSubmit}
-                  title={
-                    !withinTolerance && targetAmt !== null
-                      ? `Sum differs from ${sourceALabel} amount by more than $${MULTI_MATCH_TOLERANCE}`
-                      : ""
-                  }
-                >
-                  {isMatchingThis
-                    ? "Matching…"
-                    : selectedOrphans.size > 1
-                      ? `Match ${selectedOrphans.size} orphans`
-                      : "Match"}
-                </Button>
-              </div>
-            )
-          })}
+    <div className="space-y-3">
+      {/* Combine-with-other-orphans section */}
+      {combinableOrphans.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
+            <p className="text-xs font-medium text-gray-600">
+              Optionally combine with other {sourceBLabel} orphans:
+            </p>
+            <input
+              type="text"
+              value={filter}
+              onChange={(e) => onFilterChange(e.target.value)}
+              placeholder="Filter orphans…"
+              className="text-xs px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-400 w-56"
+            />
+          </div>
+          <div className="max-h-52 overflow-y-auto bg-white rounded-lg border border-gray-200">
+            {visibleCombinable.length === 0 ? (
+              <div className="text-xs text-gray-500 p-3 italic">No orphans match this filter.</div>
+            ) : (
+              visibleCombinable.map((bIdx) => {
+                const bRow = sourceBRows[bIdx]
+                const isChecked = selected.has(bIdx)
+                return (
+                  <label
+                    key={bIdx}
+                    className={`flex items-center gap-3 px-3 py-2 border-b border-gray-100 last:border-b-0 cursor-pointer text-sm ${isChecked ? "bg-blue-50" : "hover:bg-gray-50"}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => onToggleOrphan(bIdx)}
+                      className="rounded border-gray-300 text-blue-500 focus:ring-blue-400"
+                    />
+                    <div className="flex items-center gap-4 flex-wrap flex-1">
+                      {colsB.map((col) => (
+                        <span key={col} className="text-gray-700">
+                          <span className="text-gray-400 text-xs mr-1">{col}:</span>
+                          {bRow ? formatCellValue(bRow[col], col) : "—"}
+                        </span>
+                      ))}
+                    </div>
+                  </label>
+                )
+              })
+            )}
+          </div>
         </div>
       )}
+
+      {/* Target Source A picker */}
+      <div>
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
+          <p className="text-xs font-medium text-gray-600">
+            Pick an unmatched {sourceALabel} row to match to:
+          </p>
+          <div className="text-xs text-gray-600 flex items-center gap-3 flex-wrap">
+            <span>
+              Selected: <span className="font-semibold text-gray-900">{selected.size}</span>
+            </span>
+            <span>
+              Sum: <span className="font-semibold text-gray-900">{formatDollar(selectedSum)}</span>
+            </span>
+          </div>
+        </div>
+
+        {unmatchedAIndices.length === 0 ? (
+          <div className="text-xs text-gray-500 italic py-2">
+            No unmatched {sourceALabel} rows available.
+          </div>
+        ) : (
+          <div className="max-h-60 overflow-y-auto bg-white rounded-lg border border-gray-200">
+            {unmatchedAIndices.map((aIdx) => {
+              const rowA = sourceARows[aIdx]
+              const targetAmt = rowA ? getAmountFromRow(rowA, allColsA) : null
+
+              // Match both direct and sign-inverted sums (bank vs GL)
+              const diffDirect =
+                targetAmt === null ? null : Math.round((targetAmt - selectedSum) * 100) / 100
+              const diffInverted =
+                targetAmt === null ? null : Math.round((targetAmt + selectedSum) * 100) / 100
+              const bestDiff =
+                diffDirect === null || diffInverted === null
+                  ? null
+                  : Math.abs(diffDirect) <= Math.abs(diffInverted)
+                    ? diffDirect
+                    : diffInverted
+
+              const withinTolerance =
+                bestDiff !== null && Math.abs(bestDiff) <= MULTI_MATCH_TOLERANCE
+              const canSubmit =
+                selected.size > 0 &&
+                matchingPair === null &&
+                (targetAmt === null || withinTolerance)
+              const isMatchingThis =
+                matchingPair !== null && matchingPair.startsWith(`${aIdx}-`)
+
+              return (
+                <div
+                  key={aIdx}
+                  className="flex items-center justify-between gap-3 px-3 py-2 border-b border-gray-100 last:border-b-0"
+                >
+                  <div className="flex items-center gap-4 flex-wrap text-sm flex-1 min-w-0">
+                    {colsA.map((col) => (
+                      <span key={col} className="text-gray-700">
+                        <span className="text-gray-400 text-xs mr-1">{col}:</span>
+                        {rowA ? formatCellValue(rowA[col], col) : "—"}
+                      </span>
+                    ))}
+                    {targetAmt !== null && bestDiff !== null && (
+                      <span className={withinTolerance ? "text-xs text-green-700" : "text-xs text-red-600"}>
+                        Diff: <span className="font-semibold">{formatDollar(bestDiff)}</span>
+                        {withinTolerance && <span className="ml-1">✓</span>}
+                      </span>
+                    )}
+                  </div>
+                  <Button
+                    onClick={() => onSubmit(aIdx, selectedArr)}
+                    size="sm"
+                    variant="outline"
+                    className={`text-xs border-green-300 text-green-700 hover:bg-green-50 ${!canSubmit ? "opacity-50 cursor-not-allowed" : ""}`}
+                    disabled={!canSubmit}
+                    title={
+                      !withinTolerance && targetAmt !== null
+                        ? `Sum differs from ${sourceALabel} amount by more than $${MULTI_MATCH_TOLERANCE}`
+                        : ""
+                    }
+                  >
+                    {isMatchingThis
+                      ? "Matching…"
+                      : selected.size > 1
+                        ? `Match ${selected.size} orphans`
+                        : "Match"}
+                  </Button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
