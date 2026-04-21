@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useCallback, Fragment } from "react"
+import { useState, useMemo, useCallback, useEffect, Fragment } from "react"
 import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
 import { CheckCircle2, Download, AlertTriangle, FileQuestion, ChevronDown, ChevronRight } from "lucide-react"
@@ -16,6 +16,8 @@ interface MatchPair {
   method: "exact" | "fuzzy_ai" | "manual"
   reasoning?: string
   signInverted?: boolean
+  /** User has reviewed and accepted this match (persisted server-side) */
+  accepted?: boolean
 }
 
 interface ExceptionEntry {
@@ -123,7 +125,19 @@ export function ReconciliationResults({
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
   const [matchingPair, setMatchingPair] = useState<string | null>(null)
   const [selectedMatches, setSelectedMatches] = useState<Set<number>>(new Set())
-  const [acceptedMatches, setAcceptedMatches] = useState<Set<number>>(new Set()) // accepted match indices
+  // Hydrate accepted match indices from the server (matchResults.matched[i].accepted)
+  const [acceptedMatches, setAcceptedMatches] = useState<Set<number>>(() => {
+    const s = new Set<number>()
+    matchResults.matched.forEach((m, i) => { if (m.accepted) s.add(i) })
+    return s
+  })
+
+  // Re-sync when matchResults change (e.g. after a refresh or new match)
+  useEffect(() => {
+    const s = new Set<number>()
+    matchResults.matched.forEach((m, i) => { if (m.accepted) s.add(i) })
+    setAcceptedMatches(s)
+  }, [matchResults])
 
   const isComplete = status === "COMPLETE"
 
@@ -233,29 +247,43 @@ export function ReconciliationResults({
 
   // ── Actions ────────────────────────────────────────────────────────
 
-  const handleAcceptSelected = useCallback(() => {
-    // Move selected matches to accepted
+  /** Persist accepted flag server-side; optimistically update local state */
+  const persistAccepted = useCallback(async (indices: number[], accepted: boolean) => {
+    if (indices.length === 0) return
     setAcceptedMatches((prev) => {
       const next = new Set(prev)
-      for (const idx of selectedMatches) next.add(idx)
+      for (const idx of indices) {
+        if (accepted) next.add(idx)
+        else next.delete(idx)
+      }
       return next
     })
+    try {
+      await fetch(`/api/reconciliations/${configId}/runs/${runId}/accept-matches`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ indices, accepted }),
+      })
+    } catch (err) {
+      console.error("Failed to persist accepted matches:", err)
+    }
+  }, [configId, runId])
+
+  const handleAcceptSelected = useCallback(() => {
+    const indices = Array.from(selectedMatches)
+    void persistAccepted(indices, true)
     setSelectedMatches(new Set())
-  }, [selectedMatches])
+  }, [selectedMatches, persistAccepted])
 
   const handleAcceptAll = useCallback(() => {
-    // Accept all matches
-    setAcceptedMatches(new Set(matchedPairs.map((_, i) => i)))
+    const indices = matchedPairs.map((_, i) => i)
+    void persistAccepted(indices, true)
     setSelectedMatches(new Set())
-  }, [matchedPairs])
+  }, [matchedPairs, persistAccepted])
 
   const handleUnaccept = useCallback((idx: number) => {
-    setAcceptedMatches((prev) => {
-      const next = new Set(prev)
-      next.delete(idx)
-      return next
-    })
-  }, [])
+    void persistAccepted([idx], false)
+  }, [persistAccepted])
 
   const handleComplete = useCallback(async () => {
     setAccepting(true)

@@ -426,6 +426,41 @@ export class ReconciliationService {
     return { matchResults, exceptions }
   }
 
+  /**
+   * Set the accepted flag on a subset of matches (by their index in matchResults.matched).
+   * Passing an empty indices array with `accepted = true` is a no-op. To accept every match,
+   * the caller should pass the full index list.
+   */
+  static async setMatchesAccepted(
+    runId: string,
+    organizationId: string,
+    indices: number[],
+    accepted: boolean
+  ) {
+    const run = await prisma.reconciliationRun.findFirst({
+      where: { id: runId, organizationId },
+    })
+    if (!run) throw new Error("Run not found")
+
+    const matchResults = (run.matchResults as any) || { matched: [], unmatchedA: [], unmatchedB: [] }
+    const matched = (matchResults.matched as any[]) || []
+    const idxSet = new Set(indices)
+
+    for (let i = 0; i < matched.length; i++) {
+      if (idxSet.has(i)) {
+        matched[i] = { ...matched[i], accepted }
+      }
+    }
+    matchResults.matched = matched
+
+    await prisma.reconciliationRun.updateMany({
+      where: { id: runId, organizationId },
+      data: { matchResults },
+    })
+
+    return { matchResults }
+  }
+
   /** Complete a run (sign-off) */
   static async completeRun(runId: string, organizationId: string, userId: string) {
     return prisma.reconciliationRun.updateMany({

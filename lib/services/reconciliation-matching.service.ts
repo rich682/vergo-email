@@ -24,6 +24,8 @@ export interface MatchPair {
   method: "exact" | "fuzzy_ai" | "manual"
   reasoning?: string
   signInverted?: boolean  // true if amounts matched by sign inversion (bank vs GL)
+  /** User has reviewed and accepted this match. Persisted across refreshes. */
+  accepted?: boolean
 }
 
 export interface ExceptionClassification {
