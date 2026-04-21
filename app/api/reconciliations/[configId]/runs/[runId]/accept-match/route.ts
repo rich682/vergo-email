@@ -38,21 +38,28 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json()
-    const { sourceAIdx, sourceBIdx, sourceBIdxs } = body
+    const { sourceAIdx, sourceAIdxs, sourceBIdx, sourceBIdxs } = body
 
-    // Accept either the scalar sourceBIdx (1:1) or the array sourceBIdxs (many-to-one)
+    // Accept scalar or array forms on either side (many-to-one in either direction).
+    const aIdxsArray: number[] | undefined = Array.isArray(sourceAIdxs)
+      ? sourceAIdxs.filter((n: unknown) => typeof n === "number")
+      : undefined
     const bIdxsArray: number[] | undefined = Array.isArray(sourceBIdxs)
       ? sourceBIdxs.filter((n: unknown) => typeof n === "number")
       : undefined
 
+    const aInput: number | number[] | undefined =
+      aIdxsArray && aIdxsArray.length > 0
+        ? aIdxsArray
+        : (typeof sourceAIdx === "number" ? sourceAIdx : undefined)
     const bInput: number | number[] | undefined =
       bIdxsArray && bIdxsArray.length > 0
         ? bIdxsArray
         : (typeof sourceBIdx === "number" ? sourceBIdx : undefined)
 
-    if (sourceAIdx === undefined || bInput === undefined) {
+    if (aInput === undefined || bInput === undefined) {
       return NextResponse.json(
-        { error: "sourceAIdx and either sourceBIdx or sourceBIdxs are required" },
+        { error: "Both a Source A and a Source B index (or array) are required" },
         { status: 400 }
       )
     }
@@ -60,7 +67,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const result = await ReconciliationService.acceptManualMatch(
       runId,
       session.user.organizationId,
-      sourceAIdx,
+      aInput,
       bInput
     )
 

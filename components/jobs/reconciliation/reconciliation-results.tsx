@@ -10,8 +10,10 @@ import { CheckCircle2, Download, AlertTriangle, FileQuestion, ChevronDown, Chevr
 interface MatchPair {
   sourceAIdx: number
   sourceBIdx: number
-  /** Present for many-to-one manual matches; absent for 1:1 */
+  /** Many B rows combined into this match (1 A : N B). Absent for 1:1. */
   sourceBIdxs?: number[]
+  /** Many A rows combined into this match (N A : 1 B). Absent for 1:1. */
+  sourceAIdxs?: number[]
   confidence: number
   method: "exact" | "fuzzy_ai" | "manual"
   reasoning?: string
@@ -300,21 +302,24 @@ export function ReconciliationResults({
   }, [configId, runId, onRefresh])
 
   const handleManualMatch = useCallback(async (
-    sourceAIdx: number,
-    sourceBIdxs: number | number[]
+    sourceA: number | number[],
+    sourceB: number | number[]
   ) => {
-    const idxArr = Array.isArray(sourceBIdxs) ? sourceBIdxs : [sourceBIdxs]
-    const key = `${sourceAIdx}-${idxArr.join(",")}`
+    const aArr = Array.isArray(sourceA) ? sourceA : [sourceA]
+    const bArr = Array.isArray(sourceB) ? sourceB : [sourceB]
+    const key = `${aArr.join(",")}-${bArr.join(",")}`
     setMatchingPair(key)
     try {
+      const body: Record<string, number | number[]> = {}
+      if (aArr.length === 1) body.sourceAIdx = aArr[0]
+      else body.sourceAIdxs = aArr
+      if (bArr.length === 1) body.sourceBIdx = bArr[0]
+      else body.sourceBIdxs = bArr
+
       const res = await fetch(`/api/reconciliations/${configId}/runs/${runId}/accept-match`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          idxArr.length === 1
-            ? { sourceAIdx, sourceBIdx: idxArr[0] }
-            : { sourceAIdx, sourceBIdxs: idxArr }
-        ),
+        body: JSON.stringify(body),
       })
       if (res.ok) {
         setExpandedRow(null)
@@ -337,14 +342,11 @@ export function ReconciliationResults({
     })
   }, [])
 
-  // Expand/collapse an orphan row; when expanding, pre-select that orphan itself
+  // Expand/collapse an orphan row; selections reset so the user picks Source A rows fresh
   const toggleExpandedOrphan = useCallback((bIdx: number) => {
-    setExpandedRow((prev) => {
-      const next = prev === bIdx ? null : bIdx
-      setSelectedOrphans(next === null ? new Set() : new Set([bIdx]))
-      setOrphanFilter("")
-      return next
-    })
+    setExpandedRow((prev) => (prev === bIdx ? null : bIdx))
+    setSelectedOrphans(new Set())
+    setOrphanFilter("")
   }, [])
 
   // ── Excel download ─────────────────────────────────────────────────
@@ -371,22 +373,34 @@ export function ReconciliationResults({
       ]
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData), "Summary")
 
-      // Sheet 2: Matched — multi-B matches are emitted as one row per B item
-      // with A columns repeated only on the first row of the group.
+      // Sheet 2: Matched — multi-match groups (many-A or many-B) emit one row per
+      // sub-item, with the single-side columns repeated only on the first sub-row.
       const matchedRows: Record<string, any>[] = []
       matchedPairs.forEach((m, mi) => {
-        const rowA = sourceARows[m.sourceAIdx] || {}
+        const aIdxs = m.sourceAIdxs && m.sourceAIdxs.length > 0 ? m.sourceAIdxs : [m.sourceAIdx]
         const bIdxs = m.sourceBIdxs && m.sourceBIdxs.length > 0 ? m.sourceBIdxs : [m.sourceBIdx]
-        bIdxs.forEach((bIdx, bi) => {
+        const isManyA = aIdxs.length > 1
+        const isManyB = bIdxs.length > 1
+        const subCount = Math.max(aIdxs.length, bIdxs.length)
+        const matchType = isManyA ? `${aIdxs.length}:1` : isManyB ? `1:${bIdxs.length}` : "1:1"
+
+        for (let s = 0; s < subCount; s++) {
+          const aIdx = isManyA ? aIdxs[s] : aIdxs[0]
+          const bIdx = isManyB ? bIdxs[s] : bIdxs[0]
+          const rowA = sourceARows[aIdx] || {}
           const rowB = sourceBRows[bIdx] || {}
           const row: Record<string, any> = {}
           row["Match #"] = mi + 1
-          row["Match Type"] = bIdxs.length > 1 ? `1:${bIdxs.length}` : "1:1"
-          for (const col of colsA) row[`Source A ${col}`] = bi === 0 ? (rowA[col] ?? "") : ""
-          for (const col of colsB) row[`Source B ${col}`] = rowB[col] ?? ""
+          row["Match Type"] = matchType
+          for (const col of colsA) {
+            row[`Source A ${col}`] = (isManyA || s === 0) ? (rowA[col] ?? "") : ""
+          }
+          for (const col of colsB) {
+            row[`Source B ${col}`] = (isManyB || s === 0) ? (rowB[col] ?? "") : ""
+          }
           row["Status"] = acceptedMatches.has(mi) ? "Accepted" : "Pending"
           matchedRows.push(row)
-        })
+        }
       })
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(matchedRows.length > 0 ? matchedRows : [{ "No Data": "No matched rows" }]), "Matched")
 
@@ -572,30 +586,51 @@ export function ReconciliationResults({
                 </thead>
                 <tbody>
                   {matchedPairs.map((match, i) => {
-                    const rowA = sourceARows[match.sourceAIdx]
+                    const aIdxs = match.sourceAIdxs && match.sourceAIdxs.length > 0
+                      ? match.sourceAIdxs
+                      : [match.sourceAIdx]
                     const bIdxs = match.sourceBIdxs && match.sourceBIdxs.length > 0
                       ? match.sourceBIdxs
                       : [match.sourceBIdx]
-                    const isMulti = bIdxs.length > 1
+                    const isManyA = aIdxs.length > 1
+                    const isManyB = bIdxs.length > 1
+                    // Visual row count = the side with multiple rows (or 1 for 1:1)
+                    const subRowCount = Math.max(aIdxs.length, bIdxs.length)
+                    const isMulti = subRowCount > 1
                     const isSelected = selectedMatches.has(i)
                     const isAccepted = acceptedMatches.has(i)
-                    const rowSpan = bIdxs.length
                     const bgClass = isAccepted ? "bg-green-50/70" : isSelected ? "bg-orange-50" : "hover:bg-gray-50"
+
+                    // Badge describes which direction the many-to-one runs
+                    const badgeLabel = isManyA
+                      ? `${aIdxs.length}:1`
+                      : isManyB
+                        ? `1:${bIdxs.length}`
+                        : null
+                    const badgeTitle = isManyA
+                      ? `${aIdxs.length} ${sourceALabel} rows combined`
+                      : isManyB
+                        ? `${bIdxs.length} ${sourceBLabel} rows combined`
+                        : ""
+
                     return (
                       <Fragment key={i}>
-                        {bIdxs.map((bIdx, bi) => {
+                        {Array.from({ length: subRowCount }).map((_, subIdx) => {
+                          const aIdx = isManyA ? aIdxs[subIdx] : aIdxs[0]
+                          const bIdx = isManyB ? bIdxs[subIdx] : bIdxs[0]
+                          const rowA = sourceARows[aIdx]
                           const rowB = sourceBRows[bIdx]
-                          const isFirst = bi === 0
-                          const isLast = bi === bIdxs.length - 1
+                          const isFirst = subIdx === 0
+                          const isLast = subIdx === subRowCount - 1
                           return (
                             <tr
-                              key={`${i}-${bIdx}`}
+                              key={`${i}-${subIdx}`}
                               className={`${bgClass} ${isLast ? "border-b border-gray-100" : ""}`}
                             >
                               {isFirst && (
                                 <>
                                   {!isComplete && (
-                                    <td className="px-2 py-2.5 align-top" rowSpan={rowSpan}>
+                                    <td className="px-2 py-2.5 align-top" rowSpan={subRowCount}>
                                       {isAccepted ? (
                                         <button onClick={() => handleUnaccept(i)} title="Unaccept">
                                           <CheckCircle2 className="w-4 h-4 text-green-500" />
@@ -612,34 +647,59 @@ export function ReconciliationResults({
                                   )}
                                   <td
                                     className="px-3 py-2.5 text-sm text-gray-400 text-center align-top"
-                                    rowSpan={rowSpan}
+                                    rowSpan={subRowCount}
                                   >
                                     <span className="inline-flex flex-col items-center">
                                       <span>{i + 1}</span>
-                                      {isMulti && (
+                                      {isMulti && badgeLabel && (
                                         <span
                                           className="mt-0.5 px-1 py-0.5 rounded bg-orange-100 text-orange-700 text-[10px] font-medium whitespace-nowrap"
-                                          title={`${bIdxs.length} ${sourceBLabel} rows combined`}
+                                          title={badgeTitle}
                                         >
-                                          1:{bIdxs.length}
+                                          {badgeLabel}
                                         </span>
                                       )}
                                     </span>
                                   </td>
-                                  {colsA.map((col, ci) => (
-                                    <td
-                                      key={`a-${col}`}
-                                      className={`px-3 py-2.5 text-sm text-gray-700 align-top ${ci === colsA.length - 1 ? "border-r border-gray-200" : ""}`}
-                                      rowSpan={rowSpan}
-                                    >
-                                      {rowA ? formatCellValue(rowA[col], col) : "—"}
-                                    </td>
-                                  ))}
                                 </>
                               )}
-                              {colsB.map((col) => (
-                                <Td key={`b-${col}`}>{rowB ? formatCellValue(rowB[col], col) : "—"}</Td>
-                              ))}
+                              {/* Source A cells: per-row when many-A, rowSpan on first when many-B or 1:1 */}
+                              {isManyA ? (
+                                colsA.map((col, ci) => (
+                                  <td
+                                    key={`a-${col}`}
+                                    className={`px-3 py-2.5 text-sm text-gray-700 align-top ${ci === colsA.length - 1 ? "border-r border-gray-200" : ""}`}
+                                  >
+                                    {rowA ? formatCellValue(rowA[col], col) : "—"}
+                                  </td>
+                                ))
+                              ) : (
+                                isFirst && colsA.map((col, ci) => (
+                                  <td
+                                    key={`a-${col}`}
+                                    className={`px-3 py-2.5 text-sm text-gray-700 align-top ${ci === colsA.length - 1 ? "border-r border-gray-200" : ""}`}
+                                    rowSpan={subRowCount}
+                                  >
+                                    {rowA ? formatCellValue(rowA[col], col) : "—"}
+                                  </td>
+                                ))
+                              )}
+                              {/* Source B cells: per-row when many-B, rowSpan on first when many-A or 1:1 */}
+                              {isManyB ? (
+                                colsB.map((col) => (
+                                  <Td key={`b-${col}`}>{rowB ? formatCellValue(rowB[col], col) : "—"}</Td>
+                                ))
+                              ) : (
+                                isFirst && colsB.map((col) => (
+                                  <td
+                                    key={`b-${col}`}
+                                    className="px-3 py-2.5 text-sm text-gray-700 align-top"
+                                    rowSpan={subRowCount}
+                                  >
+                                    {rowB ? formatCellValue(rowB[col], col) : "—"}
+                                  </td>
+                                ))
+                              )}
                             </tr>
                           )
                         })}
@@ -812,31 +872,31 @@ export function ReconciliationResults({
                           {isExpanded && !isComplete && (
                             <tr>
                               <td colSpan={colsB.length + 3} className="bg-blue-50/40 px-6 py-3 border-b border-blue-200">
-                                <OrphanRowPicker
-                                  anchorBIdx={bIdx}
+                                <UnmatchedAPicker
+                                  targetBIdx={bIdx}
+                                  targetAmount={row ? getAmountFromRow(row, allColsB) : null}
                                   unmatchedAIndices={unmatchedAIndices}
-                                  unmatchedBIndices={unmatchedBIndices}
                                   sourceARows={sourceARows}
-                                  sourceBRows={sourceBRows}
                                   colsA={colsA}
-                                  colsB={colsB}
                                   allColsA={allColsA}
-                                  allColsB={allColsB}
                                   sourceALabel={sourceALabel}
-                                  sourceBLabel={sourceBLabel}
                                   selected={selectedOrphans}
-                                  onToggleOrphan={(idx) => {
+                                  onToggle={(aIdx) => {
                                     setSelectedOrphans((prev) => {
                                       const next = new Set(prev)
-                                      if (next.has(idx)) next.delete(idx)
-                                      else next.add(idx)
+                                      if (next.has(aIdx)) next.delete(aIdx)
+                                      else next.add(aIdx)
                                       return next
                                     })
                                   }}
+                                  onClear={() => setSelectedOrphans(new Set())}
                                   filter={orphanFilter}
                                   onFilterChange={setOrphanFilter}
-                                  onSubmit={(aIdx, bIdxs) => handleManualMatch(aIdx, bIdxs)}
-                                  matchingPair={matchingPair}
+                                  onSubmit={(aIdxs) => handleManualMatch(aIdxs, bIdx)}
+                                  isMatching={
+                                    matchingPair !== null &&
+                                    matchingPair.endsWith(`-${bIdx}`)
+                                  }
                                 />
                               </td>
                             </tr>
@@ -888,116 +948,124 @@ const MULTI_MATCH_TOLERANCE = 1 // dollars
 
 /**
  * Per-row picker shown when an orphan row is expanded in the Orphans tab.
- * Lets the user combine with other orphans and pick an unmatched Source A target
- * with live sum-vs-target validation. Inverse of OrphanMultiMatchPicker.
+ * Mirrors OrphanMultiMatchPicker exactly: single multi-select list, filter,
+ * running total vs target, Match button. Here the list is unmatched Source A
+ * rows, and selecting many creates an N:1 (many-A-to-one-B) match.
  */
-interface OrphanRowPickerProps {
-  anchorBIdx: number
+interface UnmatchedAPickerProps {
+  targetBIdx: number
+  targetAmount: number | null
   unmatchedAIndices: number[]
-  unmatchedBIndices: number[]
   sourceARows: Record<string, any>[]
-  sourceBRows: Record<string, any>[]
   colsA: string[]
-  colsB: string[]
   allColsA: string[]
-  allColsB: string[]
   sourceALabel: string
-  sourceBLabel: string
   selected: Set<number>
-  onToggleOrphan: (bIdx: number) => void
+  onToggle: (aIdx: number) => void
+  onClear: () => void
   filter: string
   onFilterChange: (v: string) => void
-  onSubmit: (aIdx: number, bIdxs: number[]) => void
-  matchingPair: string | null
+  onSubmit: (aIdxs: number[]) => void
+  isMatching: boolean
 }
 
-function OrphanRowPicker({
-  anchorBIdx,
+function UnmatchedAPicker({
+  targetAmount,
   unmatchedAIndices,
-  unmatchedBIndices,
   sourceARows,
-  sourceBRows,
   colsA,
-  colsB,
   allColsA,
-  allColsB,
   sourceALabel,
-  sourceBLabel,
   selected,
-  onToggleOrphan,
+  onToggle,
+  onClear,
   filter,
   onFilterChange,
   onSubmit,
-  matchingPair,
-}: OrphanRowPickerProps) {
-  const selectedArr = useMemo(() => Array.from(selected), [selected])
-  const selectedSum = useMemo(() => {
-    let sum = 0
-    for (const bIdx of selected) {
-      const amt = getAmountFromRow(sourceBRows[bIdx] || {}, allColsB)
-      if (amt !== null) sum += amt
-    }
-    return Math.round(sum * 100) / 100
-  }, [selected, sourceBRows, allColsB])
-
-  // Other orphans available to combine with (excludes the anchor row itself)
-  const combinableOrphans = useMemo(
-    () => unmatchedBIndices.filter((idx) => idx !== anchorBIdx),
-    [unmatchedBIndices, anchorBIdx]
-  )
-
+  isMatching,
+}: UnmatchedAPickerProps) {
   const filterLower = filter.trim().toLowerCase()
-  const visibleCombinable = useMemo(() => {
-    if (!filterLower) return combinableOrphans
-    return combinableOrphans.filter((bIdx) => {
-      const row = sourceBRows[bIdx]
+
+  const visibleRows = useMemo(() => {
+    if (!filterLower) return unmatchedAIndices
+    return unmatchedAIndices.filter((aIdx) => {
+      const row = sourceARows[aIdx]
       if (!row) return false
       return Object.values(row).some((v) =>
         v !== null && v !== undefined && String(v).toLowerCase().includes(filterLower)
       )
     })
-  }, [combinableOrphans, sourceBRows, filterLower])
+  }, [unmatchedAIndices, sourceARows, filterLower])
+
+  const selectedSum = useMemo(() => {
+    let sum = 0
+    for (const aIdx of selected) {
+      const amt = getAmountFromRow(sourceARows[aIdx] || {}, allColsA)
+      if (amt !== null) sum += amt
+    }
+    return Math.round(sum * 100) / 100
+  }, [selected, sourceARows, allColsA])
+
+  // Match both direct and sign-inverted sums (bank credit vs GL debit)
+  const diffDirect = targetAmount === null ? null : Math.round((targetAmount - selectedSum) * 100) / 100
+  const diffInverted = targetAmount === null ? null : Math.round((targetAmount + selectedSum) * 100) / 100
+  const bestDiff =
+    diffDirect === null || diffInverted === null
+      ? null
+      : Math.abs(diffDirect) <= Math.abs(diffInverted) ? diffDirect : diffInverted
+
+  const withinTolerance = bestDiff !== null && Math.abs(bestDiff) <= MULTI_MATCH_TOLERANCE
+  const canSubmit =
+    selected.size > 0 &&
+    !isMatching &&
+    (targetAmount === null || withinTolerance)
+
+  const selectedArr = useMemo(() => Array.from(selected), [selected])
 
   return (
-    <div className="space-y-3">
-      {/* Combine-with-other-orphans section */}
-      {combinableOrphans.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
-            <p className="text-xs font-medium text-gray-600">
-              Optionally combine with other {sourceBLabel} orphans:
-            </p>
-            <input
-              type="text"
-              value={filter}
-              onChange={(e) => onFilterChange(e.target.value)}
-              placeholder="Filter orphans…"
-              className="text-xs px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-400 w-56"
-            />
-          </div>
-          <div className="max-h-52 overflow-y-auto bg-white rounded-lg border border-gray-200">
-            {visibleCombinable.length === 0 ? (
-              <div className="text-xs text-gray-500 p-3 italic">No orphans match this filter.</div>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-xs font-medium text-gray-600">
+          Select one or more unmatched {sourceALabel} rows:
+        </p>
+        <input
+          type="text"
+          value={filter}
+          onChange={(e) => onFilterChange(e.target.value)}
+          placeholder={`Filter ${sourceALabel} rows…`}
+          className="text-xs px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-400 w-56"
+        />
+      </div>
+
+      {unmatchedAIndices.length === 0 ? (
+        <div className="text-xs text-gray-500 py-2 italic">
+          No unmatched {sourceALabel} rows available to match.
+        </div>
+      ) : (
+        <>
+          <div className="max-h-72 overflow-y-auto bg-white rounded-lg border border-gray-200">
+            {visibleRows.length === 0 ? (
+              <div className="text-xs text-gray-500 p-3 italic">No rows match this filter.</div>
             ) : (
-              visibleCombinable.map((bIdx) => {
-                const bRow = sourceBRows[bIdx]
-                const isChecked = selected.has(bIdx)
+              visibleRows.map((aIdx) => {
+                const aRow = sourceARows[aIdx]
+                const isChecked = selected.has(aIdx)
                 return (
                   <label
-                    key={bIdx}
+                    key={aIdx}
                     className={`flex items-center gap-3 px-3 py-2 border-b border-gray-100 last:border-b-0 cursor-pointer text-sm ${isChecked ? "bg-blue-50" : "hover:bg-gray-50"}`}
                   >
                     <input
                       type="checkbox"
                       checked={isChecked}
-                      onChange={() => onToggleOrphan(bIdx)}
+                      onChange={() => onToggle(aIdx)}
                       className="rounded border-gray-300 text-blue-500 focus:ring-blue-400"
                     />
                     <div className="flex items-center gap-4 flex-wrap flex-1">
-                      {colsB.map((col) => (
+                      {colsA.map((col) => (
                         <span key={col} className="text-gray-700">
                           <span className="text-gray-400 text-xs mr-1">{col}:</span>
-                          {bRow ? formatCellValue(bRow[col], col) : "—"}
+                          {aRow ? formatCellValue(aRow[col], col) : "—"}
                         </span>
                       ))}
                     </div>
@@ -1006,99 +1074,65 @@ function OrphanRowPicker({
               })
             )}
           </div>
-        </div>
-      )}
 
-      {/* Target Source A picker */}
-      <div>
-        <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
-          <p className="text-xs font-medium text-gray-600">
-            Pick an unmatched {sourceALabel} row to match to:
-          </p>
-          <div className="text-xs text-gray-600 flex items-center gap-3 flex-wrap">
-            <span>
-              Selected: <span className="font-semibold text-gray-900">{selected.size}</span>
-            </span>
-            <span>
-              Sum: <span className="font-semibold text-gray-900">{formatDollar(selectedSum)}</span>
-            </span>
-          </div>
-        </div>
-
-        {unmatchedAIndices.length === 0 ? (
-          <div className="text-xs text-gray-500 italic py-2">
-            No unmatched {sourceALabel} rows available.
-          </div>
-        ) : (
-          <div className="max-h-60 overflow-y-auto bg-white rounded-lg border border-gray-200">
-            {unmatchedAIndices.map((aIdx) => {
-              const rowA = sourceARows[aIdx]
-              const targetAmt = rowA ? getAmountFromRow(rowA, allColsA) : null
-
-              // Match both direct and sign-inverted sums (bank vs GL)
-              const diffDirect =
-                targetAmt === null ? null : Math.round((targetAmt - selectedSum) * 100) / 100
-              const diffInverted =
-                targetAmt === null ? null : Math.round((targetAmt + selectedSum) * 100) / 100
-              const bestDiff =
-                diffDirect === null || diffInverted === null
-                  ? null
-                  : Math.abs(diffDirect) <= Math.abs(diffInverted)
-                    ? diffDirect
-                    : diffInverted
-
-              const withinTolerance =
-                bestDiff !== null && Math.abs(bestDiff) <= MULTI_MATCH_TOLERANCE
-              const canSubmit =
-                selected.size > 0 &&
-                matchingPair === null &&
-                (targetAmt === null || withinTolerance)
-              const isMatchingThis =
-                matchingPair !== null && matchingPair.startsWith(`${aIdx}-`)
-
-              return (
-                <div
-                  key={aIdx}
-                  className="flex items-center justify-between gap-3 px-3 py-2 border-b border-gray-100 last:border-b-0"
-                >
-                  <div className="flex items-center gap-4 flex-wrap text-sm flex-1 min-w-0">
-                    {colsA.map((col) => (
-                      <span key={col} className="text-gray-700">
-                        <span className="text-gray-400 text-xs mr-1">{col}:</span>
-                        {rowA ? formatCellValue(rowA[col], col) : "—"}
-                      </span>
-                    ))}
-                    {targetAmt !== null && bestDiff !== null && (
-                      <span className={withinTolerance ? "text-xs text-green-700" : "text-xs text-red-600"}>
-                        Diff: <span className="font-semibold">{formatDollar(bestDiff)}</span>
-                        {withinTolerance && <span className="ml-1">✓</span>}
-                      </span>
+          <div className="flex items-center justify-between gap-3 flex-wrap pt-1">
+            <div className="text-xs text-gray-600 flex items-center gap-4 flex-wrap">
+              <span>
+                Selected: <span className="font-semibold text-gray-900">{selected.size}</span>
+              </span>
+              <span>
+                Sum: <span className="font-semibold text-gray-900">{formatDollar(selectedSum)}</span>
+              </span>
+              {targetAmount !== null && (
+                <>
+                  <span>
+                    Target: <span className="font-semibold text-gray-900">{formatDollar(targetAmount)}</span>
+                  </span>
+                  <span className={withinTolerance ? "text-green-700" : "text-red-600"}>
+                    Diff: <span className="font-semibold">{formatDollar(bestDiff ?? 0)}</span>
+                    {withinTolerance && selected.size > 0 && (
+                      <span className="ml-1 text-green-600">✓ within ${MULTI_MATCH_TOLERANCE} tolerance</span>
                     )}
-                  </div>
-                  <Button
-                    onClick={() => onSubmit(aIdx, selectedArr)}
-                    size="sm"
-                    variant="outline"
-                    className={`text-xs border-green-300 text-green-700 hover:bg-green-50 ${!canSubmit ? "opacity-50 cursor-not-allowed" : ""}`}
-                    disabled={!canSubmit}
-                    title={
-                      !withinTolerance && targetAmt !== null
-                        ? `Sum differs from ${sourceALabel} amount by more than $${MULTI_MATCH_TOLERANCE}`
-                        : ""
-                    }
-                  >
-                    {isMatchingThis
-                      ? "Matching…"
-                      : selected.size > 1
-                        ? `Match ${selected.size} orphans`
-                        : "Match"}
-                  </Button>
-                </div>
-              )
-            })}
+                  </span>
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {selected.size > 0 && (
+                <Button
+                  onClick={onClear}
+                  size="sm"
+                  variant="outline"
+                  className="text-xs"
+                  disabled={isMatching}
+                >
+                  Clear
+                </Button>
+              )}
+              <Button
+                onClick={() => onSubmit(selectedArr)}
+                size="sm"
+                variant="outline"
+                className={`text-xs border-green-300 text-green-700 hover:bg-green-50 ${!canSubmit ? "opacity-50 cursor-not-allowed" : ""}`}
+                disabled={!canSubmit}
+                title={
+                  selected.size === 0
+                    ? `Select at least one ${sourceALabel} row`
+                    : !withinTolerance && targetAmount !== null
+                      ? `Sum differs from target by more than $${MULTI_MATCH_TOLERANCE}`
+                      : ""
+                }
+              >
+                {isMatching
+                  ? "Matching…"
+                  : selected.size > 1
+                    ? `Match ${selected.size} rows`
+                    : "Match"}
+              </Button>
+            </div>
           </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   )
 }

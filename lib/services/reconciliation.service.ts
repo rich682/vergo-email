@@ -353,15 +353,17 @@ export class ReconciliationService {
   }
 
   /**
-   * Accept a manual match: move an unmatched pair into the matched list.
-   * Supports many-to-one: pass a `sourceBIdxs` array to link multiple Source B
-   * rows to a single Source A row. The scalar `sourceBIdx` form is preserved
-   * for back-compat and 1:1 matches.
+   * Accept a manual match: move an unmatched pair (or group) into the matched list.
+   * Supports both directions of many-to-one:
+   *   - Pass a `sourceBIdxs` array to link multiple Source B rows to one Source A row
+   *   - Pass a `sourceAIdxs` array to link multiple Source A rows to one Source B row
+   * The scalar forms are preserved for back-compat and 1:1 matches.
+   * Many-to-many matches are not supported (either A or B must be a single row).
    */
   static async acceptManualMatch(
     runId: string,
     organizationId: string,
-    sourceAIdx: number,
+    sourceAIdxOrIdxs: number | number[],
     sourceBIdxOrIdxs: number | number[]
   ) {
     const run = await prisma.reconciliationRun.findFirst({
@@ -369,11 +371,20 @@ export class ReconciliationService {
     })
     if (!run) throw new Error("Run not found")
 
-    // Normalise to an array and de-dup
+    // Normalise both sides to arrays and de-dup
+    const aIdxs = Array.from(new Set(
+      Array.isArray(sourceAIdxOrIdxs) ? sourceAIdxOrIdxs : [sourceAIdxOrIdxs]
+    ))
     const bIdxs = Array.from(new Set(
       Array.isArray(sourceBIdxOrIdxs) ? sourceBIdxOrIdxs : [sourceBIdxOrIdxs]
     ))
-    if (bIdxs.length === 0) throw new Error("At least one Source B index required")
+    if (aIdxs.length === 0 || bIdxs.length === 0) {
+      throw new Error("At least one Source A and one Source B index required")
+    }
+    if (aIdxs.length > 1 && bIdxs.length > 1) {
+      throw new Error("Many-to-many matches are not supported")
+    }
+    const primaryAIdx = aIdxs[0]
     const primaryBIdx = bIdxs[0]
 
     const matchResults = (run.matchResults as any) || { matched: [], unmatchedA: [], unmatchedB: [] }
@@ -384,18 +395,22 @@ export class ReconciliationService {
     const sourceBRows = run.sourceBRows as Record<string, any>[] | null
 
     // Add to matched list as manual match with row context.
-    // For multi-B matches, `sourceBIdxs` holds all linked indices while
-    // `sourceBIdx` holds the primary one so legacy consumers still work.
+    // For multi-A or multi-B matches, the `sourceAIdxs`/`sourceBIdxs` arrays hold
+    // all linked indices while `sourceAIdx`/`sourceBIdx` hold the primary.
     matchResults.matched.push({
-      sourceAIdx,
+      sourceAIdx: primaryAIdx,
       sourceBIdx: primaryBIdx,
+      ...(aIdxs.length > 1 && { sourceAIdxs: aIdxs }),
       ...(bIdxs.length > 1 && { sourceBIdxs: bIdxs }),
       confidence: 100,
       method: "manual",
       ...(sourceARows && sourceBRows && {
         context: {
-          sourceAData: sourceARows[sourceAIdx],
+          sourceAData: sourceARows[primaryAIdx],
           sourceBData: sourceBRows[primaryBIdx],
+          ...(aIdxs.length > 1 && {
+            sourceADataAll: aIdxs.map((i) => sourceARows[i]),
+          }),
           ...(bIdxs.length > 1 && {
             sourceBDataAll: bIdxs.map((i) => sourceBRows[i]),
           }),
@@ -404,11 +419,11 @@ export class ReconciliationService {
     })
 
     // Remove from unmatched lists
-    matchResults.unmatchedA = (matchResults.unmatchedA as number[]).filter((i: number) => i !== sourceAIdx)
+    matchResults.unmatchedA = (matchResults.unmatchedA as number[]).filter((i: number) => !aIdxs.includes(i))
     matchResults.unmatchedB = (matchResults.unmatchedB as number[]).filter((i: number) => !bIdxs.includes(i))
 
     // Remove related exceptions
-    delete exceptions[`A-${sourceAIdx}`]
+    for (const aIdx of aIdxs) delete exceptions[`A-${aIdx}`]
     for (const bIdx of bIdxs) delete exceptions[`B-${bIdx}`]
 
     const newExceptionCount = (matchResults.unmatchedA as number[]).length + (matchResults.unmatchedB as number[]).length

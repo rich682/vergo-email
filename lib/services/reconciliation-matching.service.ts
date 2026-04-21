@@ -16,10 +16,16 @@ export interface MatchPair {
   sourceAIdx: number
   sourceBIdx: number
   /**
-   * For many-to-one manual matches: all Source B indices in this match
-   * (including sourceBIdx). When absent, the match is 1:1 — treat as [sourceBIdx].
+   * Many-to-one manual matches: all Source B indices combined into this match
+   * (includes sourceBIdx). Absent on 1:1 — treat as [sourceBIdx].
    */
   sourceBIdxs?: number[]
+  /**
+   * Many-to-one manual matches in the inverse direction: all Source A indices
+   * combined into this match (includes sourceAIdx). Absent on 1:1 — treat as
+   * [sourceAIdx]. sourceAIdxs and sourceBIdxs are mutually exclusive.
+   */
+  sourceAIdxs?: number[]
   confidence: number  // 0-100
   method: "exact" | "fuzzy_ai" | "manual"
   reasoning?: string
