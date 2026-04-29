@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { usePermissions } from "@/components/permissions-context"
 import Link from "next/link"
-import { ArrowLeft, Database, Loader2, Calendar, LayoutGrid, Table2 } from "lucide-react"
+import { ArrowLeft, Database, Loader2, Calendar, LayoutGrid, Table2, List } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -25,9 +25,15 @@ const CADENCE_OPTIONS = [
   { value: "annual", label: "Annual" },
 ]
 
-type ReportLayout = "pivot" | "accounting"
+type ReportLayout = "standard" | "pivot" | "accounting"
 
 const LAYOUT_OPTIONS: Array<{ value: ReportLayout; label: string; description: string; icon: typeof LayoutGrid }> = [
+  {
+    value: "standard",
+    label: "Standard",
+    description: "One row per record with metric columns. Good for line-item listings like WIP schedules, A/R aging, project lists.",
+    icon: List,
+  },
   {
     value: "pivot",
     label: "Pivot",
@@ -63,7 +69,7 @@ export default function NewReportPage() {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [cadence, setCadence] = useState("monthly")
-  const [layout, setLayout] = useState<ReportLayout>("pivot")
+  const [layout, setLayout] = useState<ReportLayout>("standard")
   const [databaseId, setDatabaseId] = useState("")
   const [pivotColumnKey, setPivotColumnKey] = useState("")
   // Accounting layout fields
@@ -166,7 +172,13 @@ export default function NewReportPage() {
       return
     }
     if (!pivotColumnKey) {
-      setError(layout === "accounting" ? "Please select a period column" : "Please select a column")
+      const message =
+        layout === "accounting"
+          ? "Please select a period column"
+          : layout === "standard"
+          ? "Please select a date column"
+          : "Please select a column"
+      setError(message)
       return
     }
     if (layout === "accounting" && !rowColumnKey) {
@@ -203,6 +215,47 @@ export default function NewReportPage() {
             rowColumnKey,
             valueColumnKey,
             ...(groupCol ? { groupByColumnKey: groupCol.key } : {}),
+          }),
+        })
+
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || "Failed to create report")
+        }
+
+        const data = await response.json()
+        router.push(`/dashboard/reports/${data.report.id}`)
+      } else if (layout === "standard") {
+        // Standard layout: auto-populate columns from database columns
+        const dataTypeMap: Record<string, "text" | "number" | "currency" | "date" | "boolean"> = {
+          text: "text",
+          number: "number",
+          currency: "currency",
+          date: "date",
+          boolean: "boolean",
+        }
+        const autoColumns = dbColumns.map((col: DatabaseColumn, index: number) => ({
+          key: `col_${col.key}`,
+          label: col.label,
+          type: "source" as const,
+          sourceColumnKey: col.key,
+          dataType: dataTypeMap[col.dataType] || "text",
+          order: index,
+        }))
+
+        const response = await fetch("/api/reports", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            name: name.trim(),
+            description: description.trim() || undefined,
+            cadence,
+            layout: "standard",
+            databaseId,
+            dateColumnKey: pivotColumnKey,
+            pivotColumnKey,
+            columns: autoColumns,
           }),
         })
 
@@ -320,7 +373,7 @@ export default function NewReportPage() {
             {/* Layout Selection */}
             <div className="space-y-2">
               <Label>Report Layout *</Label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 {LAYOUT_OPTIONS.map((option) => {
                   const Icon = option.icon
                   const isSelected = layout === option.value
@@ -518,11 +571,13 @@ export default function NewReportPage() {
                     </div>
                   </>
                 ) : (
-                  /* Pivot: single column selection */
+                  /* Pivot / Standard: single column selection */
                   <div className="space-y-2">
-                    <Label>Column *</Label>
+                    <Label>{layout === "standard" ? "Date Column *" : "Column *"}</Label>
                     <p className="text-xs text-gray-500 mb-2">
-                      Column whose unique values become column headers (e.g., Project Name, Period)
+                      {layout === "standard"
+                        ? "Date column used to filter rows by reporting period (e.g., As Of Date, Period)"
+                        : "Column whose unique values become column headers (e.g., Project Name, Period)"}
                     </p>
                     {loadingDatabaseDetail ? (
                       <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
@@ -571,7 +626,7 @@ export default function NewReportPage() {
                       {layout === "accounting" && rowColumnKey && (
                         <> • Rows: {databaseColumns.find(c => c.key === rowColumnKey)?.label || rowColumnKey}</>
                       )}
-                      {" "}• {layout === "accounting" ? "Period" : "Column"}: {databaseColumns.find(c => c.key === pivotColumnKey)?.label || pivotColumnKey}
+                      {" "}• {layout === "accounting" ? "Period" : layout === "standard" ? "Date" : "Column"}: {databaseColumns.find(c => c.key === pivotColumnKey)?.label || pivotColumnKey}
                       {layout === "accounting" && valueColumnKey && (
                         <> • Values: {databaseColumns.find(c => c.key === valueColumnKey)?.label || valueColumnKey}</>
                       )}
