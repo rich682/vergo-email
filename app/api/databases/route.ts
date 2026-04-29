@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("Error creating database:", error)
     return NextResponse.json(
-      { error: "Failed to create database" },
+      { error: error?.message || "Failed to create database" },
       { status: 400 }
     )
   }
